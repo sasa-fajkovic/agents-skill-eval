@@ -1,0 +1,8 @@
+agents-skill-eval.com {
+  encode gzip zstd
+  reverse_proxy 127.0.0.1:8080
+}
+
+www.agents-skill-eval.com {
+  redir https://agents-skill-eval.com{uri} permanent
+}

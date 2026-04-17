@@ -1,15 +1,26 @@
 name: Deploy App
 
+permissions:
+  contents: read
+
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - 'backend/**'
       - 'frontend/**'
+      - 'docker/**'
+      - 'eval/**'
+      - 'Caddyfile'
+      - '.github/workflows/deploy-app.yml'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,16 +40,37 @@ jobs:
           host: 46.101.197.119
           username: deploy
           key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
-          source: "backend/bin/app,frontend/"
+          source: "backend/bin/app,frontend/,docker/,eval/,Caddyfile"
           target: /home/deploy/app/
 
-      - name: Restart service
+      - name: Provision and restart app
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 46.101.197.119
           username: deploy
           key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          envs: ANTHROPIC_API_KEY,SENTRY_DSN
           script: |
-            sudo systemctl restart agents-skill-eval
-            sleep 2
+            set -e
+            mkdir -p /home/deploy/app/caddy_data /home/deploy/app/caddy_config
+            cat > /home/deploy/app/app.env <<EOF
+            PORT=8080
+            REDIS_ADDR=127.0.0.1:6379
+            EVAL_DOCKER_IMAGE=agents-skill-eval:latest
+            EVAL_DOCKER_NETWORK=bridge
+            ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+            SENTRY_DSN=${SENTRY_DSN}
+            EOF
+            chmod 600 /home/deploy/app/app.env
+            docker build -f /home/deploy/app/docker/Dockerfile -t agents-skill-eval:latest /home/deploy/app
+            docker rm -f agents-skill-eval-redis >/dev/null 2>&1 || true
+            docker run -d --name agents-skill-eval-redis --restart unless-stopped -p 127.0.0.1:6379:6379 redis:7-alpine
+            pkill -f '/home/deploy/app/backend/bin/app' >/dev/null 2>&1 || true
+            cd /home/deploy/app
+            nohup bash -lc 'set -a; source /home/deploy/app/app.env; set +a; exec /home/deploy/app/backend/bin/app' >/home/deploy/app/app.log 2>&1 < /dev/null &
+            sleep 5
             curl -fsS http://127.0.0.1:8080/health
+            docker rm -f agents-skill-eval-caddy >/dev/null 2>&1 || true
+            docker run -d --name agents-skill-eval-caddy --restart unless-stopped -p 80:80 -p 443:443 -v /home/deploy/app/Caddyfile:/etc/caddy/Caddyfile:ro -v /home/deploy/app/caddy_data:/data -v /home/deploy/app/caddy_config:/config caddy:2
+            sleep 10
+            curl -fsSI -H 'Host: agents-skill-eval.com' http://127.0.0.1

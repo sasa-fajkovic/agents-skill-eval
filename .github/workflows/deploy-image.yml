@@ -1,11 +1,17 @@
 name: Deploy Docker Image
 
+permissions:
+  contents: read
+  packages: write
+
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - 'docker/**'
       - 'eval/**'
+      - '.github/workflows/deploy-image.yml'
 
 jobs:
   build-and-push:
