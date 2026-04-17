@@ -3,7 +3,35 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>agents-skill-eval</title>
+  <title>Agent Skill Evaluator for SKILL.md | agents-skill-eval</title>
+  <meta name="description" content="Evaluate SKILL.md files and GitHub-hosted agent skills against the official AgentSkills.io specification with deterministic checks and focused LLM analysis.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://agents-skill-eval.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agents-skill-eval.com/">
+  <meta property="og:title" content="Agent Skill Evaluator for SKILL.md">
+  <meta property="og:description" content="Evaluate uploaded or GitHub-hosted agent skills against the official AgentSkills.io specification.">
+  <meta property="og:site_name" content="agents-skill-eval">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Agent Skill Evaluator for SKILL.md">
+  <meta name="twitter:description" content="Evaluate uploaded or GitHub-hosted agent skills against the official AgentSkills.io specification.">
+  <meta name="theme-color" content="#dc2626">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "agents-skill-eval",
+      "url": "https://agents-skill-eval.com/",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Web",
+      "description": "Evaluate SKILL.md files and GitHub-hosted agent skills against the official AgentSkills.io specification using deterministic checks and focused LLM analysis.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+  </script>
   <style>
     :root {
       color-scheme: light dark;
@@ -143,6 +171,11 @@
       border: 1px solid var(--line);
       border-radius: var(--radius-lg);
       box-shadow: var(--shadow);
+    }
+
+    .results .card {
+      border-color: rgba(220, 38, 38, 0.12);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.08);
     }
 
     .panel-body,
@@ -429,7 +462,12 @@
       margin: 0;
       color: var(--muted);
       line-height: 1.75;
-      font-size: 14px;
+      font-size: 15px;
+    }
+
+    .results .summary {
+      font-size: 16px;
+      line-height: 1.8;
     }
 
     .badge {
@@ -462,8 +500,43 @@
       margin: 0;
       padding-left: 18px;
       color: var(--muted);
-      line-height: 1.75;
-      font-size: 14px;
+      line-height: 1.8;
+      font-size: 16px;
+    }
+
+    .results-grid .card {
+      padding: 22px;
+    }
+
+    .results-grid .label,
+    .results-header .label {
+      margin-bottom: 12px;
+      font-size: 12px;
+    }
+
+    .results-grid ul li,
+    .results-grid .empty,
+    .checklist li {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .results-grid ul li::marker {
+      color: var(--accent);
+    }
+
+    .results-grid .card,
+    .results-header .card {
+      transform: translateY(0);
+      transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+    }
+
+    .results-grid .card:hover,
+    .results-header .card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(220, 38, 38, 0.22);
+      box-shadow: 0 24px 52px rgba(0, 0, 0, 0.12);
     }
 
     .checklist {
@@ -750,7 +823,6 @@
               <span>${passed ? 'Present' : 'Missing'}</span>
             </li>
           `).join('')}
-          <li><span>Estimated input tokens</span><span>${escapeHtml(deterministic.estimated_input_tokens ?? 0)}</span></li>
           <li><span>Files discovered</span><span>${escapeHtml(deterministic.file_count)}</span></li>
           <li><span>Line count</span><span>${escapeHtml(deterministic.line_count)}</span></li>
         </ul>
@@ -776,10 +848,6 @@
           <article class="panel card">
             <span class="label">Skill</span>
             <p class="summary">${escapeHtml(data.skill_name || 'Unknown skill')}</p>
-          </article>
-          <article class="panel card">
-            <span class="label">Estimated tokens</span>
-            <p class="summary">${escapeHtml(data.deterministic?.estimated_input_tokens ?? 0)} tokens to load into context</p>
           </article>
         </div>
 
@@ -843,10 +911,6 @@
           <article class="panel card stack skeleton">
             <span class="label">Skill</span>
             <div class="skeleton-block md"></div>
-          </article>
-          <article class="panel card stack skeleton">
-            <span class="label">Estimated tokens</span>
-            <div class="skeleton-block lg"></div>
           </article>
         </div>
 

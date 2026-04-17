@@ -134,26 +134,8 @@ def deterministic_checks(skill_content: str, all_files: list[Path]) -> dict:
         "has_error_handling": has_error_handling,
         "file_count": len(all_files),
         "line_count": skill_content.count("\n") + (1 if skill_content else 0),
-        "estimated_input_tokens": estimate_input_tokens(skill_content, all_files),
         "issues": issues,
     }
-
-
-def estimate_input_tokens(skill_content: str, all_files: list[Path]) -> int:
-    total_chars = len(skill_content)
-    for path in all_files:
-        if path.name in {"SKILL.md", "skill.md"}:
-            continue
-        suffix = path.suffix.lower()
-        if suffix in ALLOWED_TEXT_EXTENSIONS:
-            total_chars += len(read_text_file(path))
-        elif suffix in PDF_EXTENSIONS:
-            total_chars += len(read_pdf_file(path))
-        elif suffix in IMAGE_EXTENSIONS:
-            total_chars += 32
-
-    # Rough heuristic for English/code-heavy context loaded into the model.
-    return max(1, total_chars // 4)
 
 
 def extract_skill_name(skill_path: Path, skill_content: str) -> str:

@@ -144,6 +144,8 @@ func (app *application) routes() http.Handler {
 	mux.HandleFunc("GET /health", app.handleHealth)
 	mux.HandleFunc("POST /upload", app.handleUpload)
 	mux.HandleFunc("GET /result/", app.handleResult)
+	mux.HandleFunc("GET /robots.txt", app.handleRobots)
+	mux.HandleFunc("GET /sitemap.xml", app.handleSitemap)
 	mux.HandleFunc("GET /", app.handleIndex)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir(app.frontendDir))))
 
@@ -280,6 +282,14 @@ func (app *application) handleResult(w http.ResponseWriter, r *http.Request) {
 
 func (app *application) handleIndex(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(app.frontendDir, "index.html"))
+}
+
+func (app *application) handleRobots(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, filepath.Join(app.frontendDir, "robots.txt"))
+}
+
+func (app *application) handleSitemap(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, filepath.Join(app.frontendDir, "sitemap.xml"))
 }
 
 func (app *application) recoverPanics(next http.Handler) http.Handler {
