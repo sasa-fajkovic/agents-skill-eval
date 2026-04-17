@@ -64,9 +64,10 @@ jobs:
             chmod 600 /home/deploy/app/app.env
             docker build -f /home/deploy/app/docker/Dockerfile -t agents-skill-eval:latest /home/deploy/app
             redis-cli -h 127.0.0.1 -p 6379 ping >/dev/null
-            pkill -f '/home/deploy/app/backend/bin/app' >/dev/null 2>&1 || true
+            if [ -f /home/deploy/app/app.pid ] && kill -0 "$(cat /home/deploy/app/app.pid)" 2>/dev/null; then kill "$(cat /home/deploy/app/app.pid)"; fi
             cd /home/deploy/app
             nohup bash -lc 'set -a; source /home/deploy/app/app.env; set +a; exec /home/deploy/app/backend/bin/app' >/home/deploy/app/app.log 2>&1 < /dev/null &
+            echo $! >/home/deploy/app/app.pid
             sleep 5
             curl -fsS http://127.0.0.1:8080/health
             docker rm -f agents-skill-eval-caddy >/dev/null 2>&1 || true
