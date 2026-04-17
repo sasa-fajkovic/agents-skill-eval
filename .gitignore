@@ -1,0 +1,11 @@
+# Go
+backend/bin/
+*.exe
+
+# Python
+__pycache__/
+*.pyc
+.env
+
+# OS
+.DS_Store
