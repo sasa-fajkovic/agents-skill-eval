@@ -1,0 +1,44 @@
+name: Deploy App
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build
+        run: |
+          cd backend
+          GOOS=linux GOARCH=amd64 go build -o bin/app .
+
+      - name: Copy binary to Droplet
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 46.101.197.119
+          username: deploy
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          source: "backend/bin/app,frontend/"
+          target: /home/deploy/app/
+
+      - name: Restart service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 46.101.197.119
+          username: deploy
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          script: |
+            sudo systemctl restart agents-skill-eval
+            sleep 2
+            curl -fsS http://127.0.0.1:8080/health

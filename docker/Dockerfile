@@ -3,10 +3,10 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
-    python3 python3-pip nodejs npm curl \
+	python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install anthropic PyPDF2 python-docx --break-system-packages
+RUN pip3 install anthropic PyPDF2 --break-system-packages
 
 RUN useradd -m -u 1001 evaluser
 USER evaluser

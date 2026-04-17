@@ -1,0 +1,7 @@
+.git
+.github
+.claude
+backend/bin
+__pycache__
+*.pyc
+.DS_Store

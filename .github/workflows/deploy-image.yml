@@ -1,0 +1,39 @@
+name: Deploy Docker Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docker/**'
+      - 'eval/**'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ghcr.io/sasa-fajkovic/agents-skill-eval:latest
+
+      - name: Pull on Droplet
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 46.101.197.119
+          username: deploy
+          key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+          script: |
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull ghcr.io/sasa-fajkovic/agents-skill-eval:latest

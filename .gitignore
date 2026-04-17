@@ -1,6 +1,9 @@
 # Go
 backend/bin/
+backend/agents-skill-eval
 *.exe
+*.test
+*.out
 
 # Python
 __pycache__/
