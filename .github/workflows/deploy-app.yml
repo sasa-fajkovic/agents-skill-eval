@@ -71,6 +71,6 @@ jobs:
             sleep 5
             curl -fsS http://127.0.0.1:8080/health
             docker rm -f agents-skill-eval-caddy >/dev/null 2>&1 || true
-            docker run -d --name agents-skill-eval-caddy --restart unless-stopped -p 80:80 -p 443:443 -v /home/deploy/app/Caddyfile:/etc/caddy/Caddyfile:ro -v /home/deploy/app/caddy_data:/data -v /home/deploy/app/caddy_config:/config caddy:2
+            docker run -d --name agents-skill-eval-caddy --restart unless-stopped --network host -v /home/deploy/app/Caddyfile:/etc/caddy/Caddyfile:ro -v /home/deploy/app/caddy_data:/data -v /home/deploy/app/caddy_config:/config caddy:2
             sleep 10
             curl -fsSI -H 'Host: agents-skill-eval.com' http://127.0.0.1
