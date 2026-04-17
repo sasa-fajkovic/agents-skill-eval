@@ -63,8 +63,7 @@ jobs:
             EOF
             chmod 600 /home/deploy/app/app.env
             docker build -f /home/deploy/app/docker/Dockerfile -t agents-skill-eval:latest /home/deploy/app
-            docker rm -f agents-skill-eval-redis >/dev/null 2>&1 || true
-            docker run -d --name agents-skill-eval-redis --restart unless-stopped -p 127.0.0.1:6379:6379 redis:7-alpine
+            redis-cli -h 127.0.0.1 -p 6379 ping >/dev/null
             pkill -f '/home/deploy/app/backend/bin/app' >/dev/null 2>&1 || true
             cd /home/deploy/app
             nohup bash -lc 'set -a; source /home/deploy/app/app.env; set +a; exec /home/deploy/app/backend/bin/app' >/home/deploy/app/app.log 2>&1 < /dev/null &
