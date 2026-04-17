@@ -268,6 +268,9 @@
       background: rgba(34, 197, 94, 0.12);
       color: #22c55e;
       font-weight: 700;
+      min-height: 52px;
+      padding: 14px 22px;
+      font-size: 15px;
     }
 
     .actions {
@@ -698,6 +701,7 @@
     let lastProgressJobId = '';
     let lastProgressLines = [];
     let lastProgressTrailer = '';
+    let jobInFlight = false;
 
     function getSystemTheme() {
       return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -713,6 +717,12 @@
       if (bytes < 1024) return `${bytes} B`;
       if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
       return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    function setJobRunning(isRunning) {
+      jobInFlight = isRunning;
+      uploadButton.disabled = isRunning;
+      uploadButton.textContent = isRunning ? 'Evaluation running...' : 'Run evaluation';
     }
 
     function setStatus(message, isError = false) {
@@ -797,7 +807,9 @@
       results.classList.remove('loading');
       results.classList.add('hidden');
       results.innerHTML = '';
-      setStatus(selectedFiles.length || githubUrlInput.value.trim() ? 'Ready to evaluate.' : 'Waiting for files.');
+      if (!jobInFlight) {
+        setStatus(selectedFiles.length || githubUrlInput.value.trim() ? 'Ready to evaluate.' : 'Waiting for files.');
+      }
     }
 
     function renderList(items) {
@@ -956,6 +968,7 @@
 
           clearInterval(pollTimer);
           pollTimer = null;
+          setJobRunning(false);
 
           if (!response.ok || data.status === 'error') {
             loadingResultsVisible = false;
@@ -970,12 +983,16 @@
         } catch (error) {
           clearInterval(pollTimer);
           pollTimer = null;
+          setJobRunning(false);
           setStatus(error.message || 'Polling failed.', true);
         }
       }, 2000);
     }
 
     async function uploadFiles() {
+      if (jobInFlight) {
+        return;
+      }
       const githubUrl = githubUrlInput.value.trim();
       if (!selectedFiles.length && !githubUrl) {
         setStatus('Select at least one file or provide a GitHub URL before uploading.', true);
@@ -988,7 +1005,7 @@
         formData.append('githubUrl', githubUrl);
       }
 
-      uploadButton.disabled = true;
+      setJobRunning(true);
       loadingResultsVisible = false;
       results.classList.remove('loading');
       setStatus('Uploading files...');
@@ -1006,9 +1023,8 @@
 
         await pollForResult(data.jobId);
       } catch (error) {
+        setJobRunning(false);
         setStatus(error.message || 'Upload failed.', true);
-      } finally {
-        uploadButton.disabled = false;
       }
     }
 
@@ -1054,6 +1070,7 @@
         clearInterval(pollTimer);
         pollTimer = null;
       }
+      setJobRunning(false);
     });
 
     themeToggle.addEventListener('click', () => {
@@ -1073,6 +1090,7 @@
     });
 
     applyTheme(localStorage.getItem('themePreference') || 'auto');
+    setJobRunning(false);
     renderFileList();
   </script>
 </body>

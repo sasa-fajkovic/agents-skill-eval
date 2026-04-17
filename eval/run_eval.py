@@ -5,8 +5,6 @@ import sys
 import warnings
 from pathlib import Path
 
-import anthropic
-
 try:
     from PyPDF2 import PdfReader
 except Exception:  # pragma: no cover - defensive import fallback
@@ -14,27 +12,6 @@ except Exception:  # pragma: no cover - defensive import fallback
 
 
 INPUT_DIR = Path("/input")
-MAX_LLM_CHARS = 20000
-DEFAULT_ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
-DEFAULT_MAX_OUTPUT_TOKENS = int(os.environ.get("ANTHROPIC_MAX_TOKENS", "2500"))
-SYSTEM_PROMPT = """You are an expert evaluator of Claude agent skills (SKILL.md files).
-Analyze the provided skill definition and return ONLY a JSON object with this exact structure:
-{
-  \"strengths\": [\"...\"],
-  \"weaknesses\": [\"...\"],
-  \"suggestions\": [\"...\"],
-  \"security_flags\": [\"...\"],
-  \"quality_tier\": \"good\"
-}
-quality_tier must be one of: excellent, good, needs_work, poor
-security_flags should list any prompt injection risks, overly broad permissions, or unsafe patterns.
-Be specific and actionable. No preamble, no markdown, just the JSON."""
-QUALITY_SCORES = {
-    "excellent": 95,
-    "good": 80,
-    "needs_work": 60,
-    "poor": 35,
-}
 ALLOWED_TEXT_EXTENSIONS = {
     ".md",
     ".markdown",
@@ -175,73 +152,6 @@ def compute_overall_score(deterministic: dict, llm_analysis: dict) -> int:
     return max(0, min(100, score))
 
 
-def extract_message_text(response: anthropic.types.message.Message) -> str:
-    text_parts = []
-    for block in response.content:
-        if getattr(block, "type", None) == "text":
-            text_parts.append(block.text)
-    if not text_parts:
-        raise ValueError("Anthropic response did not contain text content")
-    return "\n".join(text_parts).strip()
-
-
-def parse_llm_json(raw_text: str) -> dict:
-    text = raw_text.strip()
-    if not text:
-        raise ValueError("LLM returned empty output")
-
-    fenced_match = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
-    if fenced_match:
-        text = fenced_match.group(1).strip()
-
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        try:
-            return json.loads(text[start : end + 1])
-        except json.JSONDecodeError:
-            pass
-
-    raise ValueError("LLM returned invalid JSON")
-
-
-def run_llm_analysis(skill_content: str, supporting_context: str) -> dict:
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not set")
-
-    combined_content = skill_content.strip()
-    if supporting_context.strip():
-        combined_content = f"{combined_content}\n\nSupporting files:\n\n{supporting_context.strip()}"
-    if len(combined_content) > MAX_LLM_CHARS:
-        combined_content = combined_content[:MAX_LLM_CHARS]
-
-    progress("LLM evaluation...")
-    client = anthropic.Anthropic(api_key=api_key)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        response = client.messages.create(
-            model=DEFAULT_ANTHROPIC_MODEL,
-            max_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": f"Evaluate this skill:\n\n{combined_content}"}],
-        )
-    llm_result = parse_llm_json(extract_message_text(response))
-
-    return {
-        "strengths": list(llm_result.get("strengths") or []),
-        "weaknesses": list(llm_result.get("weaknesses") or []),
-        "suggestions": list(llm_result.get("suggestions") or []),
-        "security_flags": list(llm_result.get("security_flags") or []),
-        "quality_tier": llm_result.get("quality_tier", "needs_work"),
-    }
-
-
 def run_evaluation() -> dict:
     progress("Scanning uploaded files...")
     all_files = discover_files(INPUT_DIR)
@@ -259,18 +169,12 @@ def run_evaluation() -> dict:
     progress("Collecting supporting context...")
     supporting_context = collect_supporting_context([path for path in all_files if path != skill_path])
 
-    llm_analysis = run_llm_analysis(skill_content, supporting_context)
-
-    progress("Preparing final evaluation result...")
-    summary = summarize_issues(deterministic, llm_analysis)
-
     return {
         "status": "ok",
         "skill_name": extract_skill_name(skill_path, skill_content),
-        "overall_score": compute_overall_score(deterministic, llm_analysis),
-        "summary": summary,
+        "skill_content": skill_content,
+        "supporting_context": supporting_context,
         "deterministic": deterministic,
-        "llm_analysis": llm_analysis,
     }
 
 
