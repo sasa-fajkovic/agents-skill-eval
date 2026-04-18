@@ -12,6 +12,7 @@
   <meta property="og:title" content="Agent Skill Evaluator for SKILL.md">
   <meta property="og:description" content="Evaluate uploaded or GitHub-hosted agent skills against the official AgentSkills.io specification.">
   <meta property="og:site_name" content="agents-skill-eval">
+  <meta property="og:locale" content="en_US">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Agent Skill Evaluator for SKILL.md">
   <meta name="twitter:description" content="Evaluate uploaded or GitHub-hosted agent skills against the official AgentSkills.io specification.">
@@ -366,15 +367,102 @@
     }
 
     .about-grid,
+    .highlight-grid,
+    .steps-grid,
     .results-header,
     .results-grid {
       display: grid;
       gap: 16px;
     }
 
+    .highlight-grid,
     .about-grid,
     .results-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .steps-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .section-heading {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 2px;
+    }
+
+    .section-heading h2 {
+      margin: 0;
+      font-size: clamp(24px, 4vw, 34px);
+      line-height: 1.02;
+      letter-spacing: -0.04em;
+    }
+
+    .section-heading p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.75;
+      font-size: 15px;
+      max-width: 62ch;
+    }
+
+    .highlight-card {
+      display: grid;
+      gap: 10px;
+    }
+
+    .highlight-card strong,
+    .step-card strong {
+      font-size: 18px;
+      line-height: 1.2;
+      color: var(--text);
+    }
+
+    .highlight-card p,
+    .step-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.75;
+      font-size: 15px;
+    }
+
+    .step-card {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step-number {
+      display: inline-flex;
+      width: 34px;
+      height: 34px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: rgba(220, 38, 38, 0.1);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .inline-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .inline-list span {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
     }
 
     .privacy-note {
@@ -620,6 +708,8 @@
 
     @media (max-width: 820px) {
       .about-grid,
+      .highlight-grid,
+      .steps-grid,
       .results-header,
       .results-grid {
         grid-template-columns: 1fr;
@@ -668,6 +758,20 @@
         <button id="theme-toggle" type="button" class="theme-toggle">Theme: Auto</button>
         <a class="link" href="/faq">FAQ</a>
       </div>
+    </section>
+
+    <section class="highlight-grid">
+      <article class="panel card highlight-card">
+        <span class="label">Default path</span>
+        <strong>Deterministic by default</strong>
+        <p>Uploaded skill content stays on the platform infrastructure unless optional Anthropic review is explicitly enabled for that run.</p>
+      </article>
+
+      <article class="panel card highlight-card">
+        <span class="label">Input support</span>
+        <strong>Local folders and GitHub URLs</strong>
+        <p>Use a full local skill folder or point to a GitHub `SKILL.md` file or skill directory. Nested supporting files are preserved and evaluated together.</p>
+      </article>
     </section>
 
     <section class="panel panel-body">
@@ -727,6 +831,47 @@
         <span class="label">About</span>
         <p class="summary">This runs deterministic checks from the official AgentSkills.io specification inside a locked-down container. Optional LLM review, when enabled, sends the uploaded skill content to Anthropic after the container finishes.</p>
       </article>
+    </section>
+
+    <section class="panel panel-body">
+      <div class="section-heading">
+        <span class="label">How it works</span>
+        <h2>Evaluation flow built for clarity</h2>
+        <p>The upload flow is intentionally simple: provide a local skill folder or GitHub URL, run deterministic checks in isolation, and optionally add Anthropic review only when that tradeoff is wanted.</p>
+      </div>
+      <div class="steps-grid">
+        <article class="step-card">
+          <span class="step-number">01</span>
+          <strong>Provide the skill package</strong>
+          <p>Upload one local skill folder with `SKILL.md` and supporting files, or paste a GitHub file or directory URL.</p>
+        </article>
+        <article class="step-card">
+          <span class="step-number">02</span>
+          <strong>Run isolated checks</strong>
+          <p>Validation and deterministic scoring run inside a locked-down container with no network and strict resource limits.</p>
+        </article>
+        <article class="step-card">
+          <span class="step-number">03</span>
+          <strong>Review the result</strong>
+          <p>Get issues, score, summary, and optional review guidance with a result format that is easy to scan and compare.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel panel-body">
+      <div class="section-heading">
+        <span class="label">Supported inputs</span>
+        <h2>Built for real skill packages</h2>
+        <p>The evaluator is designed for nested skill packages rather than isolated markdown files, so supporting references, scripts, schemas, and assets can be reviewed in context.</p>
+      </div>
+      <div class="inline-list" aria-label="Supported input types">
+        <span>Local folder upload</span>
+        <span>GitHub blob URLs</span>
+        <span>GitHub tree URLs</span>
+        <span>Nested supporting files</span>
+        <span>Deterministic default</span>
+        <span>Optional Anthropic review</span>
+      </div>
     </section>
 
     <!--

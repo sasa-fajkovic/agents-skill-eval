@@ -12,10 +12,43 @@
   <meta property="og:title" content="FAQ | agents-skill-eval">
   <meta property="og:description" content="Why agents-skill-eval focuses on portable skills, structured IO contracts, and vendor-neutral evaluation.">
   <meta property="og:site_name" content="agents-skill-eval">
+  <meta property="og:locale" content="en_US">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="FAQ | agents-skill-eval">
   <meta name="twitter:description" content="Why agents-skill-eval focuses on portable skills, structured IO contracts, and vendor-neutral evaluation.">
   <meta name="theme-color" content="#dc2626">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Why agent skills over slash commands?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Slash commands are convenient shortcuts, but skills are a stronger foundation for portable and evaluable agent capabilities because they can express activation context, structured IO contracts, and reusable behavior."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why evaluate the IO spec instead of a specific agent?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The evaluator focuses on the portable skill definition itself, including structure, trigger definitions, inputs, outputs, and behavior contracts, rather than scoring one runtime's proprietary conventions."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which script types are preferred inside skills?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Shell scripts (.sh) and Python scripts (.py) are preferred because they are more portable across Linux and macOS environments and usually do not require an extra runtime manager or compile step."
+          }
+        }
+      ]
+    }
+  </script>
   <style>
     :root {
       color-scheme: light dark;
