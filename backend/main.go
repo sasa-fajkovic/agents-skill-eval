@@ -24,8 +24,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/getsentry/sentry-go"
 	"github.com/oschwald/maxminddb-golang"
 	"github.com/redis/go-redis/v9"
@@ -45,7 +43,6 @@ const (
 	maxmindDBPath    = "/etc/maxmind/GeoLite2-ASN.mmdb"
 	githubFetchLimit = 5 << 20
 	maxProgressLines = 200
-	maxLLMChars      = 20000
 )
 
 var (
@@ -116,28 +113,6 @@ var (
 	errResultPending = errors.New("result pending")
 )
 
-var qualityScores = map[string]int{
-	"excellent":  95,
-	"good":       80,
-	"needs_work": 60,
-	"poor":       35,
-}
-
-var hostLLMAnalysisRunner = runHostLLMAnalysis
-
-const llmSystemPrompt = `You are an expert evaluator of Claude agent skills (SKILL.md files).
-Analyze the provided skill definition and return ONLY a JSON object with this exact structure:
-{
-  "strengths": ["..."],
-  "weaknesses": ["..."],
-  "suggestions": ["..."],
-  "security_flags": ["..."],
-  "quality_tier": "good"
-}
-quality_tier must be one of: excellent, good, needs_work, poor
-security_flags should list any prompt injection risks, overly broad permissions, or unsafe patterns.
-Be specific and actionable. No preamble, no markdown, just the JSON.`
-
 type securityPattern struct {
 	pattern *regexp.Regexp
 	reason  string
@@ -155,14 +130,6 @@ type evalContainerResult struct {
 	SupportingContext string        `json:"supporting_context"`
 	Deterministic    map[string]any `json:"deterministic"`
 	Message          string         `json:"message"`
-}
-
-type llmAnalysis struct {
-	Strengths     []string `json:"strengths"`
-	Weaknesses    []string `json:"weaknesses"`
-	Suggestions   []string `json:"suggestions"`
-	SecurityFlags []string `json:"security_flags"`
-	QualityTier   string   `json:"quality_tier"`
 }
 
 type application struct {
@@ -202,10 +169,39 @@ type gitHubDirectoryEntry struct {
 }
 
 func main() {
-	if err := sentry.Init(sentry.ClientOptions{Dsn: os.Getenv("SENTRY_DSN")}); err != nil {
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:              os.Getenv("SENTRY_DSN"),
+		Environment:      getenvDefault("SENTRY_ENVIRONMENT", getenvDefault("APP_ENV", "development")),
+		SendDefaultPII:   false,
+		AttachStacktrace: true,
+		BeforeSend: func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
+			if event == nil {
+				return nil
+			}
+			event.User = sentry.User{}
+			event.Request = nil
+			event.ServerName = ""
+			event.Extra = map[string]any{}
+			for key := range event.Contexts {
+				if key != "runtime" && key != "os" && key != "device" && key != "trace" {
+					delete(event.Contexts, key)
+				}
+			}
+			for i := range event.Exception {
+				event.Exception[i].Value = redactSecrets(event.Exception[i].Value)
+				event.Exception[i].Type = strings.TrimSpace(event.Exception[i].Type)
+			}
+			event.Message = redactSecrets(event.Message)
+			return event
+		},
+	}); err != nil {
 		log.Printf("sentry init failed: %v", err)
 	}
 	defer sentry.Flush(2 * time.Second)
+	if shouldEmitSentryTestEvent() {
+		eventID := captureInfraEvent("sentry_test_event", errors.New("manual sentry connectivity test"), map[string]string{"component": "startup"})
+		log.Printf("sentry test event sent: %s", eventID)
+	}
 
 	ctx := context.Background()
 	redisAddr := getenvDefault("REDIS_ADDR", "127.0.0.1:6379")
@@ -214,7 +210,7 @@ func main() {
 		DialTimeout: redisDialTimeout,
 	})
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		sentry.CaptureException(err)
+		captureInfraEvent("redis_startup_ping_failed", err, map[string]string{"component": "redis", "stage": "startup"})
 		log.Printf("redis ping failed at startup: %v", err)
 	}
 
@@ -233,7 +229,7 @@ func main() {
 
 	log.Printf("starting server on %s", addr)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		sentry.CaptureException(err)
+		captureInfraEvent("http_server_failed", err, map[string]string{"component": "http"})
 		log.Fatal(err)
 	}
 }
@@ -259,7 +255,7 @@ func (app *application) handleHealth(w http.ResponseWriter, r *http.Request) {
 		payload["status"] = "degraded"
 		payload["redis"] = "error"
 		payload["message"] = err.Error()
-		sentry.CaptureException(err)
+		captureInfraEvent("redis_healthcheck_failed", err, map[string]string{"component": "redis", "stage": "healthcheck"})
 	}
 	writeJSON(w, status, payload)
 }
@@ -400,7 +396,7 @@ func (app *application) recoverPanics(next http.Handler) http.Handler {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				err := fmt.Errorf("panic: %v", recovered)
-				sentry.CaptureException(err)
+				captureInfraEvent("http_panic", err, map[string]string{"component": "http"})
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			}
 		}()
@@ -421,7 +417,7 @@ func (app *application) uploadAbuseProtection(next http.Handler) http.Handler {
 
 		queueLen, err := app.rdb.LLen(r.Context(), queueKey).Result()
 		if err != nil {
-			sentry.CaptureException(err)
+			captureInfraEvent("queue_check_failed", err, map[string]string{"component": "redis", "stage": "queue_depth"})
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "queue check failed"})
 			return
 		}
@@ -434,13 +430,13 @@ func (app *application) uploadAbuseProtection(next http.Handler) http.Handler {
 		key := "ratelimit:" + ip
 		count, err := app.rdb.Incr(r.Context(), key).Result()
 		if err != nil {
-			sentry.CaptureException(err)
+			captureInfraEvent("rate_limit_check_failed", err, map[string]string{"component": "redis", "stage": "rate_limit"})
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "rate limit check failed"})
 			return
 		}
 		if count == 1 {
 			if err := app.rdb.Expire(r.Context(), key, rateLimitTTL).Err(); err != nil {
-				sentry.CaptureException(err)
+				captureInfraEvent("rate_limit_expire_failed", err, map[string]string{"component": "redis", "stage": "rate_limit_expire"})
 			}
 		}
 		if count > rateLimitMax {
@@ -468,7 +464,7 @@ func (app *application) asnBlocker(next http.Handler) http.Handler {
 
 		var record maxmindASNRecord
 		if lookupErr := reader.Lookup(parsedIP, &record); lookupErr != nil {
-			sentry.CaptureException(lookupErr)
+			captureInfraEvent("maxmind_lookup_failed", lookupErr, map[string]string{"component": "maxmind"})
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -504,7 +500,7 @@ func (app *application) workerLoop(parent context.Context) {
 			continue
 		}
 		if err != nil {
-			sentry.CaptureException(err)
+			captureInfraEvent("worker_pop_failed", err, map[string]string{"component": "worker", "stage": "queue_pop"})
 			log.Printf("worker pop failed: %v", err)
 			time.Sleep(time.Second)
 			continue
@@ -515,7 +511,7 @@ func (app *application) workerLoop(parent context.Context) {
 
 		var job evalJob
 		if err := json.Unmarshal([]byte(result[1]), &job); err != nil {
-			sentry.CaptureException(err)
+			captureInfraEvent("worker_job_decode_failed", err, map[string]string{"component": "worker", "stage": "job_decode"})
 			log.Printf("worker job decode failed: %v", err)
 			continue
 		}
@@ -566,7 +562,7 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 		return
 	}
 	if err := cmd.Start(); err != nil {
-		sentry.CaptureException(err)
+		captureInfraEvent("docker_start_failed", err, map[string]string{"component": "worker", "stage": "docker_start"})
 		_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(err.Error()), redisResultTTL).Err()
 		return
 	}
@@ -608,24 +604,24 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 		if exitErr := new(exec.ExitError); errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 && !preserveOutput {
 			message = strings.TrimSpace(string(exitErr.Stderr))
 		}
-		sentry.CaptureException(err)
+		captureInfraEvent("docker_eval_failed", err, map[string]string{"component": "worker", "stage": "docker_wait"})
 		_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(message), redisResultTTL).Err()
 		return
 	}
 
-	_ = app.appendProgress(parent, job.JobID, "Running host-side LLM analysis...")
+	_ = app.appendProgress(parent, job.JobID, "Preparing deterministic result...")
 	trimmed := stdoutOutput
 	if trimmed == "" {
 		trimmed = `{"status":"error","message":"empty evaluation output"}`
 	}
 	finalResult, err := app.finalizeEvaluation(parent, job.JobID, trimmed)
 	if err != nil {
-		sentry.CaptureException(err)
+		captureInfraEvent("finalize_evaluation_failed", err, map[string]string{"component": "worker", "stage": "finalize"})
 		_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(err.Error()), redisResultTTL).Err()
 		return
 	}
 	if err := app.rdb.Set(parent, redisResultKey(job.JobID), redactSecrets(finalResult), redisResultTTL).Err(); err != nil {
-		sentry.CaptureException(err)
+		captureInfraEvent("result_store_failed", err, map[string]string{"component": "redis", "stage": "result_store"})
 		_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(err.Error()), redisResultTTL).Err()
 	}
 }
@@ -796,26 +792,14 @@ func (app *application) finalizeEvaluation(ctx context.Context, jobID, raw strin
 		return "", errors.New("evaluator did not return skill content")
 	}
 
-	_ = app.appendProgress(ctx, jobID, "LLM evaluation...")
-	analysis, err := hostLLMAnalysisRunner(ctx, container.SkillContent, container.SupportingContext)
-	if err != nil {
-		fallbackMessage := "LLM analysis unavailable: " + redactSecrets(err.Error())
-		analysis = llmAnalysis{
-			QualityTier: "needs_work",
-			Weaknesses:  []string{fallbackMessage},
-			Suggestions: []string{"Review the deterministic findings. Host-side LLM analysis could not be completed for this skill."},
-		}
-		_ = app.appendProgress(ctx, jobID, "LLM analysis failed; using deterministic-only fallback.")
-	}
 	_ = app.appendProgress(ctx, jobID, "Preparing final evaluation result...")
 
 	result := map[string]any{
 		"status":        "ok",
 		"skill_name":    container.SkillName,
-		"overall_score": computeOverallScore(container.Deterministic, analysis),
-		"summary":       summarizeIssues(container.Deterministic, analysis),
+		"overall_score": computeOverallScore(container.Deterministic),
+		"summary":       summarizeIssues(container.Deterministic),
 		"deterministic": container.Deterministic,
-		"llm_analysis":  analysis,
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil {
@@ -825,96 +809,7 @@ func (app *application) finalizeEvaluation(ctx context.Context, jobID, raw strin
 	return string(encoded), nil
 }
 
-func runHostLLMAnalysis(ctx context.Context, skillContent, supportingContext string) (llmAnalysis, error) {
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
-	if apiKey == "" {
-		return llmAnalysis{}, errors.New("ANTHROPIC_API_KEY is not set")
-	}
-	combined := strings.TrimSpace(skillContent)
-	if strings.TrimSpace(supportingContext) != "" {
-		combined += "\n\nSupporting files:\n\n" + strings.TrimSpace(supportingContext)
-	}
-	if len(combined) > maxLLMChars {
-		combined = combined[:maxLLMChars]
-	}
-
-	client := anthropic.NewClient(option.WithAPIKey(apiKey))
-	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(getenvDefault("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")),
-		MaxTokens: int64(parseIntDefault(os.Getenv("ANTHROPIC_MAX_TOKENS"), 2500)),
-		System: []anthropic.TextBlockParam{{
-			Text: llmSystemPrompt,
-		}},
-		Messages: []anthropic.MessageParam{{
-			Role: anthropic.MessageParamRoleUser,
-			Content: []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock("Evaluate this skill:\n\n" + combined)},
-		}},
-	}
-
-	var message *anthropic.Message
-	var err error
-	for attempt := 0; attempt < 3; attempt++ {
-		message, err = client.Messages.New(ctx, params)
-		if err == nil {
-			break
-		}
-		if attempt < 2 {
-			time.Sleep(time.Duration(attempt+1) * 2 * time.Second)
-		}
-	}
-	if err != nil {
-		return llmAnalysis{}, fmt.Errorf("LLM evaluation failed: %s", redactSecrets(err.Error()))
-	}
-	parsed, err := parseLLMJSON(extractMessageText(message))
-	if err != nil {
-		return llmAnalysis{}, err
-	}
-	analysis := llmAnalysis{
-		Strengths:     anyToStringSlice(parsed["strengths"]),
-		Weaknesses:    anyToStringSlice(parsed["weaknesses"]),
-		Suggestions:   anyToStringSlice(parsed["suggestions"]),
-		SecurityFlags: anyToStringSlice(parsed["security_flags"]),
-		QualityTier:   strings.TrimSpace(fmt.Sprint(parsed["quality_tier"])),
-	}
-	if analysis.QualityTier == "" {
-		analysis.QualityTier = "needs_work"
-	}
-	return analysis, nil
-}
-
-func extractMessageText(message *anthropic.Message) string {
-	parts := []string{}
-	for _, block := range message.Content {
-		if block.Type == "text" {
-			parts = append(parts, block.Text)
-		}
-	}
-	return strings.TrimSpace(strings.Join(parts, "\n"))
-}
-
-func parseLLMJSON(raw string) (map[string]any, error) {
-	text := strings.TrimSpace(raw)
-	if text == "" {
-		return nil, errors.New("LLM returned empty output")
-	}
-	if match := regexp.MustCompile("```(?:json)?\\s*(\\{.*\\})\\s*```").FindStringSubmatch(text); len(match) == 2 {
-		text = strings.TrimSpace(match[1])
-	}
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(text), &parsed); err == nil {
-		return parsed, nil
-	}
-	start := strings.Index(text, "{")
-	end := strings.LastIndex(text, "}")
-	if start >= 0 && end > start {
-		if err := json.Unmarshal([]byte(text[start:end+1]), &parsed); err == nil {
-			return parsed, nil
-		}
-	}
-	return nil, errors.New("LLM returned invalid JSON")
-}
-
-func anyToStringSlice(value any) []string {
+func deterministicIssues(value any) []string {
 	raw, ok := value.([]any)
 	if !ok {
 		return nil
@@ -929,32 +824,19 @@ func anyToStringSlice(value any) []string {
 	return result
 }
 
-func computeOverallScore(deterministic map[string]any, analysis llmAnalysis) int {
-	score := qualityScores[analysis.QualityTier]
-	if score == 0 {
-		score = qualityScores["needs_work"]
-	}
-	issues := anyToStringSlice(deterministic["issues"])
-	score -= min(len(issues)*5, 30)
+func computeOverallScore(deterministic map[string]any) int {
+	issues := deterministicIssues(deterministic["issues"])
+	score := 100 - min(len(issues)*10, 60)
 	if score < 0 {
 		return 0
-	}
-	if score > 100 {
-		return 100
 	}
 	return score
 }
 
-func summarizeIssues(deterministic map[string]any, analysis llmAnalysis) string {
-	issues := anyToStringSlice(deterministic["issues"])
+func summarizeIssues(deterministic map[string]any) string {
+	issues := deterministicIssues(deterministic["issues"])
 	if len(issues) > 0 {
 		return fmt.Sprintf("Skill evaluated with %d deterministic issue(s). Primary issue: %s.", len(issues), issues[0])
-	}
-	if len(analysis.Weaknesses) > 0 && strings.HasPrefix(analysis.Weaknesses[0], "LLM analysis unavailable:") {
-		return "Skill processed with deterministic checks only. Host-side LLM analysis was unavailable."
-	}
-	if len(analysis.Strengths) > 0 {
-		return "Skill evaluated successfully. Key strength: " + analysis.Strengths[0]
 	}
 	return "Skill evaluated successfully with no deterministic issues detected."
 }
@@ -1424,10 +1306,36 @@ func (app *application) appendProgress(ctx context.Context, jobID, line string) 
 func (app *application) getProgress(ctx context.Context, jobID string) []string {
 	lines, err := app.rdb.LRange(ctx, redisProgressKey(jobID), 0, -1).Result()
 	if err != nil && err != redis.Nil {
-		sentry.CaptureException(err)
+		captureInfraEvent("progress_load_failed", err, map[string]string{"component": "redis", "stage": "progress_load"})
 		return nil
 	}
 	return lines
+}
+
+func captureInfraEvent(kind string, err error, tags map[string]string) sentry.EventID {
+	if err == nil {
+		return ""
+	}
+	var eventID sentry.EventID
+	sentry.WithScope(func(scope *sentry.Scope) {
+		scope.Clear()
+		scope.SetTag("event_kind", kind)
+		scope.SetLevel(sentry.LevelError)
+		for key, value := range tags {
+			scope.SetTag(key, value)
+		}
+		scope.SetContext("infra", map[string]any{"kind": kind})
+		captured := sentry.CaptureException(errors.New(redactSecrets(err.Error())))
+		if captured != nil {
+			eventID = *captured
+		}
+	})
+	return eventID
+}
+
+func shouldEmitSentryTestEvent() bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv("SENTRY_TEST_EVENT")))
+	return value == "1" || value == "true" || value == "yes"
 }
 
 func (app *application) collectProgress(jobID string, reader io.Reader) []string {

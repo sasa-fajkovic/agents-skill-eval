@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -203,37 +202,8 @@ func TestRedactSecrets(t *testing.T) {
 	}
 }
 
-func TestParseLLMJSON(t *testing.T) {
-	t.Run("parses raw json", func(t *testing.T) {
-		parsed, err := parseLLMJSON(`{"quality_tier":"good"}`)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if parsed["quality_tier"] != "good" {
-			t.Fatalf("unexpected parsed content: %#v", parsed)
-		}
-	})
-
-	t.Run("parses fenced json", func(t *testing.T) {
-		parsed, err := parseLLMJSON("```json\n{\"quality_tier\":\"excellent\"}\n```")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if parsed["quality_tier"] != "excellent" {
-			t.Fatalf("unexpected parsed content: %#v", parsed)
-		}
-	})
-
-	t.Run("rejects invalid json", func(t *testing.T) {
-		_, err := parseLLMJSON("not json")
-		if err == nil || !strings.Contains(err.Error(), "invalid JSON") {
-			t.Fatalf("expected invalid json error, got %v", err)
-		}
-	})
-}
-
-func TestAnyToStringSlice(t *testing.T) {
-	got := anyToStringSlice([]any{" one ", "", 2, nil})
+func TestDeterministicIssues(t *testing.T) {
+	got := deterministicIssues([]any{" one ", "", 2, nil})
 	want := []string{"one", "2", "<nil>"}
 	if len(got) != len(want) {
 		t.Fatalf("unexpected length: got %v want %v", got, want)
@@ -246,23 +216,19 @@ func TestAnyToStringSlice(t *testing.T) {
 }
 
 func TestComputeOverallScore(t *testing.T) {
-	analysis := llmAnalysis{QualityTier: "excellent"}
-	if got := computeOverallScore(map[string]any{"issues": []any{"a", "b"}}, analysis); got != 85 {
+	if got := computeOverallScore(map[string]any{"issues": []any{"a", "b"}}); got != 80 {
 		t.Fatalf("unexpected score: %d", got)
 	}
-	if got := computeOverallScore(map[string]any{"issues": []any{"a", "b", "c", "d", "e", "f", "g"}}, llmAnalysis{QualityTier: "unknown"}); got != 30 {
-		t.Fatalf("unexpected clamped fallback score: %d", got)
+	if got := computeOverallScore(map[string]any{"issues": []any{"a", "b", "c", "d", "e", "f", "g"}}); got != 40 {
+		t.Fatalf("unexpected clamped deterministic score: %d", got)
 	}
 }
 
 func TestSummarizeIssues(t *testing.T) {
-	if got := summarizeIssues(map[string]any{"issues": []any{"first issue", "second"}}, llmAnalysis{}); !strings.Contains(got, "Primary issue: first issue") {
+	if got := summarizeIssues(map[string]any{"issues": []any{"first issue", "second"}}); !strings.Contains(got, "Primary issue: first issue") {
 		t.Fatalf("unexpected summary: %q", got)
 	}
-	if got := summarizeIssues(map[string]any{"issues": []any{}}, llmAnalysis{Strengths: []string{"Strong structure"}}); !strings.Contains(got, "Key strength: Strong structure") {
-		t.Fatalf("unexpected summary: %q", got)
-	}
-	if got := summarizeIssues(map[string]any{}, llmAnalysis{}); !strings.Contains(got, "no deterministic issues") {
+	if got := summarizeIssues(map[string]any{}); !strings.Contains(got, "no deterministic issues") {
 		t.Fatalf("unexpected summary: %q", got)
 	}
 }
@@ -429,19 +395,6 @@ func TestValidateFileType(t *testing.T) {
 }
 
 func TestFinalizeEvaluation(t *testing.T) {
-	oldRunner := hostLLMAnalysisRunner
-	defer func() { hostLLMAnalysisRunner = oldRunner }()
-
-	hostLLMAnalysisRunner = func(ctx context.Context, skillContent, supportingContext string) (llmAnalysis, error) {
-		if !strings.Contains(skillContent, "skill body") {
-			t.Fatalf("unexpected skill content: %q", skillContent)
-		}
-		if supportingContext != "extra context" {
-			t.Fatalf("unexpected supporting context: %q", supportingContext)
-		}
-		return llmAnalysis{Strengths: []string{"Good guardrails"}, QualityTier: "good"}, nil
-	}
-
 	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
 	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":["missing tests"]}}`
 
@@ -449,7 +402,7 @@ func TestFinalizeEvaluation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(result, `"overall_score":75`) || !strings.Contains(result, `"skill_name":"demo"`) {
+	if !strings.Contains(result, `"overall_score":90`) || !strings.Contains(result, `"skill_name":"demo"`) {
 		t.Fatalf("unexpected final result: %s", result)
 	}
 }
@@ -462,18 +415,25 @@ func TestFinalizeEvaluationErrors(t *testing.T) {
 	if _, err := app.finalizeEvaluation(context.Background(), "job-1", `{"status":"error","message":"ANTHROPIC_API_KEY=secret"}`); err == nil || strings.Contains(err.Error(), "secret") {
 		t.Fatalf("expected redacted evaluator error, got %v", err)
 	}
+}
 
-	oldRunner := hostLLMAnalysisRunner
-	defer func() { hostLLMAnalysisRunner = oldRunner }()
-	hostLLMAnalysisRunner = func(ctx context.Context, skillContent, supportingContext string) (llmAnalysis, error) {
-		return llmAnalysis{}, errors.New("llm failed")
+func TestShouldEmitSentryTestEvent(t *testing.T) {
+	old := os.Getenv("SENTRY_TEST_EVENT")
+	defer func() {
+		if old == "" {
+			_ = os.Unsetenv("SENTRY_TEST_EVENT")
+		} else {
+			_ = os.Setenv("SENTRY_TEST_EVENT", old)
+		}
+	}()
+
+	_ = os.Setenv("SENTRY_TEST_EVENT", "true")
+	if !shouldEmitSentryTestEvent() {
+		t.Fatal("expected sentry test event flag to be enabled")
 	}
-	result, err := (&application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}).finalizeEvaluation(context.Background(), "job-1", `{"status":"ok","skill_name":"demo","skill_content":"body","deterministic":{}}`)
-	if err != nil {
-		t.Fatalf("expected fallback result, got error %v", err)
-	}
-	if !strings.Contains(result, "LLM analysis unavailable: llm failed") {
-		t.Fatalf("expected fallback weakness in result, got %s", result)
+	_ = os.Setenv("SENTRY_TEST_EVENT", "false")
+	if shouldEmitSentryTestEvent() {
+		t.Fatal("expected sentry test event flag to be disabled")
 	}
 }
 

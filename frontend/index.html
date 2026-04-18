@@ -661,7 +661,7 @@
     <section id="status" class="status">Waiting for files.</section>
 
     <section class="privacy-note">
-      <strong>Privacy:</strong> We do not use your uploads for analytics, tracking, or training. Files and results are handled only for the evaluation flow, stored temporarily while the job runs and while results are available to you, then removed automatically.
+      <strong>Privacy:</strong> Your uploaded files are processed transiently on our infrastructure for deterministic evaluation only. We do not use them for analytics, tracking, training, or third-party AI analysis. Files and results are stored only temporarily while the job runs and while results are available to you, then removed automatically.
     </section>
 
     <section id="results" class="results hidden"></section>
@@ -669,12 +669,12 @@
     <section class="about-grid">
       <article class="panel card">
         <span class="label">Why</span>
-        <p class="summary">We aim for token-efficient evaluation against the official AgentSkills.io specification, so the model sees less irrelevant context and the result costs less to generate.</p>
+        <p class="summary">We focus on deterministic evaluation against the official AgentSkills.io specification so uploads stay on our infrastructure and the result remains predictable and privacy-preserving.</p>
       </article>
 
       <article class="panel card">
         <span class="label">About</span>
-        <p class="summary">This combines deterministic checks from the official AgentSkills.io specification with a focused LLM pass to reduce context pollution and keep evaluations tighter.</p>
+        <p class="summary">This runs deterministic checks from the official AgentSkills.io specification inside a locked-down container without sending uploaded skill contents to third-party AI providers.</p>
       </article>
     </section>
 

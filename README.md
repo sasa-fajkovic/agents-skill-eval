@@ -9,8 +9,7 @@ Live site: `https://agents-skill-eval.com`
 - Accepts a `SKILL.md` plus optional supporting files.
 - Performs upload-time security screening before a job is queued.
 - Runs deterministic evaluation inside a locked-down Docker container.
-- Performs the LLM analysis on the host side in Go.
-- Returns a combined result with deterministic findings, LLM analysis, summary, progress, and overall score.
+- Returns deterministic findings, summary, progress, and overall score without sending uploaded contents to third-party AI providers.
 
 ## Architecture
 
@@ -20,7 +19,7 @@ The app has three main parts:
    Simple static UI for uploads, GitHub URLs, polling, and result display.
 
 2. `backend/main.go`
-   Go HTTP server, Redis-backed queue, worker, upload validation, GitHub fetch logic, container orchestration, secret redaction, and host-side Anthropic call.
+   Go HTTP server, Redis-backed queue, worker, upload validation, GitHub fetch logic, container orchestration, secret redaction, deterministic scoring, and privacy-safe infrastructure telemetry.
 
 3. `eval/run_eval.py`
    Deterministic-only evaluator that runs inside the isolated container and returns structured JSON.
@@ -34,8 +33,7 @@ There is also a local skill package under `.claude/skills/skill-evaluation/` use
 3. Files are written into a temporary input directory.
 4. Worker launches a Docker container with a read-only input mount and no network.
 5. `eval/run_eval.py` discovers files, reads the primary `SKILL.md`, gathers supporting context, and returns deterministic results as JSON.
-6. Go parses that JSON and performs the Anthropic call on the host.
-7. Backend combines deterministic and LLM results, stores the final payload in Redis, and exposes it via `/result/{jobId}`.
+6. Go parses that JSON, computes a deterministic summary/score, stores the final payload in Redis, and exposes it via `/result/{jobId}`.
 
 ## Security Model
 
@@ -65,22 +63,21 @@ The evaluator container runs with these restrictions:
 
 ### Secret Handling
 
-- `ANTHROPIC_API_KEY` is not passed into the evaluator container.
-- Anthropic API access happens only on the host side in Go.
 - Progress lines, stored errors, and stored results are redacted before persistence.
+- Uploaded skill contents are not sent to third-party AI or observability providers.
 
-This split is intentional: the untrusted container never receives the API key.
+This design keeps uploaded skill contents on our infrastructure only.
 
-## Why The LLM Call Moved Out Of The Container
+## Why Evaluation Is Deterministic Only
 
-Earlier designs that gave the container both network access and the Anthropic key created an unnecessary exfiltration risk.
+Earlier designs considered adding a third-party LLM pass, but that would have required sending uploaded skill contents off-box.
 
-The current design removes that trust assumption:
+The current design avoids that entirely:
 
 - Container: deterministic parsing and extraction only
-- Host: Anthropic request, JSON parsing, scoring, summary generation
+- Host: deterministic scoring, summary generation, and result storage
 
-That keeps the secret boundary smaller and easier to audit.
+That keeps the privacy boundary smaller and easier to audit.
 
 ## API Endpoints
 
@@ -112,7 +109,6 @@ That keeps the secret boundary smaller and easier to audit.
 - Docker
 - Redis
 - Python 3
-- `ANTHROPIC_API_KEY` for end-to-end local runs
 
 ### Start Locally
 
@@ -145,7 +141,6 @@ Current test coverage focus is security-heavy:
 
 - backend upload scanning and filename validation
 - secret redaction
-- LLM JSON parsing
 - score/summary helpers
 - GitHub target resolution
 - finalization flow with a stubbed host-side LLM runner
@@ -211,11 +206,8 @@ Backend/runtime variables used by the app include:
 - `PORT`
 - `REDIS_ADDR`
 - `EVAL_DOCKER_IMAGE`
-- `EVAL_DOCKER_NETWORK`
-- `ANTHROPIC_API_KEY`
-- `ANTHROPIC_MODEL`
-- `ANTHROPIC_MAX_TOKENS`
 - `SENTRY_DSN`
+- `SENTRY_ENVIRONMENT`
 - `DISABLE_ABUSE_PROTECTION`
 
 ## Repository Layout
