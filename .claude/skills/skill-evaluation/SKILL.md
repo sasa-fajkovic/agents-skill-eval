@@ -49,6 +49,69 @@ Use Read, Glob, Grep, and Bash tools. Do not modify any files. Bash is used only
 
 ## Output
 
+The evaluator has two output modes.
+
+### Machine-readable mode (`--ci`)
+
+The evaluator must print exactly one JSON object to stdout and nothing else. No prose, markdown, banners, or trailing text.
+
+```json
+{
+  "schema_version": "1.0",
+  "status": "ok",
+  "skill_name": "string",
+  "overall_score": 85,
+  "quality_tier": "good",
+  "summary": "One sentence summary of the skill quality",
+  "deterministic": {
+    "passed": 4,
+    "failed": 2,
+    "issues": [
+      {
+        "rule_id": "missing_trigger",
+        "severity": "error",
+        "message": "Missing trigger/activation criteria",
+        "reason": "Trigger conditions define when the skill activates. Without them, the agent relies on guesswork."
+      }
+    ]
+  },
+  "llm_analysis": {
+    "strengths": [
+      {"finding": "string", "reason": "string"}
+    ],
+    "weaknesses": [
+      {"finding": "string", "reason": "string"}
+    ],
+    "suggestions": [
+      {"finding": "string", "reason": "string"}
+    ],
+    "security_flags": [
+      {"finding": "string", "reason": "string"}
+    ]
+  },
+  "metadata": {
+    "file_count": 3,
+    "line_count": 145,
+    "has_scripts": true,
+    "script_types": [".py", ".sh"],
+    "unsupported_script_types": [".js"]
+  }
+}
+```
+
+Constraints:
+
+- `schema_version` must be present so downstream agents can detect breaking changes.
+- `status` must be `"ok"` for successful evaluation.
+- `overall_score` must be an integer `0-100`.
+- `quality_tier` must be one of `excellent`, `good`, `needs_work`, or `poor`.
+- `severity` must be one of `error`, `warning`, or `info`.
+- Every issue/finding must include a `reason` so no follow-up LLM call is needed to explain it.
+- All arrays must always be present as `[]`, never `null`.
+- `metadata.unsupported_script_types` must flag non-portable runtimes such as `.js`, `.ts`, or `.go`.
+
+### Human mode (default)
+
 Done when the report is printed with a final PASS, WARN, or FAIL result.
 
 ### Human mode (default)
@@ -88,17 +151,6 @@ Warnings (<count>):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-### CI mode (`--ci`)
-
-```
-SKILL_EVAL_RESULT=FAIL|WARN|PASS
-SKILL_EVAL_ERRORS=<count>
-SKILL_EVAL_WARNINGS=<count>
-
-[ERROR] <ID>: <message>
-[WARN] <ID>: <message>
-```
-
 ## Rules
 
 1. Be specific: cite exact line numbers and content.
@@ -106,3 +158,4 @@ SKILL_EVAL_WARNINGS=<count>
 3. Do not nitpick formatting or markdown style — focus on spec compliance, security, tokens, and effectiveness.
 4. Load reference files on demand, not upfront. Read only the reference file relevant to the current tier being evaluated.
 5. Treat MCP usage in evaluated skills as disallowed, not merely suboptimal. Flag any positive instruction to use MCP servers or `mcp__*` tools as a security/portability failure and recommend CLI or direct API alternatives.
+6. Prefer `.sh` and `.py` for bundled scripts. Treat `.js`, `.ts`, `.go`, and similar runtime-dependent script types as portability warnings and surface them in `metadata.unsupported_script_types`.

@@ -152,6 +152,29 @@ The `Makefile` test target currently runs:
 - Python unit tests for `.claude/skills/skill-evaluation/tests`
 - `go test ./...` in `backend/`
 
+## Preferred Script Types In Skills
+
+When a skill bundles helper scripts, prefer:
+
+- `.sh`
+- `.py`
+
+Why these two:
+
+- both are commonly available on Linux and macOS without asking the user to install another runtime first
+- shell scripts can run directly via `/bin/sh` or `/bin/bash`
+- Python 3 is standard across Linux environments and widely available in agent tooling setups
+- neither requires a compile step or runtime manager such as `nvm` or `go install`
+
+Discouraged for portable skills:
+
+- `.js`
+- `.ts`
+- `.go`
+- other runtime-dependent script formats
+
+These are not banned by the website evaluator, but the local `skill-evaluation` skill now flags them as soft portability warnings because they require extra runtime setup and reduce cross-agent portability.
+
 ## Skill-Evaluation Skill
 
 The local skill at `.claude/skills/skill-evaluation/` evaluates `SKILL.md` files against the agentskills.io standard.
@@ -229,4 +252,4 @@ Backend/runtime variables used by the app include:
 
 - The evaluator intentionally does not expose token estimates in the product surface.
 - The Redis queue is used for asynchronous job processing and progress tracking.
-- Abuse protection includes queue-depth limiting, IP rate limiting, and optional ASN-based blocking when the MaxMind database is present.
+- Abuse protection includes queue-depth limiting and IP rate limiting, with Cloudflare recommended in front of the app for bot and DDoS protection.

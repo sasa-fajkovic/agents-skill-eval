@@ -21,11 +21,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/oschwald/maxminddb-golang"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -40,7 +38,6 @@ const (
 	maxQueueDepth    = 50
 	rateLimitMax     = 5
 	rateLimitTTL     = time.Hour
-	maxmindDBPath    = "/etc/maxmind/GeoLite2-ASN.mmdb"
 	githubFetchLimit = 5 << 20
 	maxProgressLines = 200
 )
@@ -100,16 +97,6 @@ var (
 		{pattern: regexp.MustCompile(`(?i)\b(Bearer\s+)[A-Za-z0-9._~-]+`), replacement: `${1}[REDACTED]`},
 		{pattern: regexp.MustCompile(`(?i)\b(ANTHROPIC_API_KEY|API[_-]?KEY|TOKEN|SECRET|PASSWORD)\b\s*[:=]\s*['"]?[^'"\s,]+`), replacement: `${1}=[REDACTED]`},
 	}
-	blockedASNs = map[uint]bool{
-		16509: true,
-		15169: true,
-		8075:  true,
-		24940: true,
-		14061: true,
-		47583: true,
-		20473: true,
-		63949: true,
-	}
 	errResultPending = errors.New("result pending")
 )
 
@@ -133,21 +120,13 @@ type evalContainerResult struct {
 }
 
 type application struct {
-	rdb          *redis.Client
-	frontendDir  string
-	maxmindDB    *maxminddb.Reader
-	maxmindOnce  sync.Once
-	maxmindError error
+	rdb         *redis.Client
+	frontendDir string
 }
 
 type evalJob struct {
 	JobID    string `json:"jobId"`
 	InputDir string `json:"inputDir"`
-}
-
-type maxmindASNRecord struct {
-	AutonomousSystemNumber uint   `maxminddb:"autonomous_system_number"`
-	AutonomousSystemOrg    string `maxminddb:"autonomous_system_organization"`
 }
 
 type gitHubTarget struct {
@@ -239,12 +218,13 @@ func (app *application) routes() http.Handler {
 	mux.HandleFunc("GET /health", app.handleHealth)
 	mux.HandleFunc("POST /upload", app.handleUpload)
 	mux.HandleFunc("GET /result/", app.handleResult)
+	mux.HandleFunc("GET /faq", app.handleFAQ)
 	mux.HandleFunc("GET /robots.txt", app.handleRobots)
 	mux.HandleFunc("GET /sitemap.xml", app.handleSitemap)
 	mux.HandleFunc("GET /", app.handleIndex)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir(app.frontendDir))))
 
-	return app.recoverPanics(app.asnBlocker(app.uploadAbuseProtection(mux)))
+	return app.recoverPanics(app.uploadAbuseProtection(mux))
 }
 
 func (app *application) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -383,6 +363,10 @@ func (app *application) handleIndex(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(app.frontendDir, "index.html"))
 }
 
+func (app *application) handleFAQ(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, filepath.Join(app.frontendDir, "faq.html"))
+}
+
 func (app *application) handleRobots(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(app.frontendDir, "robots.txt"))
 }
@@ -446,51 +430,6 @@ func (app *application) uploadAbuseProtection(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-func (app *application) asnBlocker(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		reader, err := app.maxmindReader()
-		if err != nil || reader == nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		parsedIP := net.ParseIP(clientIP(r))
-		if parsedIP == nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		var record maxmindASNRecord
-		if lookupErr := reader.Lookup(parsedIP, &record); lookupErr != nil {
-			captureInfraEvent("maxmind_lookup_failed", lookupErr, map[string]string{"component": "maxmind"})
-			next.ServeHTTP(w, r)
-			return
-		}
-		if blockedASNs[record.AutonomousSystemNumber] {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "request blocked"})
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (app *application) maxmindReader() (*maxminddb.Reader, error) {
-	app.maxmindOnce.Do(func() {
-		if _, err := os.Stat(maxmindDBPath); err != nil {
-			app.maxmindError = err
-			return
-		}
-		reader, err := maxminddb.Open(maxmindDBPath)
-		if err != nil {
-			app.maxmindError = err
-			return
-		}
-		app.maxmindDB = reader
-	})
-	return app.maxmindDB, app.maxmindError
 }
 
 func (app *application) workerLoop(parent context.Context) {

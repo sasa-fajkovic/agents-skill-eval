@@ -9,10 +9,30 @@ https://agentskills.io/skill-creation/using-scripts#designing-scripts-for-agenti
 """
 
 import os
+import json
 import re
 import sys
-import yaml
 from pathlib import Path
+
+try:
+    import yaml
+except ModuleNotFoundError:  # pragma: no cover - exercised via subprocess tests
+    class _FallbackYAMLModule:
+        class YAMLError(Exception):
+            pass
+
+        @staticmethod
+        def safe_load(text: str):
+            data = {}
+            for raw_line in text.splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#") or ":" not in line:
+                    continue
+                key, value = line.split(":", 1)
+                data[key.strip()] = value.strip().strip('"\'')
+            return data
+
+    yaml = _FallbackYAMLModule()
 
 # ANSI colors (disabled when NO_COLOR is set or stdout is not a TTY)
 _use_color = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
@@ -67,6 +87,7 @@ CLAUDE_CODE_EXTENSIONS = {
 }
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 ALLOWED_SCRIPT_EXTENSIONS = {".sh", ".py"}
+DISCOURAGED_SCRIPT_EXTENSIONS = {".js", ".ts", ".go", ".rb", ".php", ".pl"}
 MAX_NAME_LEN = 64
 MAX_DESC_LEN = 1024
 MAX_COMPAT_LEN = 500
@@ -149,6 +170,54 @@ class Finding:
 
     def __str__(self):
         return f"[{self.severity}] {self.check_id}: {self.message}"
+
+    @property
+    def severity_key(self) -> str:
+        if self.severity == "ERROR":
+            return "error"
+        if self.severity == "WARN":
+            return "warning"
+        return "info"
+
+    @property
+    def rule_id(self) -> str:
+        rule_map = {
+            "1.1": "invalid_name",
+            "1.2": "missing_or_weak_description",
+            "1.3": "non_standard_field",
+            "1.4": "invalid_field_type",
+            "1.5": "redundant_metadata",
+            "1.6": "skill_too_long",
+            "1.7": "missing_tests",
+            "1.8": "missing_help",
+            "1.9": "unstructured_output",
+            "1.10": "interactive_prompt",
+            "1.11": "runtime_dependency_required",
+            "2.1": "unscoped_tool_usage",
+            "2.2": "destructive_operation_without_safeguard",
+            "2.3": "mcp_usage_disallowed",
+        }
+        return rule_map.get(self.check_id, f"rule_{self.check_id.replace('.', '_')}")
+
+    @property
+    def reason(self) -> str:
+        reason_map = {
+            "1.1": "Skill names must be stable, portable identifiers that match the containing directory.",
+            "1.2": "Descriptions tell an agent when the skill should activate and what it is for.",
+            "1.3": "Non-standard fields reduce portability across agent runtimes that implement the open skills standard.",
+            "1.4": "Typed, predictable frontmatter fields keep the skill machine-readable across runtimes.",
+            "1.5": "Metadata should not duplicate git history or hide runtime-specific behavior behind arbitrary keys.",
+            "1.6": "Excessively long skills are harder for agents to load, inspect, and apply consistently.",
+            "1.7": "Bundled scripts need tests so the skill remains reliable when scripts change.",
+            "1.8": "Agents rely on --help to learn a script's interface safely and autonomously.",
+            "1.9": "Structured output is easier for agents to parse, validate, and compose than free-form text.",
+            "1.10": "Interactive prompts block autonomous execution because agents cannot respond inline.",
+            "1.11": "Portable skills should prefer shell and Python scripts because those runtimes are commonly available without extra setup.",
+            "2.1": "Broad tool instructions make execution behavior ambiguous and harder to bound safely.",
+            "2.2": "Destructive operations need explicit safeguards to avoid irreversible damage.",
+            "2.3": "MCP-specific instructions reduce portability and tie the skill to one runtime integration surface.",
+        }
+        return reason_map.get(self.check_id, "This issue reduces portability, clarity, or reliability of the skill definition.")
 
     def colored(self) -> str:
         if self.severity == "ERROR":
@@ -410,12 +479,118 @@ def check_1_11(skill_dir: str) -> list[Finding]:
             if f.is_dir():
                 continue
             if f.suffix and f.suffix not in ALLOWED_SCRIPT_EXTENSIONS:
+                severity = "WARN" if f.suffix in DISCOURAGED_SCRIPT_EXTENSIONS else "ERROR"
                 findings.append(Finding(
-                    "1.11", "ERROR",
+                    "1.11", severity,
                     f"scripts/{f.name} — only Python (.py) and bash (.sh) scripts "
                     f"are allowed. {f.suffix} requires an additional runtime",
                 ))
     return findings
+
+
+def collect_metadata(skill_path: Path) -> dict:
+    skill_dir = skill_path.parent
+    files = [p for p in skill_dir.rglob("*") if p.is_file()]
+    script_types = sorted({p.suffix for p in files if p.suffix in ALLOWED_SCRIPT_EXTENSIONS})
+    unsupported_script_types = sorted({p.suffix for p in files if p.suffix in DISCOURAGED_SCRIPT_EXTENSIONS})
+    return {
+        "file_count": len(files),
+        "line_count": len(skill_path.read_text().splitlines()) if skill_path.exists() else 0,
+        "has_scripts": any(p.suffix in ALLOWED_SCRIPT_EXTENSIONS or p.suffix in DISCOURAGED_SCRIPT_EXTENSIONS for p in files),
+        "script_types": script_types,
+        "unsupported_script_types": unsupported_script_types,
+    }
+
+
+def quality_tier_for(findings: list[Finding]) -> str:
+    errors = sum(1 for f in findings if f.severity == "ERROR")
+    warnings = sum(1 for f in findings if f.severity == "WARN")
+    if errors == 0 and warnings == 0:
+        return "excellent"
+    if errors == 0 and warnings <= 2:
+        return "good"
+    if errors <= 2:
+        return "needs_work"
+    return "poor"
+
+
+def overall_score_for(findings: list[Finding]) -> int:
+    errors = sum(1 for f in findings if f.severity == "ERROR")
+    warnings = sum(1 for f in findings if f.severity == "WARN")
+    score = 100 - min(errors * 18, 72) - min(warnings * 5, 20)
+    return max(0, min(100, score))
+
+
+def summary_for(skill_name: str, findings: list[Finding]) -> str:
+    errors = [f for f in findings if f.severity == "ERROR"]
+    warnings = [f for f in findings if f.severity == "WARN"]
+    if errors:
+        return f"{skill_name} has {len(errors)} blocking issue(s); the primary problem is {errors[0].message.lower()}."
+    if warnings:
+        return f"{skill_name} is mostly portable, but it has {len(warnings)} warning(s), led by {warnings[0].message.lower()}."
+    return f"{skill_name} is portable, well-structured, and passes the deterministic evaluator."
+
+
+def issue_payload(finding: Finding) -> dict:
+    return {
+        "rule_id": finding.rule_id,
+        "severity": finding.severity_key,
+        "message": finding.message,
+        "reason": finding.reason,
+    }
+
+
+def build_json_result(skill_path: Path, findings: list[Finding]) -> dict:
+    skill_name = skill_path.parent.name if skill_path.name == "SKILL.md" else skill_path.stem
+    metadata = collect_metadata(skill_path)
+    errors = [f for f in findings if f.severity == "ERROR"]
+    warnings = [f for f in findings if f.severity == "WARN"]
+    strengths = []
+    if not findings:
+        strengths.append({
+            "finding": "Deterministic checks passed",
+            "reason": "The skill satisfies the current spec and security checks without warnings or errors.",
+        })
+    elif not errors:
+        strengths.append({
+            "finding": "No blocking deterministic failures",
+            "reason": "The skill remains structurally valid even though it has warnings to address.",
+        })
+
+    weaknesses = [
+        {"finding": f.message, "reason": f.reason}
+        for f in errors[:3]
+    ]
+    suggestions = [
+        {"finding": f.message, "reason": f"Address rule {f.rule_id} to improve portability and evaluator confidence."}
+        for f in findings[:3]
+    ]
+    security_flags = [
+        {"finding": f.message, "reason": f.reason}
+        for f in findings if f.check_id.startswith("2.")
+    ]
+
+    status = "ok"
+    return {
+        "schema_version": "1.0",
+        "status": status,
+        "skill_name": skill_name,
+        "overall_score": overall_score_for(findings),
+        "quality_tier": quality_tier_for(findings),
+        "summary": summary_for(skill_name, findings),
+        "deterministic": {
+            "passed": max(0, 14 - len(findings)),
+            "failed": len(findings),
+            "issues": [issue_payload(f) for f in findings],
+        },
+        "llm_analysis": {
+            "strengths": strengths,
+            "weaknesses": weaknesses,
+            "suggestions": suggestions,
+            "security_flags": security_flags,
+        },
+        "metadata": metadata,
+    }
 
 
 def check_2_1(body: str) -> list[Finding]:
@@ -588,15 +763,8 @@ def main():
     warnings = [f for f in findings if f.severity == "WARN"]
 
     if ci_mode:
-        result = "FAIL" if errors else ("WARN" if warnings else "PASS")
-        print(f"SKILL_EVAL_RESULT={result}")
-        print(f"SKILL_EVAL_ERRORS={len(errors)}")
-        print(f"SKILL_EVAL_WARNINGS={len(warnings)}")
-        print()
-        for f in errors:
-            print(str(f))
-        for f in warnings:
-            print(str(f))
+        resolved = Path(path) / "SKILL.md" if Path(path).is_dir() else Path(path)
+        print(json.dumps(build_json_result(resolved, findings), indent=None, separators=(",", ":")))
     else:
         resolved = Path(path) / "SKILL.md" if Path(path).is_dir() else Path(path)
         skill_name = resolved.parent.name if resolved.name == "SKILL.md" else resolved.stem
