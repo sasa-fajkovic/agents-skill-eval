@@ -48,4 +48,7 @@ jobs:
           key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
           script: |
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker container prune -f || true
+            docker image prune -af || true
+            docker builder prune -af || true
             docker pull ghcr.io/sasa-fajkovic/agents-skill-eval:latest
