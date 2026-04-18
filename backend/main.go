@@ -37,7 +37,7 @@ const (
 	redisResultTTL   = time.Hour
 	redisDialTimeout = 5 * time.Second
 	workerPopTimeout = 5 * time.Second
-	dockerTimeout    = 30 * time.Second
+	dockerTimeout    = 2 * time.Minute
 	maxMemoryBytes   = 256
 	maxQueueDepth    = 50
 	rateLimitMax     = 5
@@ -62,6 +62,27 @@ var (
 		"text/x-python":      true,
 		"text/x-sh":          true,
 		"text/x-shellscript": true,
+	}
+	blockedExecutableExtensions = map[string]bool{
+		".apk":  true,
+		".app":  true,
+		".bat":  true,
+		".bin":  true,
+		".cmd":  true,
+		".com":  true,
+		".dll":  true,
+		".dmg":  true,
+		".exe":  true,
+		".gadget": true,
+		".iso":  true,
+		".jar":  true,
+		".msi":  true,
+		".pkg":  true,
+		".ps1":  true,
+		".scr":  true,
+		".so":   true,
+		".vbs":  true,
+		".wsf":  true,
 	}
 	blockedFilenamePatterns = []securityPattern{
 		{pattern: regexp.MustCompile(`(?i)^\.env(?:\..+)?$`), reason: "environment files are not allowed"},
@@ -511,13 +532,13 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 
 	ctx, cancel := context.WithTimeout(parent, dockerTimeout)
 	defer cancel()
-	dockerNetwork := getenvDefault("EVAL_DOCKER_NETWORK", "bridge")
 	dockerImage := getenvDefault("EVAL_DOCKER_IMAGE", "ghcr.io/sasa-fajkovic/agents-skill-eval:latest")
 	_ = app.appendProgress(parent, job.JobID, "Starting isolated evaluator container...")
 
 	args := []string{
 		"run",
 		"--rm",
+		"--stop-timeout", "5",
 		"--network", "none",
 		"--read-only",
 		"--tmpfs", "/tmp:size=50m",
@@ -526,12 +547,9 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 		"--pids-limit", "50",
 		"--security-opt", "no-new-privileges",
 		"--cap-drop", "ALL",
-		"--user", "1001:1001",
+		"--user", "1000:1000",
 		"-v", job.InputDir+":/input:ro",
 		dockerImage,
-	}
-	if dockerNetwork != "" {
-		args[3] = dockerNetwork
 	}
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
@@ -1279,14 +1297,17 @@ func validateFileType(filename, mimeType string) error {
 	if parsed, _, err := mime.ParseMediaType(mimeType); err == nil {
 		normalized = parsed
 	}
+	ext := strings.ToLower(filepath.Ext(filename))
+	if blockedExecutableExtensions[ext] {
+		return fmt.Errorf("%s is not an allowed upload type", filename)
+	}
+	if strings.HasPrefix(normalized, "application/x-") && normalized != "application/xml" {
+		return fmt.Errorf("%s has unsupported executable MIME type %s", filename, mimeType)
+	}
 	if !allowedMimeTypes[normalized] {
 		return fmt.Errorf("%s has unsupported MIME type %s", filename, mimeType)
 	}
 
-	ext := strings.ToLower(filepath.Ext(filename))
-	if ext == ".exe" {
-		return fmt.Errorf("%s is not allowed", filename)
-	}
 	if ext == ".sh" && normalized != "text/x-shellscript" && normalized != "text/plain" && normalized != "text/x-sh" {
 		return fmt.Errorf("%s is not an allowed shell script upload", filename)
 	}

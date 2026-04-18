@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -409,6 +411,15 @@ func TestValidateFileType(t *testing.T) {
 	if err := validateFileType("schemas/doc.xsd", "text/xml"); err != nil {
 		t.Fatalf("expected text/xml upload to be allowed, got %v", err)
 	}
+	if err := validateFileType("bad.jar", "application/java-archive"); err == nil {
+		t.Fatal("expected jar rejection")
+	}
+	if err := validateFileType("bad.ps1", "text/plain"); err == nil {
+		t.Fatal("expected blocked extension rejection")
+	}
+	if err := validateFileType("bad.bin", "application/x-mach-binary"); err == nil {
+		t.Fatal("expected executable mime rejection")
+	}
 	if err := validateFileType("bad.exe", "application/octet-stream"); err == nil {
 		t.Fatal("expected exe rejection")
 	}
@@ -463,5 +474,51 @@ func TestFinalizeEvaluationErrors(t *testing.T) {
 	}
 	if !strings.Contains(result, "LLM analysis unavailable: llm failed") {
 		t.Fatalf("expected fallback weakness in result, got %s", result)
+	}
+}
+
+func TestHandleUploadRejectsOversizePayload(t *testing.T) {
+	body := bytes.Repeat([]byte("a"), maxUploadSize+1)
+	req := httptest.NewRequest(http.MethodPost, "/upload", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=test")
+	rr := httptest.NewRecorder()
+
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	app.handleUpload(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "payload exceeds 5MB") {
+		t.Fatalf("unexpected body: %s", rr.Body.String())
+	}
+}
+
+func TestHandleUploadRejectsExecutableAttachment(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("files", "bad.exe")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write([]byte("MZ executable")); err != nil {
+		t.Fatalf("write form file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/upload", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rr := httptest.NewRecorder()
+
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	app.handleUpload(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "not an allowed upload type") {
+		t.Fatalf("unexpected body: %s", rr.Body.String())
 	}
 }
