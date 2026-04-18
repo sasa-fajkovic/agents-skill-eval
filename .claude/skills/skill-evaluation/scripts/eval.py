@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Deterministic skill evaluator (Tier 1-2). Implements checks 1.1-1.11, 2.1-2.2.
+from __future__ import annotations
+
+"""Deterministic skill evaluator (Tier 1-2). Implements checks 1.1-1.11, 2.1-2.3.
 
 Based on the agentskills.io specification and script design best practices:
 https://agentskills.io/specification
@@ -127,6 +129,15 @@ INTERACTIVE_PROMPT = re.compile(
     r"\benquirer\b|"
     r"read\s+-r\s+\w+\s*$",
     re.IGNORECASE | re.MULTILINE,
+)
+
+MCP_REFERENCE = re.compile(
+    r"(?i)(mcp__\w+|model\s+context\s+protocol|mcp\s+server(?:s)?|"
+    r"(?:github|gitlab|jira|atlassian|google\s+workspace|slack|figma)\s+mcp|\bmcp\b)"
+)
+MCP_NEGATION = re.compile(
+    r"(?i)(do not|don't|never|avoid|instead of|not allowed|prohibited|"
+    r"forbidden|disallow(?:ed)?|must not|ban(?:ned)?|use .* instead|prefer .* instead)"
 )
 
 
@@ -469,6 +480,38 @@ def check_2_2(body: str) -> list[Finding]:
     return findings
 
 
+def _find_mcp_findings(text: str, display: str) -> list[Finding]:
+    """Return MCP usage findings, skipping clearly prohibitive guidance."""
+    findings = []
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        match = MCP_REFERENCE.search(line)
+        if not match:
+            continue
+        context_start = max(0, i - 1)
+        context_end = min(len(lines), i + 2)
+        context = "\n".join(lines[context_start:context_end])
+        if MCP_NEGATION.search(context):
+            continue
+        findings.append(Finding(
+            "2.3", "ERROR",
+            f'{display}{i + 1}: MCP usage/reference "{match.group().strip()}" is not allowed; use CLI or direct API alternatives instead',
+        ))
+    return findings
+
+
+def check_2_3(body: str, skill_dir: str) -> list[Finding]:
+    """2.3: MCP usage is not allowed in skills."""
+    findings = _find_mcp_findings(body, "line ")
+    for script_path, display in _scripts_under(skill_dir):
+        try:
+            content = script_path.read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        findings.extend(_find_mcp_findings(content, f"{display}:"))
+    return findings
+
+
 def evaluate(path: str) -> list[Finding]:
     """Run all checks on a SKILL.md file."""
     skill_path = Path(path)
@@ -503,6 +546,7 @@ def evaluate(path: str) -> list[Finding]:
     findings.extend(check_1_11(skill_dir))
     findings.extend(check_2_1(body))
     findings.extend(check_2_2(body))
+    findings.extend(check_2_3(body, skill_dir))
     return findings
 
 
@@ -520,7 +564,7 @@ def main():
         print("  1.9       Scripts should use structured output (JSON/CSV)")
         print("  1.10      Scripts must not use interactive prompts")
         print("  1.11      Only Python (.py) and bash (.sh) scripts allowed")
-        print("  2.1-2.2   Security (unscoped tools, destructive ops)")
+        print("  2.1-2.3   Security (unscoped tools, destructive ops, no MCP)")
         print()
         print("Options:")
         print("  --ci    Machine-readable output with exit codes")
@@ -581,7 +625,7 @@ def main():
 
         # Tier 2 box: Security
         sec_checks = [f for f in findings if f.check_id.startswith("2.")]
-        print_box_top("Tier 2 — Security (2.1-2.2)")
+        print_box_top("Tier 2 — Security (2.1-2.3)")
         if sec_checks:
             for f in sec_checks:
                 icon = "🔴" if f.severity == "ERROR" else "🟡"

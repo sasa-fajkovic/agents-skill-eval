@@ -17,6 +17,7 @@ import (
 	urlpkg "net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -51,11 +52,15 @@ var (
 	allowedMimeTypes = map[string]bool{
 		"text/plain":         true,
 		"text/markdown":      true,
+		"text/html":          true,
+		"text/xml":           true,
 		"application/pdf":    true,
+		"application/xml":    true,
 		"image/png":          true,
 		"image/jpeg":         true,
 		"application/json":   true,
 		"text/x-python":      true,
+		"text/x-sh":          true,
 		"text/x-shellscript": true,
 	}
 	blockedFilenamePatterns = []securityPattern{
@@ -65,28 +70,14 @@ var (
 		{pattern: regexp.MustCompile(`(?i).+\.(pem|key|p12|pfx|asc)$`), reason: "secret-bearing key material is not allowed"},
 	}
 	blockedTextPatterns = []securityPattern{
-		{pattern: regexp.MustCompile(`(?is)(ignore|disregard|override).{0,120}(system prompt|developer message|previous instructions).{0,120}(reveal|print|dump|expose|send|output)`), reason: "prompt injection instructions targeting protected context"},
-		{pattern: regexp.MustCompile(`(?is)(reveal|print|dump|expose|send|output|upload).{0,120}(environment variables?|env vars?|secrets?|tokens?|api keys?|credentials?)`), reason: "instructions to expose secrets or environment variables"},
-		{pattern: regexp.MustCompile(`(?is)(cat|print|read).{0,120}(/proc/self/environ|/etc/passwd|~/.ssh|\.aws/credentials|\.npmrc|\.netrc)`), reason: "instructions to access sensitive local files or process environment"},
-		{pattern: regexp.MustCompile(`(?is)(curl|wget|invoke-webrequest|requests\.(get|post)|httpx\.(get|post)|fetch\(|axios\.(get|post)).{0,180}(169\.254\.169\.254|metadata\.google\.internal|webhook|discord|slack|pastebin|transfer\.sh|api\.telegram\.org)`), reason: "network exfiltration or metadata access instructions"},
-		{pattern: regexp.MustCompile(`(?is)(rm\s+-rf\s+/|mkfs\.|dd\s+if=|chmod\s+777|chown\s+root|sudo\s+)`), reason: "destructive shell instructions"},
-		{pattern: regexp.MustCompile(`(?is)(docker\.sock|/var/run/docker\.sock|LD_PRELOAD|BASH_ENV)`), reason: "container escape or process hijacking instructions"},
-		{pattern: regexp.MustCompile(`(?is)(exfiltrat|steal|harvest).{0,120}(token|secret|key|credential|cookie)`), reason: "instructions to steal secrets"},
-		{pattern: regexp.MustCompile(`(?is)-----BEGIN (?:OPENSSH|RSA|EC|DSA|PGP|PRIVATE) KEY-----`), reason: "embedded private key material detected"},
+		{pattern: regexp.MustCompile(`(?is)-----BEGIN [A-Z ]*PRIVATE KEY-----`), reason: "embedded private key material detected"},
 		{pattern: regexp.MustCompile(`(?i)\b(sk-ant-[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16})\b`), reason: "embedded API token or access key detected"},
-	}
-	secretAccessPatterns = []securityPattern{
-		{pattern: regexp.MustCompile(`(?is)(os\.getenv|os\.environ|process\.env|printenv|/proc/self/environ|anthropic_api_key|api[_-]?key|token|secret|credential|password)`), reason: "secret access primitive detected"},
-		{pattern: regexp.MustCompile(`(?is)(~/.ssh|\.aws/credentials|\.npmrc|\.netrc|/etc/passwd)`), reason: "sensitive file access primitive detected"},
-	}
-	executionPatterns = []securityPattern{
-		{pattern: regexp.MustCompile(`(?is)(subprocess\.|os\.system|exec\(|spawn\(|child_process|bash\s+-c|sh\s+-c|curl\b|wget\b|requests\.(get|post)|httpx\.(get|post)|fetch\(|axios\.(get|post)|socket\.)`), reason: "execution or network primitive detected"},
 	}
 	pdfBlockedPatterns = []securityPattern{
 		{pattern: regexp.MustCompile(`(?is)/(javascript|js|launch|embeddedfile|openaction|richmedia)`), reason: "active PDF content is not allowed"},
 	}
 	redactionPatterns = []redactionPattern{
-		{pattern: regexp.MustCompile(`(?is)-----BEGIN (?:OPENSSH|RSA|EC|DSA|PGP|PRIVATE) KEY-----.*?-----END (?:OPENSSH|RSA|EC|DSA|PGP|PRIVATE) KEY-----`), replacement: "[REDACTED_PRIVATE_KEY]"},
+		{pattern: regexp.MustCompile(`(?is)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`), replacement: "[REDACTED_PRIVATE_KEY]"},
 		{pattern: regexp.MustCompile(`(?i)\b(sk-ant-[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16})\b`), replacement: "[REDACTED_TOKEN]"},
 		{pattern: regexp.MustCompile(`(?i)\b(Bearer\s+)[A-Za-z0-9._~-]+`), replacement: `${1}[REDACTED]`},
 		{pattern: regexp.MustCompile(`(?i)\b(ANTHROPIC_API_KEY|API[_-]?KEY|TOKEN|SECRET|PASSWORD)\b\s*[:=]\s*['"]?[^'"\s,]+`), replacement: `${1}=[REDACTED]`},
@@ -110,6 +101,8 @@ var qualityScores = map[string]int{
 	"needs_work": 60,
 	"poor":       35,
 }
+
+var hostLLMAnalysisRunner = runHostLLMAnalysis
 
 const llmSystemPrompt = `You are an expert evaluator of Claude agent skills (SKILL.md files).
 Analyze the provided skill definition and return ONLY a JSON object with this exact structure:
@@ -181,8 +174,10 @@ type gitHubTarget struct {
 }
 
 type gitHubDirectoryEntry struct {
-	Name string
-	Type string
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	Type        string `json:"type"`
+	DownloadURL string `json:"download_url"`
 }
 
 func main() {
@@ -618,13 +613,11 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 }
 
 func saveValidatedFile(rootDir string, header *multipart.FileHeader) error {
-	filename := filepath.Base(header.Filename)
-	if filename == "." || filename == string(filepath.Separator) || filename == "" {
-		return errors.New("invalid file name")
-	}
-	if err := validateFilenameSafety(filename); err != nil {
+	relPath, err := sanitizeRelativeUploadPath(header.Filename)
+	if err != nil {
 		return err
 	}
+	filename := filepath.Base(relPath)
 
 	file, err := header.Open()
 	if err != nil {
@@ -652,7 +645,10 @@ func saveValidatedFile(rootDir string, header *multipart.FileHeader) error {
 		return fmt.Errorf("failed to rewind %s", filename)
 	}
 
-	destination := filepath.Join(rootDir, filename)
+	destination := filepath.Join(rootDir, filepath.FromSlash(relPath))
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return fmt.Errorf("failed to prepare %s", relPath)
+	}
 	out, err := os.Create(destination)
 	if err != nil {
 		return fmt.Errorf("failed to save %s", filename)
@@ -677,23 +673,59 @@ func validateFilenameSafety(filename string) error {
 	return nil
 }
 
-func scanUploadedPackage(rootDir string) error {
-	entries, err := os.ReadDir(rootDir)
-	if err != nil {
-		return errors.New("failed to inspect uploaded package")
+func sanitizeRelativeUploadPath(name string) (string, error) {
+	trimmed := strings.TrimSpace(strings.ReplaceAll(name, "\\", "/"))
+	if trimmed == "" {
+		return "", errors.New("invalid file name")
 	}
-	for _, entry := range entries {
+	for _, part := range strings.Split(trimmed, "/") {
+		if part == ".." {
+			return "", fmt.Errorf("%s is not allowed", name)
+		}
+	}
+	cleaned := strings.TrimPrefix(path.Clean("/"+trimmed), "/")
+	if cleaned == "" || cleaned == "." {
+		return "", errors.New("invalid file name")
+	}
+	parts := strings.Split(cleaned, "/")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." {
+			return "", fmt.Errorf("%s is not allowed", name)
+		}
+		if err := validateFilenameSafety(part); err != nil {
+			return "", err
+		}
+	}
+	return cleaned, nil
+}
+
+func scanUploadedPackage(rootDir string) error {
+	var foundFiles bool
+	err := filepath.WalkDir(rootDir, func(current string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return errors.New("failed to inspect uploaded package")
+		}
+		if current == rootDir {
+			return nil
+		}
+		rel, err := filepath.Rel(rootDir, current)
+		if err != nil {
+			return errors.New("failed to inspect uploaded package")
+		}
+		if _, err := sanitizeRelativeUploadPath(filepath.ToSlash(rel)); err != nil {
+			return err
+		}
 		if entry.IsDir() {
-			return errors.New("directories are not allowed in uploaded package")
+			return nil
 		}
-		filename := entry.Name()
-		if err := validateFilenameSafety(filename); err != nil {
-			return err
-		}
-		path := filepath.Join(rootDir, filename)
-		if err := scanUploadedFile(path); err != nil {
-			return err
-		}
+		foundFiles = true
+		return scanUploadedFile(current)
+	})
+	if err != nil {
+		return err
+	}
+	if !foundFiles {
+		return errors.New("uploaded package does not contain any files")
 	}
 	return nil
 }
@@ -722,19 +754,6 @@ func scanUploadedFile(path string) error {
 			return fmt.Errorf("%s rejected: %s", name, candidate.reason)
 		}
 	}
-	if strings.EqualFold(name, "SKILL.md") || strings.EqualFold(name, "skill.md") {
-		return nil
-	}
-	for _, candidate := range secretAccessPatterns {
-		if candidate.pattern.MatchString(text) {
-			return fmt.Errorf("%s rejected: supporting files must not access secrets or sensitive files (%s)", name, candidate.reason)
-		}
-	}
-	for _, candidate := range executionPatterns {
-		if candidate.pattern.MatchString(text) {
-			return fmt.Errorf("%s rejected: supporting files must not execute code or make network calls (%s)", name, candidate.reason)
-		}
-	}
 	return nil
 }
 
@@ -760,9 +779,15 @@ func (app *application) finalizeEvaluation(ctx context.Context, jobID, raw strin
 	}
 
 	_ = app.appendProgress(ctx, jobID, "LLM evaluation...")
-	analysis, err := runHostLLMAnalysis(ctx, container.SkillContent, container.SupportingContext)
+	analysis, err := hostLLMAnalysisRunner(ctx, container.SkillContent, container.SupportingContext)
 	if err != nil {
-		return "", err
+		fallbackMessage := "LLM analysis unavailable: " + redactSecrets(err.Error())
+		analysis = llmAnalysis{
+			QualityTier: "needs_work",
+			Weaknesses:  []string{fallbackMessage},
+			Suggestions: []string{"Review the deterministic findings. Host-side LLM analysis could not be completed for this skill."},
+		}
+		_ = app.appendProgress(ctx, jobID, "LLM analysis failed; using deterministic-only fallback.")
 	}
 	_ = app.appendProgress(ctx, jobID, "Preparing final evaluation result...")
 
@@ -796,7 +821,7 @@ func runHostLLMAnalysis(ctx context.Context, skillContent, supportingContext str
 	}
 
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
-	message, err := client.Messages.New(ctx, anthropic.MessageNewParams{
+	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(getenvDefault("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")),
 		MaxTokens: int64(parseIntDefault(os.Getenv("ANTHROPIC_MAX_TOKENS"), 2500)),
 		System: []anthropic.TextBlockParam{{
@@ -806,9 +831,21 @@ func runHostLLMAnalysis(ctx context.Context, skillContent, supportingContext str
 			Role: anthropic.MessageParamRoleUser,
 			Content: []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock("Evaluate this skill:\n\n" + combined)},
 		}},
-	})
+	}
+
+	var message *anthropic.Message
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		message, err = client.Messages.New(ctx, params)
+		if err == nil {
+			break
+		}
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * 2 * time.Second)
+		}
+	}
 	if err != nil {
-		return llmAnalysis{}, errors.New("LLM evaluation failed")
+		return llmAnalysis{}, fmt.Errorf("LLM evaluation failed: %s", redactSecrets(err.Error()))
 	}
 	parsed, err := parseLLMJSON(extractMessageText(message))
 	if err != nil {
@@ -895,6 +932,9 @@ func summarizeIssues(deterministic map[string]any, analysis llmAnalysis) string 
 	if len(issues) > 0 {
 		return fmt.Sprintf("Skill evaluated with %d deterministic issue(s). Primary issue: %s.", len(issues), issues[0])
 	}
+	if len(analysis.Weaknesses) > 0 && strings.HasPrefix(analysis.Weaknesses[0], "LLM analysis unavailable:") {
+		return "Skill processed with deterministic checks only. Host-side LLM analysis was unavailable."
+	}
 	if len(analysis.Strengths) > 0 {
 		return "Skill evaluated successfully. Key strength: " + analysis.Strengths[0]
 	}
@@ -914,6 +954,13 @@ func parseIntDefault(value string, fallback int) int {
 
 func min(a, b int) int {
 	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
 		return a
 	}
 	return b
@@ -973,7 +1020,10 @@ func fetchGitHubFile(ctx context.Context, rawURL, rootDir string) error {
 		return err
 	}
 
-	destination := filepath.Join(rootDir, target.fileName)
+	destination := filepath.Join(rootDir, filepath.FromSlash(target.path))
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return fmt.Errorf("failed to prepare %s", target.fileName)
+	}
 	if err := os.WriteFile(destination, content, 0o644); err != nil {
 		return fmt.Errorf("failed to save %s", target.fileName)
 	}
@@ -1058,15 +1108,16 @@ func fetchGitHubDirectory(ctx context.Context, target gitHubTarget, rootDir stri
 	}
 	selected := []gitHubDirectoryEntry{}
 	for _, entry := range entries {
-		if entry.Type == "file" && (strings.EqualFold(entry.Name, "SKILL.md") || strings.EqualFold(entry.Name, "skill.md")) {
+		if entry.Type == "file" && (strings.EqualFold(filepath.Base(entry.Path), "SKILL.md") || strings.EqualFold(filepath.Base(entry.Path), "skill.md")) {
 			selected = append(selected, entry)
 		}
 	}
 	for _, entry := range entries {
-		if entry.Type != "file" || !isAllowedSupportingSkillFile(entry.Name) {
+		if entry.Type != "file" || !isAllowedSupportingSkillFile(entry.Path) {
 			continue
 		}
-		if strings.EqualFold(entry.Name, "SKILL.md") || strings.EqualFold(entry.Name, "skill.md") {
+		base := filepath.Base(entry.Path)
+		if strings.EqualFold(base, "SKILL.md") || strings.EqualFold(base, "skill.md") {
 			continue
 		}
 		selected = append(selected, entry)
@@ -1075,7 +1126,7 @@ func fetchGitHubDirectory(ctx context.Context, target gitHubTarget, rootDir stri
 		return errors.New("GitHub directory must contain SKILL.md or skill.md")
 	}
 	for _, entry := range selected {
-		fileURL := fmt.Sprintf("https://github.com/%s/%s/blob/%s/%s/%s", target.owner, target.repo, target.ref, target.path, entry.Name)
+		fileURL := fmt.Sprintf("https://github.com/%s/%s/blob/%s/%s", target.owner, target.repo, target.ref, entry.Path)
 		if err := fetchGitHubFile(ctx, fileURL, rootDir); err != nil {
 			return err
 		}
@@ -1084,6 +1135,72 @@ func fetchGitHubDirectory(ctx context.Context, target gitHubTarget, rootDir stri
 }
 
 func fetchGitHubDirectoryEntries(ctx context.Context, target gitHubTarget) ([]gitHubDirectoryEntry, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1", target.owner, target.repo, urlpkg.PathEscape(target.ref))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return nil, errors.New("failed to create GitHub directory request")
+	}
+	req.Header.Set("User-Agent", "agents-skill-eval")
+	req.Header.Set("Accept", "application/vnd.github+json")
+	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fetchGitHubDirectoryEntriesHTML(ctx, target)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
+		return fetchGitHubDirectoryEntriesHTML(ctx, target)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub directory URL returned %s", resp.Status)
+	}
+	var tree struct {
+		Tree []struct {
+			Path string `json:"path"`
+			Type string `json:"type"`
+		} `json:"tree"`
+		Truncated bool `json:"truncated"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tree); err != nil {
+		return nil, errors.New("failed to decode GitHub directory listing")
+	}
+	prefix := strings.Trim(strings.TrimSpace(target.path), "/")
+	if prefix == "" {
+		return nil, errors.New("GitHub directory path is empty")
+	}
+	prefixWithSlash := prefix + "/"
+	entries := []gitHubDirectoryEntry{}
+	for _, entry := range tree.Tree {
+		if !strings.HasPrefix(entry.Path, prefixWithSlash) {
+			continue
+		}
+		relative := strings.TrimPrefix(entry.Path, prefixWithSlash)
+		if relative == "" {
+			continue
+		}
+		entryType := entry.Type
+		if entryType == "blob" {
+			entryType = "file"
+		}
+		if entryType == "tree" {
+			entryType = "dir"
+		}
+		entries = append(entries, gitHubDirectoryEntry{
+			Name: filepath.Base(relative),
+			Path: entry.Path,
+			Type: entryType,
+		})
+	}
+	if len(entries) == 0 {
+		return nil, errors.New("failed to discover files from GitHub directory")
+	}
+	return entries, nil
+}
+
+func fetchGitHubDirectoryEntriesHTML(ctx context.Context, target gitHubTarget) ([]gitHubDirectoryEntry, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.htmlURL, nil)
 	if err != nil {
 		return nil, errors.New("failed to create GitHub directory request")
@@ -1119,7 +1236,22 @@ func fetchGitHubDirectoryEntries(ctx context.Context, target gitHubTarget) ([]gi
 		if match[1] == "tree" {
 			entryType = "dir"
 		}
-		entries = append(entries, gitHubDirectoryEntry{Name: name, Type: entryType})
+		fullPath := strings.TrimPrefix(filepath.ToSlash(filepath.Join(relativePath, name)), "/")
+		entry := gitHubDirectoryEntry{Name: name, Path: fullPath, Type: entryType}
+		entries = append(entries, entry)
+		if entryType == "dir" {
+			nested, err := fetchGitHubDirectoryEntriesHTML(ctx, gitHubTarget{
+				owner:   target.owner,
+				repo:    target.repo,
+				ref:     target.ref,
+				path:    fullPath,
+				htmlURL: fmt.Sprintf("https://github.com/%s/%s/tree/%s/%s", target.owner, target.repo, target.ref, fullPath),
+			})
+			if err != nil {
+				return nil, err
+			}
+			entries = append(entries, nested...)
+		}
 	}
 	if len(entries) == 0 {
 		return nil, errors.New("failed to discover files from GitHub directory page")
@@ -1130,7 +1262,7 @@ func fetchGitHubDirectoryEntries(ctx context.Context, target gitHubTarget) ([]gi
 func isAllowedSupportingSkillFile(name string) bool {
 	ext := strings.ToLower(filepath.Ext(name))
 	switch ext {
-	case ".md", ".txt", ".json", ".py", ".sh", ".js", ".pdf", ".png", ".jpg", ".jpeg":
+	case ".md", ".markdown", ".txt", ".json", ".py", ".sh", ".js", ".yaml", ".yml", ".pdf", ".png", ".jpg", ".jpeg", ".html", ".xml", ".xsd":
 		return true
 	default:
 		return false
@@ -1143,7 +1275,11 @@ func isAllowedGitHubHost(host string) bool {
 }
 
 func validateFileType(filename, mimeType string) error {
-	if !allowedMimeTypes[mimeType] {
+	normalized := mimeType
+	if parsed, _, err := mime.ParseMediaType(mimeType); err == nil {
+		normalized = parsed
+	}
+	if !allowedMimeTypes[normalized] {
 		return fmt.Errorf("%s has unsupported MIME type %s", filename, mimeType)
 	}
 
@@ -1151,7 +1287,7 @@ func validateFileType(filename, mimeType string) error {
 	if ext == ".exe" {
 		return fmt.Errorf("%s is not allowed", filename)
 	}
-	if ext == ".sh" && mimeType != "text/x-shellscript" && mimeType != "text/plain" {
+	if ext == ".sh" && normalized != "text/x-shellscript" && normalized != "text/plain" && normalized != "text/x-sh" {
 		return fmt.Errorf("%s is not an allowed shell script upload", filename)
 	}
 	return nil

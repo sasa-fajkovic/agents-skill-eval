@@ -71,6 +71,11 @@ Why every check exists — the real-world failure mode it prevents.
 **Why**: A skill that says "delete the old files" without "first confirm with the user" or "create a backup branch" can cause irreversible damage. The agent follows instructions literally — if the skill doesn't say "check first", the agent won't check.
 **Value**: Destructive operations have explicit safety nets. Users don't lose work.
 
+### 2.3 — MCP usage is not allowed
+**What**: Skill instructs the agent to use MCP servers or `mcp__*` tools.
+**Why**: MCP tool names, schemas, and server availability are platform-specific, so the skill silently stops being portable. They also add persistent token overhead and create another execution surface that the skill author often does not constrain well. If a workflow can be expressed with `gh`, `git`, `acli`, `curl`, or another concrete CLI/API, the portable skill should use that instead.
+**Value**: Skills stay portable, cheaper to run, and easier to audit.
+
 ## Tier 3: Token Efficiency
 
 ### 3.1 — inline code should be script
@@ -103,10 +108,10 @@ Why every check exists — the real-world failure mode it prevents.
 **Why**: Claude Code's progressive disclosure model lazy-loads references by default. Explicitly instructing preload defeats this — the agent reads everything upfront, paying the full token cost regardless of whether it's needed.
 **Value**: Preserves the built-in lazy loading optimization.
 
-### 3.7 — MCP where CLI is cheaper
-**What**: Skill uses MCP tools (GitHub, Jira, Google Workspace) where a CLI alternative exists at lower token cost.
-**Why**: MCP tool definitions load on every API call even when unused. GitHub MCP costs ~55K tokens/call overhead. `gh pr view` costs ~500 tokens. For read-only operations, CLI is 100x cheaper. Not all MCP tools have CLI alternatives — Slack and Figma have no good CLI equivalents and should not be flagged.
-**Value**: Massive token savings for skills that interact with external services.
+### 3.7 — MCP references waste tokens even before 2.3 fails the skill
+**What**: Skill still discusses or depends on MCP concepts instead of using a concrete CLI/API path.
+**Why**: Tier 2.3 already treats MCP usage as a hard failure. Even before portability and security concerns, MCP tool definitions impose ongoing token overhead that portable skills should avoid entirely.
+**Value**: Reinforces that removing MCP improves both correctness and cost.
 
 ## Tier 4: Effectiveness
 
@@ -144,4 +149,3 @@ Why every check exists — the real-world failure mode it prevents.
 **What**: Scripts that only return 0/1 without documenting what different codes mean.
 **Why**: Distinct exit codes let agents make branching decisions without parsing stderr. "Exit 2 = not found, retry with different query" is actionable. "Exit 1 = something failed" forces the agent to parse error output and guess. Combined with --help documentation, exit codes become a reliable API.
 **Value**: Agents can react to specific failure types programmatically.
-

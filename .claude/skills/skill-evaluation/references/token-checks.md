@@ -152,7 +152,7 @@ Compare for repeated phrases or near-identical wording
 
 **Fix suggestion**: `Line <N> instructs preloading all references, defeating lazy loading. Change to conditional loading: "Read references/<file>.md when <condition>."`
 
-## 3.7: MCP where CLI is cheaper
+## 3.7: MCP references waste tokens and should be removed
 
 **MCP tool overhead** (tool definitions load on every API call):
 | MCP Server | Approx. overhead/call | CLI Alternative | CLI cost |
@@ -161,18 +161,14 @@ Compare for repeated phrases or near-identical wording
 | Atlassian/Jira | ~10K tokens | `curl` + REST API | ~500 tokens |
 | Google Workspace | ~2-4K tokens | Platform-specific CLIs | Variable |
 
-**Do NOT flag these** (no good CLI alternative):
-- Slack MCP
-- Figma MCP
-
 **Detection**:
 ```
 Scan body for MCP tool references:
   Patterns: "mcp__", "MCP", tool names matching known MCP servers
-Scan for GitHub MCP patterns: "mcp__github", "GitHub MCP"
-  If found → suggest gh CLI
-Scan for Atlassian MCP patterns: "mcp__atlassian", "Jira MCP"
-  If found → suggest curl + REST API
+If Tier 2.3 already flagged MCP usage:
+  Do not add a duplicate warning unless the skill also spends significant space explaining MCP setup
+Else if the skill still discusses MCP concepts or setup cost:
+  WARN that the content is wasting tokens on a disallowed integration path
 ```
 
-**Fix suggestion**: `Skill references <MCP server> MCP (~<N>K tokens/call overhead). Consider using <CLI alternative> instead (~500 tokens). MCP tool definitions load on every API call even when unused.`
+**Fix suggestion**: `Remove MCP references and setup guidance entirely. Use a concrete CLI or direct API workflow instead so the skill stays portable and avoids MCP overhead.`

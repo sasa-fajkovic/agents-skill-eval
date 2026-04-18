@@ -22,10 +22,10 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24'
 
@@ -35,7 +35,7 @@ jobs:
           GOOS=linux GOARCH=amd64 go build -o bin/app .
 
       - name: Copy binary to Droplet
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: 46.101.197.119
           username: deploy
@@ -44,7 +44,7 @@ jobs:
           target: /home/deploy/app/
 
       - name: Provision and restart app
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: 46.101.197.119
           username: deploy

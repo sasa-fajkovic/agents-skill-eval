@@ -12,6 +12,8 @@ except Exception:  # pragma: no cover - defensive import fallback
 
 
 INPUT_DIR = Path("/input")
+MAX_SUPPORTING_CONTEXT_CHARS = 12000
+MAX_FILE_EXCERPT_CHARS = 1500
 ALLOWED_TEXT_EXTENSIONS = {
     ".md",
     ".markdown",
@@ -20,6 +22,9 @@ ALLOWED_TEXT_EXTENSIONS = {
     ".py",
     ".sh",
     ".js",
+    ".html",
+    ".xml",
+    ".xsd",
     ".yaml",
     ".yml",
 }
@@ -55,10 +60,25 @@ def read_pdf_file(path: Path) -> str:
 
 
 def collect_supporting_context(paths: list[Path]) -> str:
+    inventory = []
     parts = []
-    for path in paths:
+    used_chars = 0
+
+    def sort_key(path: Path) -> tuple[int, str]:
+        relative = str(path.relative_to(INPUT_DIR)).lower()
+        priority = 3
+        if "/references/" in f"/{relative}" or relative.startswith("references/"):
+            priority = 0
+        elif relative.endswith("license.txt") or relative.endswith("readme.md") or relative.endswith("readme.txt"):
+            priority = 1
+        elif "/scripts/" in f"/{relative}" or relative.startswith("scripts/"):
+            priority = 2
+        return (priority, relative)
+
+    for path in sorted(paths, key=sort_key):
         suffix = path.suffix.lower()
         relative = path.relative_to(INPUT_DIR)
+        inventory.append(str(relative))
         if suffix in ALLOWED_TEXT_EXTENSIONS:
             content = read_text_file(path)
         elif suffix in PDF_EXTENSIONS:
@@ -71,8 +91,25 @@ def collect_supporting_context(paths: list[Path]) -> str:
         if not content.strip():
             continue
 
-        parts.append(f"--- FILE: {relative} ---\n{content.strip()}")
-    return "\n\n".join(parts)
+        remaining = MAX_SUPPORTING_CONTEXT_CHARS - used_chars
+        if remaining <= 0:
+            break
+
+        excerpt = content.strip()[: min(MAX_FILE_EXCERPT_CHARS, remaining)]
+        if len(content.strip()) > len(excerpt):
+            excerpt += "\n[truncated]"
+        block = f"--- FILE: {relative} ---\n{excerpt}"
+        parts.append(block)
+        used_chars += len(block) + 2
+
+    summary = ["Supporting file inventory:"]
+    summary.extend(f"- {item}" for item in inventory)
+    if parts:
+        summary.append("")
+        summary.append("Supporting file excerpts:")
+        summary.append("")
+        summary.append("\n\n".join(parts))
+    return "\n".join(summary)
 
 
 def find_primary_skill(paths: list[Path]) -> Path:

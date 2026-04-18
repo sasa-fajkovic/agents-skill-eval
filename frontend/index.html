@@ -635,20 +635,22 @@
     </section>
 
     <section class="panel panel-body">
-      <input id="file-input" type="file" multiple class="hidden">
+      <input id="folder-input" type="file" webkitdirectory directory multiple class="hidden">
       <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload files">
         <div>
-          <strong>Drop a skill package here</strong>
-          <p>Add `SKILL.md` and any supporting files, or use a GitHub skill file or directory URL above. The result is checked against the official AgentSkills.io specification.</p>
+          <strong>Drop a skill folder here</strong>
+          <p>Add a full skill directory with `SKILL.md` and supporting files, or use a GitHub skill file or directory URL above. Local uploads must be folders, not individual files.</p>
         </div>
         <div class="drop-meta">
-          <span class="chip">Multiple files</span>
+          <span class="chip">Folder upload</span>
+          <span class="chip">Single skill folder</span>
           <span class="chip">Max 5MB</span>
           <span class="chip">GitHub only</span>
         </div>
       </div>
 
       <div class="actions">
+        <button id="pick-folder-button" type="button">Choose folder</button>
         <button id="upload-button" type="button" class="primary">Run evaluation</button>
         <button id="clear-button" type="button">Clear</button>
       </div>
@@ -684,10 +686,11 @@
   </main>
 
   <script>
-    const fileInput = document.getElementById('file-input');
     const dropzone = document.getElementById('dropzone');
+    const folderInput = document.getElementById('folder-input');
     const uploadButton = document.getElementById('upload-button');
     const clearButton = document.getElementById('clear-button');
+    const pickFolderButton = document.getElementById('pick-folder-button');
     const githubUrlInput = document.getElementById('github-url');
     const fileList = document.getElementById('file-list');
     const statusBox = document.getElementById('status');
@@ -717,6 +720,22 @@
       if (bytes < 1024) return `${bytes} B`;
       if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
       return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    function fileDisplayPath(file) {
+      return file.relativePath || file.webkitRelativePath || file.name;
+    }
+
+    function attachRelativePath(file, relativePath) {
+      Object.defineProperty(file, 'relativePath', {
+        value: relativePath,
+        configurable: true,
+      });
+      return file;
+    }
+
+    function isFolderSelection(files) {
+      return files.length > 0 && files.every((file) => fileDisplayPath(file).includes('/'));
     }
 
     function setJobRunning(isRunning) {
@@ -794,7 +813,7 @@
 
       fileList.innerHTML = selectedFiles.map((file) => `
         <div class="file-item">
-          <span>${escapeHtml(file.name)}</span>
+          <span>${escapeHtml(fileDisplayPath(file))}</span>
           <span>${formatBytes(file.size)}</span>
         </div>
       `).join('');
@@ -802,6 +821,18 @@
 
     function updateFiles(files) {
       selectedFiles = Array.from(files);
+      if (selectedFiles.length && !isFolderSelection(selectedFiles)) {
+        selectedFiles = [];
+        renderFileList();
+        loadingResultsVisible = false;
+        results.classList.remove('loading');
+        results.classList.add('hidden');
+        results.innerHTML = '';
+        if (!jobInFlight) {
+          setStatus('Local uploads must be a skill folder. Choose or drop a folder, not individual files.', true);
+        }
+        return;
+      }
       renderFileList();
       loadingResultsVisible = false;
       results.classList.remove('loading');
@@ -1000,7 +1031,7 @@
       }
 
       const formData = new FormData();
-      selectedFiles.forEach((file) => formData.append('files', file));
+      selectedFiles.forEach((file) => formData.append('files', file, fileDisplayPath(file)));
       if (githubUrl) {
         formData.append('githubUrl', githubUrl);
       }
@@ -1028,11 +1059,52 @@
       }
     }
 
-    dropzone.addEventListener('click', () => fileInput.click());
+    async function readDroppedEntry(entry, prefix = '') {
+      if (entry.isFile) {
+        const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+        return [attachRelativePath(file, `${prefix}${file.name}`)];
+      }
+
+      if (!entry.isDirectory) {
+        return [];
+      }
+
+      const reader = entry.createReader();
+      const entries = [];
+      while (true) {
+        const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        if (!batch.length) {
+          break;
+        }
+        entries.push(...batch);
+      }
+
+      const nested = await Promise.all(entries.map((child) => readDroppedEntry(child, `${prefix}${entry.name}/`)));
+      return nested.flat();
+    }
+
+    async function collectDroppedFiles(dataTransfer) {
+      if (!dataTransfer?.items?.length) {
+        return Array.from(dataTransfer?.files || []);
+      }
+
+      const entries = Array.from(dataTransfer.items)
+        .map((item) => item.webkitGetAsEntry ? item.webkitGetAsEntry() : null)
+        .filter(Boolean);
+
+      if (!entries.length) {
+        return Array.from(dataTransfer.files || []);
+      }
+
+      const groups = await Promise.all(entries.map((entry) => readDroppedEntry(entry)));
+      return groups.flat();
+    }
+
+    dropzone.addEventListener('click', () => folderInput.click());
     dropzone.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        fileInput.click();
+        folderInput.click();
       }
     });
 
@@ -1050,8 +1122,8 @@
       });
     });
 
-    dropzone.addEventListener('drop', (event) => updateFiles(event.dataTransfer.files));
-    fileInput.addEventListener('change', (event) => updateFiles(event.target.files));
+    dropzone.addEventListener('drop', async (event) => updateFiles(await collectDroppedFiles(event.dataTransfer)));
+    folderInput.addEventListener('change', (event) => updateFiles(event.target.files));
     githubUrlInput.addEventListener('input', () => updateFiles(selectedFiles));
     githubUrlInput.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -1059,9 +1131,13 @@
         uploadFiles();
       }
     });
+    pickFolderButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      folderInput.click();
+    });
     uploadButton.addEventListener('click', uploadFiles);
     clearButton.addEventListener('click', () => {
-      fileInput.value = '';
+      folderInput.value = '';
       githubUrlInput.value = '';
       updateFiles([]);
       loadingResultsVisible = false;

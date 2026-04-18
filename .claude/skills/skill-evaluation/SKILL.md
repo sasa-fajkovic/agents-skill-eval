@@ -9,7 +9,7 @@ compatibility: Designed for Claude Code. Uses Read, Glob, Grep, and Bash tools.
 
 # Skill Evaluator
 
-Validate a SKILL.md against the agentskills.io stable spec (5 fields only). Non-standard fields, experimental fields, and platform-specific extensions are errors.
+Validate a SKILL.md against the agentskills.io stable spec (5 fields only). Non-standard fields, experimental fields, platform-specific extensions, and MCP usage instructions are errors.
 
 ## Tool constraints
 
@@ -33,7 +33,7 @@ Use Read, Glob, Grep, and Bash tools. Do not modify any files. Bash is used only
 
 ### Phase 1: Deterministic evaluation
 
-4. **Run Tier 1-2 via eval.py**: Run `python3 scripts/eval.py <path>` via Bash (resolve the script path relative to this skill's directory). The script produces boxed, colored output for Tier 1 (Spec Compliance 1.1-1.11) and Tier 2 (Security 2.1-2.2). **Important**: the tool output gets truncated by the harness UI. After running the script, reproduce its ENTIRE output as your own text response so the user sees all findings without needing to expand collapsed output.
+4. **Run Tier 1-2 via eval.py**: Run `python3 scripts/eval.py <path>` via Bash (resolve the script path relative to this skill's directory). The script produces boxed, colored output for Tier 1 (Spec Compliance 1.1-1.11) and Tier 2 (Security 2.1-2.3). Skills must not instruct agents to use MCP servers or `mcp__*` tools; require CLI or direct API alternatives instead. **Important**: the tool output gets truncated by the harness UI. After running the script, reproduce its ENTIRE output as your own text response so the user sees all findings without needing to expand collapsed output.
 
 ### Phase 2: LLM evaluation
 
@@ -105,3 +105,4 @@ SKILL_EVAL_WARNINGS=<count>
 2. Do not suggest changes that reduce reliability (e.g., removing hardcoded values the agent can't guess).
 3. Do not nitpick formatting or markdown style — focus on spec compliance, security, tokens, and effectiveness.
 4. Load reference files on demand, not upfront. Read only the reference file relevant to the current tier being evaluated.
+5. Treat MCP usage in evaluated skills as disallowed, not merely suboptimal. Flag any positive instruction to use MCP servers or `mcp__*` tools as a security/portability failure and recommend CLI or direct API alternatives.
