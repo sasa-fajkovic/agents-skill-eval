@@ -216,20 +216,27 @@ func TestDeterministicIssues(t *testing.T) {
 }
 
 func TestComputeOverallScore(t *testing.T) {
-	if got := computeOverallScore(map[string]any{"issues": []any{"a", "b"}}); got != 80 {
+	if got := computeOverallScore(map[string]any{"issues": []any{"a", "b"}}, nil); got != 80 {
 		t.Fatalf("unexpected score: %d", got)
 	}
-	if got := computeOverallScore(map[string]any{"issues": []any{"a", "b", "c", "d", "e", "f", "g"}}); got != 40 {
+	if got := computeOverallScore(map[string]any{"issues": []any{"a", "b", "c", "d", "e", "f", "g"}}, nil); got != 40 {
 		t.Fatalf("unexpected clamped deterministic score: %d", got)
+	}
+	analysis := &llmAnalysis{QualityTier: "excellent"}
+	if got := computeOverallScore(map[string]any{"issues": []any{"a", "b"}}, analysis); got != 85 {
+		t.Fatalf("unexpected score with llm analysis: %d", got)
 	}
 }
 
 func TestSummarizeIssues(t *testing.T) {
-	if got := summarizeIssues(map[string]any{"issues": []any{"first issue", "second"}}); !strings.Contains(got, "Primary issue: first issue") {
+	if got := summarizeIssues(map[string]any{"issues": []any{"first issue", "second"}}, nil); !strings.Contains(got, "Primary issue: first issue") {
 		t.Fatalf("unexpected summary: %q", got)
 	}
-	if got := summarizeIssues(map[string]any{}); !strings.Contains(got, "no deterministic issues") {
+	if got := summarizeIssues(map[string]any{}, nil); !strings.Contains(got, "no deterministic issues") {
 		t.Fatalf("unexpected summary: %q", got)
+	}
+	if got := summarizeIssues(map[string]any{}, &llmAnalysis{Strengths: []string{"Clear structure"}}); !strings.Contains(got, "Key strength: Clear structure") {
+		t.Fatalf("unexpected llm summary: %q", got)
 	}
 }
 
@@ -398,7 +405,7 @@ func TestFinalizeEvaluation(t *testing.T) {
 	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
 	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":["missing tests"]}}`
 
-	result, err := app.finalizeEvaluation(context.Background(), "job-1", raw)
+	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1"}, raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -407,13 +414,49 @@ func TestFinalizeEvaluation(t *testing.T) {
 	}
 }
 
+func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
+	old := os.Getenv("ANTHROPIC_API_KEY")
+	defer func() {
+		if old == "" {
+			_ = os.Unsetenv("ANTHROPIC_API_KEY")
+		} else {
+			_ = os.Setenv("ANTHROPIC_API_KEY", old)
+		}
+	}()
+	_ = os.Setenv("ANTHROPIC_API_KEY", "configured")
+
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":[]}}`
+
+	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true}, raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) {
+		t.Fatalf("expected optional llm payload, got %s", result)
+	}
+}
+
 func TestFinalizeEvaluationErrors(t *testing.T) {
 	app := &application{}
-	if _, err := app.finalizeEvaluation(context.Background(), "job-1", `not-json`); err == nil {
+	if _, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1"}, `not-json`); err == nil {
 		t.Fatal("expected parse error")
 	}
-	if _, err := app.finalizeEvaluation(context.Background(), "job-1", `{"status":"error","message":"ANTHROPIC_API_KEY=secret"}`); err == nil || strings.Contains(err.Error(), "secret") {
+	if _, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1"}, `{"status":"error","message":"ANTHROPIC_API_KEY=secret"}`); err == nil || strings.Contains(err.Error(), "secret") {
 		t.Fatalf("expected redacted evaluator error, got %v", err)
+	}
+}
+
+func TestParseBool(t *testing.T) {
+	for _, value := range []string{"1", "true", "yes", "on", " TRUE "} {
+		if !parseBool(value) {
+			t.Fatalf("expected %q to parse as true", value)
+		}
+	}
+	for _, value := range []string{"", "0", "false", "no", "off"} {
+		if parseBool(value) {
+			t.Fatalf("expected %q to parse as false", value)
+		}
 	}
 }
 

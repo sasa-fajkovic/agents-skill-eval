@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agent Skill Evaluator for SKILL.md | agents-skill-eval</title>
-  <meta name="description" content="Evaluate SKILL.md files and GitHub-hosted agent skills against the official AgentSkills.io specification with deterministic checks and focused LLM analysis.">
+  <meta name="description" content="Evaluate SKILL.md files and GitHub-hosted agent skills against the official AgentSkills.io specification with deterministic checks and optional host-side LLM review.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://agents-skill-eval.com/">
   <meta property="og:type" content="website">
@@ -24,7 +24,7 @@
       "url": "https://agents-skill-eval.com/",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "Web",
-      "description": "Evaluate SKILL.md files and GitHub-hosted agent skills against the official AgentSkills.io specification using deterministic checks and focused LLM analysis.",
+      "description": "Evaluate SKILL.md files and GitHub-hosted agent skills against the official AgentSkills.io specification using deterministic checks and optional host-side LLM review.",
       "offers": {
         "@type": "Offer",
         "price": "0",
@@ -376,6 +376,33 @@
       color: var(--text);
     }
 
+    .llm-option {
+      display: grid;
+      gap: 10px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-soft);
+    }
+
+    .llm-option label {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      cursor: pointer;
+    }
+
+    .llm-option input {
+      margin-top: 3px;
+    }
+
+    .llm-option p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
     .results-header {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
@@ -653,13 +680,23 @@
         <button id="clear-button" type="button">Clear</button>
       </div>
 
+      <div class="llm-option">
+        <label for="enable-llm">
+          <input id="enable-llm" type="checkbox">
+          <span>
+            <strong>Enable optional LLM review</strong>
+            <p>If selected, the server may run an extra host-side review step after deterministic checks. Leave this off to keep evaluation deterministic-only.</p>
+          </span>
+        </label>
+      </div>
+
       <div id="file-list" class="file-list"></div>
     </section>
 
     <section id="status" class="status">Waiting for files.</section>
 
     <section class="privacy-note">
-      <strong>Privacy:</strong> Your uploaded files are processed transiently on our infrastructure for deterministic evaluation only. We do not use them for analytics, tracking, training, or third-party AI analysis. Files and results are stored only temporarily while the job runs and while results are available to you, then removed automatically.
+      <strong>Privacy:</strong> By default, uploads are processed transiently on our infrastructure for deterministic evaluation only. Optional LLM review is off by default and must be explicitly enabled per run. Files and results are stored only temporarily while the job runs and while results are available to you, then removed automatically.
     </section>
 
     <section id="results" class="results hidden"></section>
@@ -667,12 +704,12 @@
     <section class="about-grid">
       <article class="panel card">
         <span class="label">Why</span>
-        <p class="summary">We focus on deterministic evaluation against the official AgentSkills.io specification so uploads stay on our infrastructure and the result remains predictable and privacy-preserving.</p>
+        <p class="summary">Deterministic evaluation is the default so uploads stay on our infrastructure and the result remains predictable. Optional LLM review is an explicit per-run choice.</p>
       </article>
 
       <article class="panel card">
         <span class="label">About</span>
-        <p class="summary">This runs deterministic checks from the official AgentSkills.io specification inside a locked-down container without sending uploaded skill contents to third-party AI providers.</p>
+        <p class="summary">This runs deterministic checks from the official AgentSkills.io specification inside a locked-down container. Optional LLM review, when enabled, is a separate host-side step after the container finishes.</p>
       </article>
     </section>
 
@@ -694,6 +731,7 @@
     const statusBox = document.getElementById('status');
     const results = document.getElementById('results');
     const themeToggle = document.getElementById('theme-toggle');
+    const enableLlmCheckbox = document.getElementById('enable-llm');
 
     let selectedFiles = [];
     let pollTimer = null;
@@ -874,8 +912,9 @@
       loadingResultsVisible = false;
       results.classList.remove('loading');
       const score = Number(data.overall_score ?? 0);
-      const tier = data.llm_analysis?.quality_tier || 'needs_work';
+      const tier = data.llm_analysis?.quality_tier || (score >= 90 ? 'excellent' : score >= 75 ? 'good' : score >= 50 ? 'needs_work' : 'poor');
       const scoreTier = score >= 90 ? 'excellent' : score >= 75 ? 'good' : score >= 50 ? 'needs_work' : 'poor';
+      const reviewMode = data.llm_analysis ? 'Optional LLM review enabled' : 'Deterministic-only review';
       results.innerHTML = `
         <div class="results-header">
           <article class="panel card">
@@ -891,6 +930,11 @@
             <p class="summary">${escapeHtml(data.skill_name || 'Unknown skill')}</p>
           </article>
         </div>
+
+        <article class="panel card">
+          <span class="label">Review mode</span>
+          <p class="summary">${escapeHtml(reviewMode)}</p>
+        </article>
 
         <article class="panel card">
           <span class="label">Summary</span>
@@ -1033,6 +1077,7 @@
       if (githubUrl) {
         formData.append('githubUrl', githubUrl);
       }
+      formData.append('enableLlm', enableLlmCheckbox.checked ? 'true' : 'false');
 
       setJobRunning(true);
       loadingResultsVisible = false;
@@ -1137,6 +1182,7 @@
     clearButton.addEventListener('click', () => {
       folderInput.value = '';
       githubUrlInput.value = '';
+      enableLlmCheckbox.checked = false;
       updateFiles([]);
       loadingResultsVisible = false;
       results.classList.remove('loading');

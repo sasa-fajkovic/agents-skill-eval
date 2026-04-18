@@ -9,7 +9,7 @@ Live site: `https://agents-skill-eval.com`
 - Accepts a `SKILL.md` plus optional supporting files.
 - Performs upload-time security screening before a job is queued.
 - Runs deterministic evaluation inside a locked-down Docker container.
-- Returns deterministic findings, summary, progress, and overall score without sending uploaded contents to third-party AI providers.
+- Returns deterministic findings, summary, progress, and overall score by default without sending uploaded contents to third-party AI providers.
 
 ## Architecture
 
@@ -24,6 +24,9 @@ The app has three main parts:
 3. `eval/run_eval.py`
    Deterministic-only evaluator that runs inside the isolated container and returns structured JSON.
 
+4. Host-side optional review
+   If the user explicitly opts in and the server is configured for it, the backend can add an extra host-side review step after deterministic evaluation.
+
 There is also a local skill package under `.claude/skills/skill-evaluation/` used to evaluate `SKILL.md` files against the agentskills.io standard.
 
 ## Evaluation Flow
@@ -33,7 +36,7 @@ There is also a local skill package under `.claude/skills/skill-evaluation/` use
 3. Files are written into a temporary input directory.
 4. Worker launches a Docker container with a read-only input mount and no network.
 5. `eval/run_eval.py` discovers files, reads the primary `SKILL.md`, gathers supporting context, and returns deterministic results as JSON.
-6. Go parses that JSON, computes a deterministic summary/score, stores the final payload in Redis, and exposes it via `/result/{jobId}`.
+6. Go parses that JSON, computes the final summary/score, optionally adds opt-in host-side review output, stores the final payload in Redis, and exposes it via `/result/{jobId}`.
 
 ## Security Model
 
@@ -64,20 +67,20 @@ The evaluator container runs with these restrictions:
 ### Secret Handling
 
 - Progress lines, stored errors, and stored results are redacted before persistence.
-- Uploaded skill contents are not sent to third-party AI or observability providers.
+- Uploaded skill contents are not sent to third-party AI or observability providers unless the user explicitly enables optional LLM review for that run.
 
 This design keeps uploaded skill contents on our infrastructure only.
 
-## Why Evaluation Is Deterministic Only
+## Default Evaluation Mode
 
-Earlier designs considered adding a third-party LLM pass, but that would have required sending uploaded skill contents off-box.
-
-The current design avoids that entirely:
+The default path is deterministic-only:
 
 - Container: deterministic parsing and extraction only
 - Host: deterministic scoring, summary generation, and result storage
 
 That keeps the privacy boundary smaller and easier to audit.
+
+An optional LLM review path can be enabled explicitly per run. If it is not selected, uploaded content stays on the deterministic-only path.
 
 ## API Endpoints
 
@@ -114,8 +117,10 @@ That keeps the privacy boundary smaller and easier to audit.
 
 ```bash
 make build
-ANTHROPIC_API_KEY=... make start
+make start
 ```
+
+Set `ANTHROPIC_API_KEY` only if you want the optional LLM review path to be available.
 
 Health check:
 

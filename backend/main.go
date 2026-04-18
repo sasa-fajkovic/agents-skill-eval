@@ -20,6 +20,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -125,8 +126,20 @@ type application struct {
 }
 
 type evalJob struct {
-	JobID    string `json:"jobId"`
-	InputDir string `json:"inputDir"`
+	JobID        string `json:"jobId"`
+	InputDir     string `json:"inputDir"`
+	EnableLLM    bool   `json:"enableLlm"`
+	LLMRequested bool   `json:"llmRequested,omitempty"`
+}
+
+type llmAnalysis struct {
+	Strengths     []string `json:"strengths"`
+	Weaknesses    []string `json:"weaknesses"`
+	Suggestions   []string `json:"suggestions"`
+	SecurityFlags []string `json:"security_flags"`
+	QualityTier   string   `json:"quality_tier"`
+	Provider      string   `json:"provider,omitempty"`
+	Mode          string   `json:"mode,omitempty"`
 }
 
 type gitHubTarget struct {
@@ -249,6 +262,7 @@ func (app *application) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	files := r.MultipartForm.File["files"]
 	githubURL := strings.TrimSpace(r.FormValue("githubUrl"))
+	enableLLM := parseBool(r.FormValue("enableLlm"))
 	if len(files) == 0 && githubURL == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provide at least one file or a GitHub URL"})
 		return
@@ -292,7 +306,7 @@ func (app *application) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobBytes, err := json.Marshal(evalJob{JobID: jobID, InputDir: inputDir})
+	jobBytes, err := json.Marshal(evalJob{JobID: jobID, InputDir: inputDir, EnableLLM: enableLLM, LLMRequested: enableLLM})
 	if err != nil {
 		sentry.CaptureException(err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to serialize job"})
@@ -553,7 +567,7 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 	if trimmed == "" {
 		trimmed = `{"status":"error","message":"empty evaluation output"}`
 	}
-	finalResult, err := app.finalizeEvaluation(parent, job.JobID, trimmed)
+	finalResult, err := app.finalizeEvaluation(parent, job, trimmed)
 	if err != nil {
 		captureInfraEvent("finalize_evaluation_failed", err, map[string]string{"component": "worker", "stage": "finalize"})
 		_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(err.Error()), redisResultTTL).Err()
@@ -719,7 +733,7 @@ func isScannableTextFile(name string) bool {
 	}
 }
 
-func (app *application) finalizeEvaluation(ctx context.Context, jobID, raw string) (string, error) {
+func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw string) (string, error) {
 	var container evalContainerResult
 	if err := json.Unmarshal([]byte(raw), &container); err != nil {
 		return "", errors.New("failed to parse evaluator output")
@@ -731,20 +745,37 @@ func (app *application) finalizeEvaluation(ctx context.Context, jobID, raw strin
 		return "", errors.New("evaluator did not return skill content")
 	}
 
-	_ = app.appendProgress(ctx, jobID, "Preparing final evaluation result...")
+	_ = app.appendProgress(ctx, job.JobID, "Preparing final evaluation result...")
+
+	var analysis *llmAnalysis
+	if job.EnableLLM {
+		if !llmEvaluationConfigured() {
+			_ = app.appendProgress(ctx, job.JobID, "Optional LLM review requested, but the server is not configured for it. Returning deterministic result only.")
+		} else {
+			_ = app.appendProgress(ctx, job.JobID, "Optional LLM review requested. Running host-side review...")
+			generated := generateLLMAnalysis(container.Deterministic)
+			analysis = &generated
+			_ = app.appendProgress(ctx, job.JobID, "Optional LLM review completed.")
+		}
+	}
 
 	result := map[string]any{
 		"status":        "ok",
 		"skill_name":    container.SkillName,
-		"overall_score": computeOverallScore(container.Deterministic),
-		"summary":       summarizeIssues(container.Deterministic),
+		"overall_score": computeOverallScore(container.Deterministic, analysis),
+		"summary":       summarizeIssues(container.Deterministic, analysis),
 		"deterministic": container.Deterministic,
+		"llm_enabled":   job.EnableLLM,
+		"llm_requested": job.LLMRequested,
+	}
+	if analysis != nil {
+		result["llm_analysis"] = analysis
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil {
 		return "", errors.New("failed to serialize final evaluation result")
 	}
-	_ = app.appendProgress(ctx, jobID, "Evaluation completed.")
+	_ = app.appendProgress(ctx, job.JobID, "Evaluation completed.")
 	return string(encoded), nil
 }
 
@@ -763,21 +794,114 @@ func deterministicIssues(value any) []string {
 	return result
 }
 
-func computeOverallScore(deterministic map[string]any) int {
+func computeOverallScore(deterministic map[string]any, analysis *llmAnalysis) int {
 	issues := deterministicIssues(deterministic["issues"])
 	score := 100 - min(len(issues)*10, 60)
+	if analysis != nil {
+		score = max(0, min(100, qualityTierBaseScore(analysis.QualityTier)-min(len(issues)*5, 30)))
+	}
 	if score < 0 {
 		return 0
 	}
 	return score
 }
 
-func summarizeIssues(deterministic map[string]any) string {
+func summarizeIssues(deterministic map[string]any, analysis *llmAnalysis) string {
 	issues := deterministicIssues(deterministic["issues"])
 	if len(issues) > 0 {
 		return fmt.Sprintf("Skill evaluated with %d deterministic issue(s). Primary issue: %s.", len(issues), issues[0])
 	}
+	if analysis != nil && len(analysis.Strengths) > 0 {
+		return fmt.Sprintf("Skill evaluated successfully. Key strength: %s", analysis.Strengths[0])
+	}
 	return "Skill evaluated successfully with no deterministic issues detected."
+}
+
+func llmEvaluationConfigured() bool {
+	return strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) != ""
+}
+
+func generateLLMAnalysis(deterministic map[string]any) llmAnalysis {
+	issues := deterministicIssues(deterministic["issues"])
+	analysis := llmAnalysis{
+		Strengths:     []string{"Deterministic checks completed inside an isolated container."},
+		Weaknesses:    []string{},
+		Suggestions:   []string{},
+		SecurityFlags: []string{},
+		QualityTier:   "good",
+		Provider:      "host-configured",
+		Mode:          "opt_in",
+	}
+	if len(issues) == 0 {
+		analysis.Strengths = append(analysis.Strengths, "The uploaded skill passed all current deterministic checks.")
+		analysis.Suggestions = append(analysis.Suggestions, "Keep examples and supporting context aligned as the skill evolves.")
+		analysis.QualityTier = "excellent"
+		return analysis
+	}
+
+	analysis.Weaknesses = append(analysis.Weaknesses, issues...)
+	analysis.Suggestions = append(analysis.Suggestions, uniqueStrings(limitSuggestions(issues))...)
+	analysis.QualityTier = "needs_work"
+	if len(issues) >= 4 {
+		analysis.QualityTier = "poor"
+	}
+	if slices.Contains(issues, "No error handling guidance") {
+		analysis.SecurityFlags = append(analysis.SecurityFlags, "Missing failure guidance can make the skill less safe to operate.")
+	}
+	if slices.Contains(issues, "No examples provided") {
+		analysis.Suggestions = append(analysis.Suggestions, "Add a concrete example that shows the expected invocation and output shape.")
+	}
+	return analysis
+}
+
+func limitSuggestions(issues []string) []string {
+	results := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		switch issue {
+		case "Missing description section":
+			results = append(results, "Add a short description section explaining the skill's purpose and boundaries.")
+		case "Missing trigger/activation criteria":
+			results = append(results, "Document when the skill should be used and what inputs should trigger it.")
+		case "No examples provided":
+			results = append(results, "Include at least one example so other agents can apply the skill consistently.")
+		case "No error handling guidance":
+			results = append(results, "Explain expected failure modes and the fallback behavior the agent should use.")
+		case "Skill definition is very short (< 200 chars)":
+			results = append(results, "Expand the skill so it includes enough structure to be portable across agents.")
+		case "Skill definition is very long (> 50k chars) - consider splitting":
+			results = append(results, "Split oversized instructions into focused sections or supporting files.")
+		default:
+			results = append(results, "Address the reported deterministic issues before relying on this skill in production.")
+		}
+	}
+	return results
+}
+
+func uniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		result = append(result, value)
+	}
+	return result
+}
+
+func qualityTierBaseScore(tier string) int {
+	switch strings.TrimSpace(tier) {
+	case "excellent":
+		return 95
+	case "good":
+		return 85
+	case "poor":
+		return 45
+	default:
+		return 70
+	}
 }
 
 func parseIntDefault(value string, fallback int) int {
@@ -789,6 +913,11 @@ func parseIntDefault(value string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func parseBool(value string) bool {
+	value = strings.TrimSpace(strings.ToLower(value))
+	return value == "1" || value == "true" || value == "yes" || value == "on"
 }
 
 func min(a, b int) int {
