@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       GHCR_IMAGE: ghcr.io/sasa-fajkovic/agents-skill-eval:latest
     steps:
       - uses: actions/checkout@v6
@@ -49,7 +50,7 @@ jobs:
           host: 46.101.197.119
           username: deploy
           key: ${{ secrets.DO_SSH_PRIVATE_KEY }}
-          envs: SENTRY_DSN,GHCR_IMAGE
+          envs: SENTRY_DSN,ANTHROPIC_API_KEY,GHCR_IMAGE
           script: |
             set -e
             mkdir -p /home/deploy/app/caddy_data /home/deploy/app/caddy_config
@@ -58,7 +59,10 @@ jobs:
             REDIS_ADDR=127.0.0.1:6379
             EVAL_DOCKER_IMAGE=${GHCR_IMAGE}
             SENTRY_DSN=${SENTRY_DSN}
+            ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
             SENTRY_ENVIRONMENT=production
+            ANTHROPIC_MODEL=claude-sonnet-4-20250514
+            ANTHROPIC_MAX_TOKENS=1200
             EOF
             chmod 600 /home/deploy/app/app.env
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin

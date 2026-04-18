@@ -25,7 +25,7 @@ The app has three main parts:
    Deterministic-only evaluator that runs inside the isolated container and returns structured JSON.
 
 4. Host-side optional review
-   If the user explicitly opts in and the server is configured for it, the backend can add an extra host-side review step after deterministic evaluation.
+   If the user explicitly opts in and the server is configured for it, the backend sends the uploaded skill content and supporting context to Anthropic for an extra review step after deterministic evaluation.
 
 There is also a local skill package under `.claude/skills/skill-evaluation/` used to evaluate `SKILL.md` files against the agentskills.io standard.
 
@@ -36,7 +36,7 @@ There is also a local skill package under `.claude/skills/skill-evaluation/` use
 3. Files are written into a temporary input directory.
 4. Worker launches a Docker container with a read-only input mount and no network.
 5. `eval/run_eval.py` discovers files, reads the primary `SKILL.md`, gathers supporting context, and returns deterministic results as JSON.
-6. Go parses that JSON, computes the final summary/score, optionally adds opt-in host-side review output, stores the final payload in Redis, and exposes it via `/result/{jobId}`.
+6. Go parses that JSON, computes the final summary/score, optionally calls Anthropic for opt-in review output, stores the final payload in Redis, and exposes it via `/result/{jobId}`.
 
 ## Security Model
 
@@ -68,8 +68,9 @@ The evaluator container runs with these restrictions:
 
 - Progress lines, stored errors, and stored results are redacted before persistence.
 - Uploaded skill contents are not sent to third-party AI or observability providers unless the user explicitly enables optional LLM review for that run.
+- When optional LLM review is enabled, the uploaded skill content and supporting context for that run are sent to Anthropic to generate the additional review fields.
 
-This design keeps uploaded skill contents on our infrastructure only.
+This keeps the default path on our infrastructure only, with a clearly separated opt-in provider path.
 
 ## Default Evaluation Mode
 
@@ -80,7 +81,7 @@ The default path is deterministic-only:
 
 That keeps the privacy boundary smaller and easier to audit.
 
-An optional LLM review path can be enabled explicitly per run. If it is not selected, uploaded content stays on the deterministic-only path.
+An optional Anthropic review path can be enabled explicitly per run. If it is not selected, uploaded content stays on the deterministic-only path.
 
 ## API Endpoints
 
@@ -120,7 +121,7 @@ make build
 make start
 ```
 
-Set `ANTHROPIC_API_KEY` only if you want the optional LLM review path to be available.
+Set `ANTHROPIC_API_KEY` only if you want the optional Anthropic review path to be available.
 
 Health check:
 
@@ -148,7 +149,7 @@ Current test coverage focus is security-heavy:
 - secret redaction
 - score/summary helpers
 - GitHub target resolution
-- finalization flow with a stubbed host-side LLM runner
+- finalization flow with real opt-in Anthropic parsing and deterministic fallback behavior
 - `skill-evaluation` deterministic checks for the new MCP prohibition
 
 The `Makefile` test target currently runs:

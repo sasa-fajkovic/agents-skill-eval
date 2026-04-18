@@ -685,7 +685,7 @@
           <input id="enable-llm" type="checkbox">
           <span>
             <strong>Enable optional LLM review</strong>
-            <p>If selected, the server may run an extra host-side review step after deterministic checks. Leave this off to keep evaluation deterministic-only.</p>
+            <p>If selected, your uploaded skill content will also be sent to Anthropic for an extra review step after deterministic checks. Leave this off to keep evaluation deterministic-only on our infrastructure.</p>
           </span>
         </label>
       </div>
@@ -696,7 +696,7 @@
     <section id="status" class="status">Waiting for files.</section>
 
     <section class="privacy-note">
-      <strong>Privacy:</strong> By default, uploads are processed transiently on our infrastructure for deterministic evaluation only. Optional LLM review is off by default and must be explicitly enabled per run. Files and results are stored only temporarily while the job runs and while results are available to you, then removed automatically.
+      <strong>Privacy:</strong> By default, uploads are processed transiently on our infrastructure for deterministic evaluation only. Optional LLM review is off by default. If you enable it, the uploaded skill content for that run is also sent to Anthropic so it can generate the extra review. Files and results are stored only temporarily while the job runs and while results are available to you, then removed automatically.
     </section>
 
     <section id="results" class="results hidden"></section>
@@ -704,12 +704,12 @@
     <section class="about-grid">
       <article class="panel card">
         <span class="label">Why</span>
-        <p class="summary">Deterministic evaluation is the default so uploads stay on our infrastructure and the result remains predictable. Optional LLM review is an explicit per-run choice.</p>
+        <p class="summary">Deterministic evaluation is the default so uploads stay on our infrastructure and the result remains predictable. Anthropic review is an explicit per-run opt-in.</p>
       </article>
 
       <article class="panel card">
         <span class="label">About</span>
-        <p class="summary">This runs deterministic checks from the official AgentSkills.io specification inside a locked-down container. Optional LLM review, when enabled, is a separate host-side step after the container finishes.</p>
+        <p class="summary">This runs deterministic checks from the official AgentSkills.io specification inside a locked-down container. Optional LLM review, when enabled, sends the uploaded skill content to Anthropic after the container finishes.</p>
       </article>
     </section>
 

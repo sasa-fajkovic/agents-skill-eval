@@ -20,7 +20,6 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -59,25 +58,25 @@ var (
 		"text/x-shellscript": true,
 	}
 	blockedExecutableExtensions = map[string]bool{
-		".apk":  true,
-		".app":  true,
-		".bat":  true,
-		".bin":  true,
-		".cmd":  true,
-		".com":  true,
-		".dll":  true,
-		".dmg":  true,
-		".exe":  true,
+		".apk":    true,
+		".app":    true,
+		".bat":    true,
+		".bin":    true,
+		".cmd":    true,
+		".com":    true,
+		".dll":    true,
+		".dmg":    true,
+		".exe":    true,
 		".gadget": true,
-		".iso":  true,
-		".jar":  true,
-		".msi":  true,
-		".pkg":  true,
-		".ps1":  true,
-		".scr":  true,
-		".so":   true,
-		".vbs":  true,
-		".wsf":  true,
+		".iso":    true,
+		".jar":    true,
+		".msi":    true,
+		".pkg":    true,
+		".ps1":    true,
+		".scr":    true,
+		".so":     true,
+		".vbs":    true,
+		".wsf":    true,
 	}
 	blockedFilenamePatterns = []securityPattern{
 		{pattern: regexp.MustCompile(`(?i)^\.env(?:\..+)?$`), reason: "environment files are not allowed"},
@@ -112,17 +111,18 @@ type redactionPattern struct {
 }
 
 type evalContainerResult struct {
-	Status           string         `json:"status"`
-	SkillName        string         `json:"skill_name"`
-	SkillContent     string         `json:"skill_content"`
-	SupportingContext string        `json:"supporting_context"`
-	Deterministic    map[string]any `json:"deterministic"`
-	Message          string         `json:"message"`
+	Status            string         `json:"status"`
+	SkillName         string         `json:"skill_name"`
+	SkillContent      string         `json:"skill_content"`
+	SupportingContext string         `json:"supporting_context"`
+	Deterministic     map[string]any `json:"deterministic"`
+	Message           string         `json:"message"`
 }
 
 type application struct {
 	rdb         *redis.Client
 	frontendDir string
+	httpClient  *http.Client
 }
 
 type evalJob struct {
@@ -142,6 +142,29 @@ type llmAnalysis struct {
 	Mode          string   `json:"mode,omitempty"`
 }
 
+type anthropicMessageRequest struct {
+	Model     string                   `json:"model"`
+	MaxTokens int                      `json:"max_tokens"`
+	System    string                   `json:"system,omitempty"`
+	Messages  []anthropicMessageRecord `json:"messages"`
+}
+
+type anthropicMessageRecord struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type anthropicMessageResponse struct {
+	Content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content"`
+	Error *struct {
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+}
+
 type gitHubTarget struct {
 	kind     string
 	url      string
@@ -150,7 +173,7 @@ type gitHubTarget struct {
 	ref      string
 	path     string
 	fileName string
-	htmlURL   string
+	htmlURL  string
 }
 
 type gitHubDirectoryEntry struct {
@@ -209,6 +232,7 @@ func main() {
 	app := &application{
 		rdb:         rdb,
 		frontendDir: detectFrontendDir(),
+		httpClient:  &http.Client{Timeout: 45 * time.Second},
 	}
 
 	go app.workerLoop(ctx)
@@ -497,7 +521,7 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 		"--security-opt", "no-new-privileges",
 		"--cap-drop", "ALL",
 		"--user", "1000:1000",
-		"-v", job.InputDir+":/input:ro",
+		"-v", job.InputDir + ":/input:ro",
 		dockerImage,
 	}
 
@@ -752,10 +776,15 @@ func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw
 		if !llmEvaluationConfigured() {
 			_ = app.appendProgress(ctx, job.JobID, "Optional LLM review requested, but the server is not configured for it. Returning deterministic result only.")
 		} else {
-			_ = app.appendProgress(ctx, job.JobID, "Optional LLM review requested. Running host-side review...")
-			generated := generateLLMAnalysis(container.Deterministic)
-			analysis = &generated
-			_ = app.appendProgress(ctx, job.JobID, "Optional LLM review completed.")
+			_ = app.appendProgress(ctx, job.JobID, "LLM evaluation...")
+			generated, err := app.runAnthropicReview(ctx, container)
+			if err != nil {
+				_ = app.appendProgress(ctx, job.JobID, "Optional LLM review failed. Returning deterministic result only.")
+				captureInfraEvent("anthropic_review_failed", err, map[string]string{"component": "llm", "provider": "anthropic"})
+			} else {
+				analysis = &generated
+				_ = app.appendProgress(ctx, job.JobID, "Optional LLM review completed.")
+			}
 		}
 	}
 
@@ -821,60 +850,130 @@ func llmEvaluationConfigured() bool {
 	return strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) != ""
 }
 
-func generateLLMAnalysis(deterministic map[string]any) llmAnalysis {
-	issues := deterministicIssues(deterministic["issues"])
-	analysis := llmAnalysis{
-		Strengths:     []string{"Deterministic checks completed inside an isolated container."},
-		Weaknesses:    []string{},
-		Suggestions:   []string{},
-		SecurityFlags: []string{},
-		QualityTier:   "good",
-		Provider:      "host-configured",
-		Mode:          "opt_in",
+func (app *application) runAnthropicReview(ctx context.Context, container evalContainerResult) (llmAnalysis, error) {
+	prompt := buildAnthropicPrompt(container)
+	reqBody := anthropicMessageRequest{
+		Model:     getenvDefault("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
+		MaxTokens: parseIntDefault(os.Getenv("ANTHROPIC_MAX_TOKENS"), 1200),
+		System:    anthropicSystemPrompt(),
+		Messages: []anthropicMessageRecord{{
+			Role:    "user",
+			Content: prompt,
+		}},
 	}
-	if len(issues) == 0 {
-		analysis.Strengths = append(analysis.Strengths, "The uploaded skill passed all current deterministic checks.")
-		analysis.Suggestions = append(analysis.Suggestions, "Keep examples and supporting context aligned as the skill evolves.")
-		analysis.QualityTier = "excellent"
-		return analysis
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return llmAnalysis{}, errors.New("failed to encode anthropic request")
 	}
-
-	analysis.Weaknesses = append(analysis.Weaknesses, issues...)
-	analysis.Suggestions = append(analysis.Suggestions, uniqueStrings(limitSuggestions(issues))...)
-	analysis.QualityTier = "needs_work"
-	if len(issues) >= 4 {
-		analysis.QualityTier = "poor"
+	endpoint := getenvDefault("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1/messages")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
+	if err != nil {
+		return llmAnalysis{}, errors.New("failed to create anthropic request")
 	}
-	if slices.Contains(issues, "No error handling guidance") {
-		analysis.SecurityFlags = append(analysis.SecurityFlags, "Missing failure guidance can make the skill less safe to operate.")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")))
+	req.Header.Set("anthropic-version", "2023-06-01")
+	client := app.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: 45 * time.Second}
 	}
-	if slices.Contains(issues, "No examples provided") {
-		analysis.Suggestions = append(analysis.Suggestions, "Add a concrete example that shows the expected invocation and output shape.")
+	resp, err := client.Do(req)
+	if err != nil {
+		return llmAnalysis{}, fmt.Errorf("anthropic request failed: %w", err)
 	}
-	return analysis
+	defer resp.Body.Close()
+	limited := io.LimitReader(resp.Body, 1<<20)
+	respBody, err := io.ReadAll(limited)
+	if err != nil {
+		return llmAnalysis{}, errors.New("failed to read anthropic response")
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return llmAnalysis{}, errors.New(parseAnthropicError(respBody, resp.Status))
+	}
+	analysis, err := parseAnthropicAnalysis(respBody)
+	if err != nil {
+		return llmAnalysis{}, err
+	}
+	analysis.Provider = "anthropic"
+	analysis.Mode = "opt_in"
+	analysis.QualityTier = normalizeQualityTier(analysis.QualityTier)
+	analysis.Strengths = uniqueStrings(analysis.Strengths)
+	analysis.Weaknesses = uniqueStrings(analysis.Weaknesses)
+	analysis.Suggestions = uniqueStrings(analysis.Suggestions)
+	analysis.SecurityFlags = uniqueStrings(analysis.SecurityFlags)
+	return analysis, nil
 }
 
-func limitSuggestions(issues []string) []string {
-	results := make([]string, 0, len(issues))
-	for _, issue := range issues {
-		switch issue {
-		case "Missing description section":
-			results = append(results, "Add a short description section explaining the skill's purpose and boundaries.")
-		case "Missing trigger/activation criteria":
-			results = append(results, "Document when the skill should be used and what inputs should trigger it.")
-		case "No examples provided":
-			results = append(results, "Include at least one example so other agents can apply the skill consistently.")
-		case "No error handling guidance":
-			results = append(results, "Explain expected failure modes and the fallback behavior the agent should use.")
-		case "Skill definition is very short (< 200 chars)":
-			results = append(results, "Expand the skill so it includes enough structure to be portable across agents.")
-		case "Skill definition is very long (> 50k chars) - consider splitting":
-			results = append(results, "Split oversized instructions into focused sections or supporting files.")
-		default:
-			results = append(results, "Address the reported deterministic issues before relying on this skill in production.")
+func anthropicSystemPrompt() string {
+	return strings.TrimSpace(`You are evaluating an uploaded SKILL.md package.
+Return exactly one JSON object and nothing else.
+Do not wrap the JSON in markdown fences.
+Use this schema exactly:
+{
+  "strengths": ["string"],
+  "weaknesses": ["string"],
+  "suggestions": ["string"],
+  "security_flags": ["string"],
+  "quality_tier": "excellent|good|needs_work|poor"
+}
+Keep each list concise. Base the review on the uploaded content and deterministic findings provided by the user message.`)
+}
+
+func buildAnthropicPrompt(container evalContainerResult) string {
+	deterministicJSON, _ := json.Marshal(container.Deterministic)
+	skillContent := truncateForLLM(container.SkillContent, 40000)
+	supporting := truncateForLLM(container.SupportingContext, 12000)
+	return strings.TrimSpace("Evaluate this skill package. Focus on portability, clarity, completeness, examples, failure handling, and security posture. Use the deterministic findings as hard constraints.\n\nDeterministic findings:\n" + string(deterministicJSON) + "\n\nPrimary SKILL.md content:\n" + skillContent + "\n\nSupporting context:\n" + supporting)
+}
+
+func parseAnthropicAnalysis(body []byte) (llmAnalysis, error) {
+	var response anthropicMessageResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return llmAnalysis{}, errors.New("failed to decode anthropic response")
+	}
+	text := strings.TrimSpace(joinAnthropicText(response.Content))
+	if text == "" {
+		return llmAnalysis{}, errors.New("anthropic response did not contain text")
+	}
+	text = strings.TrimSpace(strings.TrimPrefix(strings.TrimSuffix(text, "```"), "```json"))
+	var analysis llmAnalysis
+	if err := json.Unmarshal([]byte(text), &analysis); err != nil {
+		return llmAnalysis{}, errors.New("anthropic response did not return valid JSON")
+	}
+	return analysis, nil
+}
+
+func joinAnthropicText(parts []struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}) string {
+	segments := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part.Type == "text" && strings.TrimSpace(part.Text) != "" {
+			segments = append(segments, part.Text)
 		}
 	}
-	return results
+	return strings.Join(segments, "\n")
+}
+
+func parseAnthropicError(body []byte, fallback string) string {
+	var response anthropicMessageResponse
+	if json.Unmarshal(body, &response) == nil && response.Error != nil && strings.TrimSpace(response.Error.Message) != "" {
+		return "anthropic request failed: " + redactSecrets(response.Error.Message)
+	}
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return "anthropic request failed: " + fallback
+	}
+	return "anthropic request failed: " + redactSecrets(trimmed)
+}
+
+func truncateForLLM(text string, maxChars int) string {
+	text = strings.TrimSpace(text)
+	if len(text) <= maxChars {
+		return text
+	}
+	return text[:maxChars] + "\n[truncated]"
 }
 
 func uniqueStrings(values []string) []string {
@@ -892,7 +991,7 @@ func uniqueStrings(values []string) []string {
 }
 
 func qualityTierBaseScore(tier string) int {
-	switch strings.TrimSpace(tier) {
+	switch normalizeQualityTier(tier) {
 	case "excellent":
 		return 95
 	case "good":
@@ -901,6 +1000,19 @@ func qualityTierBaseScore(tier string) int {
 		return 45
 	default:
 		return 70
+	}
+}
+
+func normalizeQualityTier(tier string) string {
+	switch strings.TrimSpace(strings.ToLower(tier)) {
+	case "excellent":
+		return "excellent"
+	case "good":
+		return "good"
+	case "poor":
+		return "poor"
+	default:
+		return "needs_work"
 	}
 }
 

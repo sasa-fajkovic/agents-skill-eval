@@ -11,7 +11,6 @@ SERVER_LOG ?= /tmp/agents-skill-eval-server.log
 SERVER_PID ?= /tmp/agents-skill-eval-server.pid
 
 start:
-	@if [ -z "$$ANTHROPIC_API_KEY" ]; then echo "ANTHROPIC_API_KEY is not set"; exit 1; fi
 	@mkdir -p backend/bin
 	@$(MAKE) stop >/dev/null 2>&1 || true
 	@cd backend && go build -o bin/app .

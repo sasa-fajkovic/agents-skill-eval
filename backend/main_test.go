@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -416,24 +417,123 @@ func TestFinalizeEvaluation(t *testing.T) {
 
 func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
 	old := os.Getenv("ANTHROPIC_API_KEY")
+	oldBaseURL := os.Getenv("ANTHROPIC_BASE_URL")
 	defer func() {
 		if old == "" {
 			_ = os.Unsetenv("ANTHROPIC_API_KEY")
 		} else {
 			_ = os.Setenv("ANTHROPIC_API_KEY", old)
 		}
+		if oldBaseURL == "" {
+			_ = os.Unsetenv("ANTHROPIC_BASE_URL")
+		} else {
+			_ = os.Setenv("ANTHROPIC_BASE_URL", oldBaseURL)
+		}
 	}()
 	_ = os.Setenv("ANTHROPIC_API_KEY", "configured")
 
-	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/messages" {
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.Header.Get("x-api-key"); got != "configured" {
+			t.Fatalf("unexpected api key: %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"content":[{"type":"text","text":"{\"strengths\":[\"Clear scope\"],\"weaknesses\":[\"Missing examples\"],\"suggestions\":[\"Add one end-to-end example\"],\"security_flags\":[\"No explicit failure fallback\"],\"quality_tier\":\"good\"}"}]}`)
+	}))
+	defer server.Close()
+	_ = os.Setenv("ANTHROPIC_BASE_URL", server.URL+"/v1/messages")
+
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), httpClient: server.Client()}
 	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":[]}}`
 
 	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true}, raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) {
+	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"provider":"anthropic"`) {
 		t.Fatalf("expected optional llm payload, got %s", result)
+	}
+}
+
+func TestFinalizeEvaluationWithOptionalLLMFallsBackOnProviderError(t *testing.T) {
+	old := os.Getenv("ANTHROPIC_API_KEY")
+	oldBaseURL := os.Getenv("ANTHROPIC_BASE_URL")
+	defer func() {
+		if old == "" {
+			_ = os.Unsetenv("ANTHROPIC_API_KEY")
+		} else {
+			_ = os.Setenv("ANTHROPIC_API_KEY", old)
+		}
+		if oldBaseURL == "" {
+			_ = os.Unsetenv("ANTHROPIC_BASE_URL")
+		} else {
+			_ = os.Setenv("ANTHROPIC_BASE_URL", oldBaseURL)
+		}
+	}()
+	_ = os.Setenv("ANTHROPIC_API_KEY", "configured")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, `{"error":{"message":"provider down"}}`)
+	}))
+	defer server.Close()
+	_ = os.Setenv("ANTHROPIC_BASE_URL", server.URL)
+
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), httpClient: server.Client()}
+	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":[]}}`
+
+	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true}, raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(result, `"llm_analysis"`) {
+		t.Fatalf("expected deterministic fallback, got %s", result)
+	}
+}
+
+func TestParseAnthropicAnalysis(t *testing.T) {
+	body := []byte("{\"content\":[{\"type\":\"text\",\"text\":\"```json\\n{\\\"strengths\\\":[\\\"Clear\\\"],\\\"weaknesses\\\":[],\\\"suggestions\\\":[],\\\"security_flags\\\":[],\\\"quality_tier\\\":\\\"excellent\\\"}\\n```\"}]}")
+	analysis, err := parseAnthropicAnalysis(body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if analysis.QualityTier != "excellent" || len(analysis.Strengths) != 1 {
+		t.Fatalf("unexpected analysis: %+v", analysis)
+	}
+}
+
+func TestParseAnthropicError(t *testing.T) {
+	msg := parseAnthropicError([]byte(`{"error":{"message":"ANTHROPIC_API_KEY=secret"}}`), "bad gateway")
+	if strings.Contains(msg, "secret") {
+		t.Fatalf("expected secret to be redacted: %q", msg)
+	}
+	if !strings.Contains(msg, "anthropic request failed") {
+		t.Fatalf("unexpected error message: %q", msg)
+	}
+}
+
+func TestBuildAnthropicPrompt(t *testing.T) {
+	prompt := buildAnthropicPrompt(evalContainerResult{
+		SkillContent:      strings.Repeat("a", 20),
+		SupportingContext: "context",
+		Deterministic:     map[string]any{"issues": []any{"missing examples"}},
+	})
+	for _, expected := range []string{"Deterministic findings", "Primary SKILL.md content", "Supporting context"} {
+		if !strings.Contains(prompt, expected) {
+			t.Fatalf("expected %q in prompt: %s", expected, prompt)
+		}
+	}
+}
+
+func TestNormalizeQualityTier(t *testing.T) {
+	if got := normalizeQualityTier("GOOD"); got != "good" {
+		t.Fatalf("unexpected quality tier: %q", got)
+	}
+	if got := normalizeQualityTier("unknown"); got != "needs_work" {
+		t.Fatalf("unexpected fallback quality tier: %q", got)
 	}
 }
 
