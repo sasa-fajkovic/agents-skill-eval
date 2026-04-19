@@ -331,10 +331,14 @@
     }
 
     .site-footer {
-      display: grid;
-      gap: 14px;
-      justify-items: center;
-      padding: 0 0 36px;
+      width: var(--shell);
+      margin: 0 auto;
+      padding: 10px 0 42px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
     }
 
     .footer-links {
@@ -614,15 +618,16 @@
 
   <footer class="site-shell site-footer">
     <div class="footer-links">
-      <a href="/">Evaluate</a>
-      <a href="/about">About</a>
-      <a href="/faq">FAQ</a>
       <a href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
+      <a href="https://linkedin.com/in/sasa-fajkovic" target="_blank" rel="noreferrer">LinkedIn</a>
+      <a href="https://sasa-fajkovic.com/" target="_blank" rel="noreferrer">sasa-fajkovic.com</a>
     </div>
+    <div class="footer-version" id="footer-version">Deployed version: loading</div>
   </footer>
   <script>
     const themeButtons = Array.from(document.querySelectorAll('.theme-option'));
     const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    const footerVersion = document.getElementById('footer-version');
     const THEME_KEY = 'agents-skill-eval-theme';
 
     function applyTheme(theme, persist = true) {
@@ -647,7 +652,25 @@
       button.addEventListener('click', () => applyTheme(button.dataset.themeValue));
     });
 
+    async function loadVersion() {
+      if (!footerVersion) {
+        return;
+      }
+      try {
+        const response = await fetch('/version', { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error('version unavailable');
+        }
+        const payload = await response.json();
+        const commit = String(payload.commit || payload.version || '').trim();
+        footerVersion.textContent = commit ? `Deployed version: ${commit.slice(0, 7)}` : 'Deployed version: unavailable';
+      } catch (error) {
+        footerVersion.textContent = 'Deployed version: unavailable';
+      }
+    }
+
     applyTheme(document.documentElement.dataset.theme, false);
+    loadVersion();
   </script>
 </body>
 </html>
