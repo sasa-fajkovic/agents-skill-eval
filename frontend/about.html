@@ -1,10 +1,24 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>About | agents-skill-eval</title>
   <meta name="theme-color" content="#0a0a0a">
+  <script>
+    try {
+      const storedTheme = localStorage.getItem('agents-skill-eval-theme');
+      if (storedTheme === 'light' || storedTheme === 'dark') {
+        document.documentElement.dataset.theme = storedTheme;
+        const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+        if (themeColorMeta) {
+          themeColorMeta.setAttribute('content', storedTheme === 'light' ? '#f3f4f6' : '#0a0a0a');
+        }
+      }
+    } catch (error) {
+      // Ignore storage access errors and fall back to dark.
+    }
+  </script>
   <style>
     :root {
       color-scheme: dark;
@@ -12,15 +26,17 @@
       --panel: rgba(11, 18, 28, 0.92);
       --panel-strong: rgba(14, 23, 36, 0.96);
       --line: rgba(148, 163, 184, 0.14);
+      --line-strong: rgba(148, 163, 184, 0.28);
       --text: #f8fafc;
       --muted: #a5b4c7;
       --subtle: #7b8ca4;
-      --brand: #38bdf8;
-      --brand-strong: #2563eb;
+      --brand: #ef4444;
       --radius: 24px;
       --radius-sm: 18px;
       --shadow: 0 24px 80px rgba(2, 6, 23, 0.45);
       --mono: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --shell: min(1180px, calc(100% - 40px));
     }
 
     * { box-sizing: border-box; }
@@ -38,49 +54,147 @@
 
     a { color: inherit; }
 
+    :where(a, button, .brand-lockup):focus-visible {
+      outline: 2px solid #38bdf8;
+      outline-offset: 3px;
+    }
+
     .site-shell {
-      width: min(1180px, calc(100% - 40px));
+      width: var(--shell);
       margin: 0 auto;
     }
 
     .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 24px;
-      padding: 28px 0 0;
+      gap: 16px;
+      padding: 14px 0 10px;
     }
 
     .brand-lockup {
       display: inline-flex;
       align-items: center;
-      gap: 14px;
-      color: var(--text);
+      gap: 12px;
+      padding: 10px 16px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(8, 11, 16, 0.74);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
       text-decoration: none;
-      font-weight: 700;
+      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+    }
+
+    .brand-lockup:hover {
+      transform: translateY(-1px);
+      border-color: var(--line-strong);
+      background: rgba(15, 23, 34, 0.88);
+    }
+
+    .brand-lockup:hover .brand-mark {
+      transform: scale(1.18);
+      box-shadow: 0 0 24px rgba(239, 68, 68, 0.65);
+    }
+
+    .brand-lockup:hover .brand-name {
+      color: #f87171;
     }
 
     .brand-mark {
-      width: 16px;
-      height: 16px;
+      width: 12px;
+      height: 12px;
       border-radius: 999px;
-      background: linear-gradient(135deg, var(--brand), #22c55e);
-      box-shadow: 0 0 22px rgba(56, 189, 248, 0.4);
+      background: linear-gradient(135deg, #fb7185, #ef4444 55%, #7f1d1d);
+      box-shadow: 0 0 18px rgba(239, 68, 68, 0.5);
+      transition: transform 180ms ease, box-shadow 180ms ease;
+    }
+
+    .brand-name {
+      color: var(--brand);
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      transition: color 180ms ease;
     }
 
     .header-nav {
-      display: inline-flex;
-      gap: 16px;
+      display: flex;
       align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      min-width: 0;
+      padding: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(8, 11, 16, 0.74);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+    }
+
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(15, 23, 34, 0.82);
+    }
+
+    .theme-option {
+      min-height: 32px;
+      padding: 7px 12px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--subtle);
+      font-family: var(--mono);
+      font-size: 12px;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+    }
+
+    .theme-option:hover {
+      background: rgba(15, 23, 34, 0.92);
+      color: var(--text);
+    }
+
+    .theme-option[aria-pressed="true"] {
+      border-color: var(--line);
+      background: rgba(248, 250, 252, 0.08);
+      color: var(--text);
     }
 
     .nav-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 10px 14px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      background: transparent;
       color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
       text-decoration: none;
-      font-weight: 600;
+      white-space: nowrap;
+      transition: border-color 140ms ease, color 140ms ease, transform 140ms ease, background 140ms ease;
     }
 
-    .nav-link:hover { color: var(--text); }
+    .nav-link:hover {
+      color: var(--text);
+      background: rgba(15, 23, 34, 0.92);
+      transform: translateY(-1px);
+    }
 
     .page {
       display: grid;
@@ -241,42 +355,137 @@
 
     .footer-links a:hover { color: var(--text); }
 
+    html[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f3f4f6;
+      --panel: #ffffff;
+      --panel-strong: #ffffff;
+      --line: rgba(15, 23, 42, 0.16);
+      --line-strong: rgba(15, 23, 42, 0.28);
+      --text: #111827;
+      --muted: #334155;
+      --subtle: #475569;
+      --brand: #dc2626;
+      --shadow: none;
+    }
+
+    html[data-theme="light"] body {
+      background:
+        radial-gradient(circle at top left, rgba(239, 68, 68, 0.05), transparent 22%),
+        linear-gradient(180deg, #f3f4f6 0%, #eef2f7 100%);
+    }
+
+    html[data-theme="light"] .brand-lockup,
+    html[data-theme="light"] .header-nav,
+    html[data-theme="light"] .theme-toggle {
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: none;
+    }
+
+    html[data-theme="light"] .brand-lockup:hover {
+      background: #ffffff;
+    }
+
+    html[data-theme="light"] .brand-lockup:hover .brand-name {
+      color: #dc2626;
+    }
+
+    html[data-theme="light"] .nav-link:hover,
+    html[data-theme="light"] .theme-option:hover,
+    html[data-theme="light"] .theme-option[aria-pressed="true"] {
+      background: rgba(15, 23, 42, 0.06);
+    }
+
+    html[data-theme="light"] :where(a, button, .brand-lockup):focus-visible {
+      outline-color: #0284c7;
+    }
+
+    html[data-theme="light"] .section-label,
+    html[data-theme="light"] .eyebrow {
+      color: #dc2626;
+    }
+
+    html[data-theme="light"] .panel,
+    html[data-theme="light"] .callout,
+    html[data-theme="light"] .terminal {
+      background: #ffffff;
+      box-shadow: none;
+    }
+
+    html[data-theme="light"] .terminal {
+      background: #f8fafc;
+    }
+
+    html[data-theme="light"] .terminal-bar {
+      background: #e2e8f0;
+      color: #475569;
+    }
+
+    html[data-theme="light"] .terminal-body {
+      color: #0f172a;
+    }
+
+    html[data-theme="light"] .footer-links a,
+    html[data-theme="light"] .footer-version {
+      color: #475569;
+    }
+
+    @media (max-width: 980px) {
+      .site-header {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .header-nav {
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 8px;
+        border-radius: 24px;
+      }
+
+      .header-nav .theme-toggle {
+        flex: 0 0 100%;
+        width: fit-content;
+      }
+
+      .header-nav .nav-link,
+      .header-nav button {
+        min-height: 36px;
+        padding: 8px 12px;
+        font-size: 11px;
+      }
+    }
+
     @media (max-width: 720px) {
       .site-shell {
         width: min(100% - 24px, 1180px);
       }
 
-      .hero,
       .callout,
       .panel { padding: 22px; }
-
-      .site-header {
-        flex-direction: column;
-        align-items: flex-start;
-      }
     }
   </style>
 </head>
 <body>
   <header class="site-header site-shell">
-    <a class="brand-lockup" href="/" aria-label="Go to evaluator homepage">
+    <a class="brand-lockup" href="/" aria-label="Go to homepage">
       <span class="brand-mark" aria-hidden="true"></span>
-      <span>agents-skill-eval</span>
+      <span class="brand-name">agents-skill-eval</span>
     </a>
     <nav class="header-nav" aria-label="Primary">
+      <div class="theme-toggle" role="group" aria-label="Theme selector">
+        <button type="button" class="theme-option" data-theme-value="light" aria-pressed="false">Light</button>
+        <button type="button" class="theme-option" data-theme-value="dark" aria-pressed="true">Dark</button>
+      </div>
       <a class="nav-link" href="/">Evaluate</a>
+      <a class="nav-link" href="/about">About</a>
       <a class="nav-link" href="/faq">FAQ</a>
       <a class="nav-link" href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
     </nav>
   </header>
 
   <main class="site-shell page">
-    <section class="hero">
-      <span class="section-label">About the evaluator</span>
-      <h1>Everything around the evaluator, without crowding the homepage.</h1>
-      <p>The main page now focuses only on running evaluations. This page keeps the supporting context: runtime boundaries, efficiency framing, scoring preview, and the reasoning behind the product.</p>
-    </section>
-
     <section>
       <div class="section-head">
         <span class="section-label">Run boundary</span>
@@ -406,9 +615,39 @@
   <footer class="site-shell site-footer">
     <div class="footer-links">
       <a href="/">Evaluate</a>
+      <a href="/about">About</a>
       <a href="/faq">FAQ</a>
       <a href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
     </div>
   </footer>
+  <script>
+    const themeButtons = Array.from(document.querySelectorAll('.theme-option'));
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    const THEME_KEY = 'agents-skill-eval-theme';
+
+    function applyTheme(theme, persist = true) {
+      const resolvedTheme = theme === 'light' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = resolvedTheme;
+      if (themeColorMeta) {
+        themeColorMeta.setAttribute('content', resolvedTheme === 'light' ? '#f3f4f6' : '#0a0a0a');
+      }
+      themeButtons.forEach((button) => {
+        const isActive = button.dataset.themeValue === resolvedTheme;
+        button.setAttribute('aria-pressed', String(isActive));
+      });
+      if (!persist) return;
+      try {
+        localStorage.setItem(THEME_KEY, resolvedTheme);
+      } catch (error) {
+        // Ignore storage access errors.
+      }
+    }
+
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => applyTheme(button.dataset.themeValue));
+    });
+
+    applyTheme(document.documentElement.dataset.theme, false);
+  </script>
 </body>
 </html>

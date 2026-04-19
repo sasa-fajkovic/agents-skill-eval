@@ -874,7 +874,24 @@
     }
 
     .upload-actions {
+      display: grid;
+      grid-template-columns: auto minmax(220px, 1fr) auto;
+      align-items: stretch;
       margin-top: 2px;
+    }
+
+    .upload-actions #upload-button {
+      min-height: 52px;
+      width: 100%;
+      padding: 12px 22px;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 28px rgba(22, 163, 74, 0.16);
+    }
+
+    .upload-actions #upload-button:hover {
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 14px 34px rgba(22, 163, 74, 0.22);
     }
 
     button {
@@ -2405,6 +2422,10 @@
       }
 
       .score-card-top {
+        grid-template-columns: 1fr;
+      }
+
+      .upload-actions {
         grid-template-columns: 1fr;
       }
     }

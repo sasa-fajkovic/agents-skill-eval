@@ -232,11 +232,12 @@
       transition: color 180ms ease;
     }
 
-    .nav {
+    .header-nav {
       display: flex;
       align-items: center;
       gap: 10px;
       flex-wrap: wrap;
+      justify-content: flex-end;
       min-width: 0;
       padding: 6px;
       border: 1px solid var(--line);
@@ -281,7 +282,7 @@
       color: var(--text);
     }
 
-    .nav a {
+    .nav-link {
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -295,21 +296,21 @@
       font-size: 12px;
       white-space: nowrap;
       text-decoration: none;
-      transition: border-color 140ms ease, color 140ms ease, transform 140ms ease;
+      transition: border-color 140ms ease, color 140ms ease, transform 140ms ease, background 140ms ease;
     }
 
-    .nav a:hover {
+    .nav-link:hover {
       color: var(--text);
       border-color: var(--line-strong);
       transform: translateY(-1px);
     }
 
-    .nav a {
+    .nav-link {
       border-color: transparent;
       background: transparent;
     }
 
-    .nav a:hover {
+    .nav-link:hover {
       background: rgba(15, 23, 34, 0.92);
     }
 
@@ -347,7 +348,7 @@
     }
 
     html[data-theme="light"] .brand-lockup,
-    html[data-theme="light"] .nav,
+    html[data-theme="light"] .header-nav,
     html[data-theme="light"] .theme-toggle {
       background: rgba(255, 255, 255, 0.96);
       box-shadow: none;
@@ -361,7 +362,7 @@
       color: #dc2626;
     }
 
-    html[data-theme="light"] .nav a:hover,
+    html[data-theme="light"] .nav-link:hover,
     html[data-theme="light"] .theme-option:hover,
     html[data-theme="light"] .theme-option[aria-pressed="true"] {
       background: rgba(15, 23, 42, 0.06);
@@ -593,7 +594,7 @@
         flex-direction: column;
       }
 
-      .nav {
+      .header-nav {
         width: 100%;
         flex-wrap: wrap;
         justify-content: flex-start;
@@ -601,12 +602,13 @@
         border-radius: 24px;
       }
 
-      .nav .theme-toggle {
+      .header-nav .theme-toggle {
         flex: 0 0 100%;
         width: fit-content;
       }
 
-      .nav a {
+      .header-nav .nav-link,
+      .header-nav button {
         min-height: 36px;
         padding: 8px 12px;
         font-size: 11px;
@@ -652,13 +654,15 @@
       <span class="brand-mark" aria-hidden="true"></span>
       <span class="brand-name">agents-skill-eval</span>
     </a>
-    <nav class="nav" aria-label="Primary">
+    <nav class="header-nav" aria-label="Primary">
       <div class="theme-toggle" role="group" aria-label="Theme selector">
         <button type="button" class="theme-option" data-theme-value="light" aria-pressed="false">Light</button>
         <button type="button" class="theme-option" data-theme-value="dark" aria-pressed="true">Dark</button>
       </div>
-      <a href="/">Evaluator</a>
-      <a href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
+      <a class="nav-link" href="/">Evaluate</a>
+      <a class="nav-link" href="/about">About</a>
+      <a class="nav-link" href="/faq">FAQ</a>
+      <a class="nav-link" href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
     </nav>
   </header>
 
