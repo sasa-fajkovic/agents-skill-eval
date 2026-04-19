@@ -89,6 +89,9 @@ An optional provider-backed review path can be enabled explicitly per run. If it
 - `GET /version`
   Returns deployed version and commit metadata.
 
+- `GET /about`
+  Serves the supporting product context that used to live on the homepage.
+
 - `POST /upload`
   Accepts multipart file uploads and/or a `githubUrl` form field.
 
@@ -101,6 +104,8 @@ An optional provider-backed review path can be enabled explicitly per run. If it
 
 ## Frontend Behavior
 
+- The homepage keeps only the evaluator flow and live run/result surfaces.
+- Supporting product context now lives on `/about` so the evaluator stays focused.
 - The `Run evaluation` button is intentionally large and clear.
 - The button is disabled for the full lifetime of an in-flight job.
 - While a job is running, the label changes to `Evaluation running...`.
@@ -229,6 +234,51 @@ The actions in these workflows were updated to newer major versions, including:
 - Caddy handles HTTP serving and domain routing.
 - `agents-skill-eval.com` is live.
 - `www` redirect behavior was fixed separately and is expected to keep pointing at the root domain.
+
+### Droplet Bootstrap
+
+For a fresh droplet, the minimum working setup is:
+
+1. Install Docker and make sure the `deploy` user is in the `docker` group.
+2. Create `/home/deploy/.zshenv` with runtime secrets and model settings:
+
+```bash
+export ANTHROPIC_API_KEY=...
+export OPENAI_API_KEY=...
+export ANTHROPIC_MODEL=claude-sonnet-4-6
+export OPENAI_MODEL=gpt-5.3-chat-latest
+export SENTRY_ENVIRONMENT=production
+export APP_ENV=production
+export DISABLE_ABUSE_PROTECTION=false
+```
+
+3. Set ownership and permissions:
+
+```bash
+chown deploy:deploy /home/deploy/.zshenv
+chmod 600 /home/deploy/.zshenv
+```
+
+4. Install `docker/deploy-check.sh` to `/opt/agents-skill-eval/deploy-check.sh`.
+5. Install systemd units:
+   - `/etc/systemd/system/agents-skill-eval-poll.service`
+   - `/etc/systemd/system/agents-skill-eval-poll.timer`
+6. Reload and enable the timer:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now agents-skill-eval-poll.timer
+```
+
+7. Start one manual deployment check:
+
+```bash
+sudo systemctl restart agents-skill-eval-poll.service
+curl -fsS http://127.0.0.1:8080/health
+curl -fsS http://127.0.0.1:8080/version
+```
+
+The timer then checks GHCR every 60 seconds and restarts the app container when a new image digest appears.
 
 ## Environment Variables
 

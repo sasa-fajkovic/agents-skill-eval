@@ -306,6 +306,7 @@ func (app *application) routes() http.Handler {
 	mux.HandleFunc("GET /version", app.handleVersion)
 	mux.HandleFunc("POST /upload", app.handleUpload)
 	mux.HandleFunc("GET /result/", app.handleResult)
+	mux.HandleFunc("GET /about", app.handleAbout)
 	mux.HandleFunc("GET /faq", app.handleFAQ)
 	mux.HandleFunc("GET /robots.txt", app.handleRobots)
 	mux.HandleFunc("GET /sitemap.xml", app.handleSitemap)
@@ -503,6 +504,10 @@ func (app *application) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (app *application) handleFAQ(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(app.frontendDir, "faq.html"))
+}
+
+func (app *application) handleAbout(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, filepath.Join(app.frontendDir, "about.html"))
 }
 
 func (app *application) handleRobots(w http.ResponseWriter, r *http.Request) {

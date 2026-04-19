@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>About | agents-skill-eval</title>
+  <meta name="theme-color" content="#0a0a0a">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #05080c;
+      --panel: rgba(11, 18, 28, 0.92);
+      --panel-strong: rgba(14, 23, 36, 0.96);
+      --line: rgba(148, 163, 184, 0.14);
+      --text: #f8fafc;
+      --muted: #a5b4c7;
+      --subtle: #7b8ca4;
+      --brand: #38bdf8;
+      --brand-strong: #2563eb;
+      --radius: 24px;
+      --radius-sm: 18px;
+      --shadow: 0 24px 80px rgba(2, 6, 23, 0.45);
+      --mono: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 24%),
+        radial-gradient(circle at top right, rgba(16, 185, 129, 0.08), transparent 18%),
+        linear-gradient(180deg, #05080c, #071018 40%, #04070b 100%);
+      color: var(--text);
+      font: 400 16px/1.7 Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a { color: inherit; }
+
+    .site-shell {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    .site-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 28px 0 0;
+    }
+
+    .brand-lockup {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .brand-mark {
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--brand), #22c55e);
+      box-shadow: 0 0 22px rgba(56, 189, 248, 0.4);
+    }
+
+    .header-nav {
+      display: inline-flex;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .nav-link {
+      color: var(--muted);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .nav-link:hover { color: var(--text); }
+
+    .page {
+      display: grid;
+      gap: 40px;
+      padding: 40px 0 64px;
+    }
+
+    .hero,
+    .panel,
+    .callout {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .hero,
+    .callout {
+      padding: 34px;
+    }
+
+    .hero h1,
+    .section-head h2,
+    .callout h2 {
+      margin: 0;
+      font-size: clamp(36px, 5vw, 58px);
+      line-height: 1.04;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p,
+    .section-head p,
+    .callout p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 68ch;
+    }
+
+    .section-label,
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--subtle);
+      font: 600 12px/1 var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+    }
+
+    .section-label::before,
+    .eyebrow::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--brand), #22c55e);
+      box-shadow: 0 0 14px rgba(56, 189, 248, 0.5);
+    }
+
+    .section-head {
+      display: grid;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 22px;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    }
+
+    .panel {
+      padding: 24px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .panel strong {
+      font-size: 18px;
+    }
+
+    .panel p,
+    .panel li,
+    .callout p {
+      color: var(--muted);
+    }
+
+    .panel ul {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .terminal {
+      overflow: hidden;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: rgba(6, 9, 14, 0.9);
+      box-shadow: var(--shadow);
+    }
+
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font: 600 12px/1 var(--mono);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .terminal-dots {
+      display: inline-flex;
+      gap: 8px;
+    }
+
+    .terminal-dots span {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.36);
+    }
+
+    .terminal-body {
+      padding: 20px;
+      color: #cbd5e1;
+      font: 400 12px/1.8 var(--mono);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .site-footer {
+      display: grid;
+      gap: 14px;
+      justify-items: center;
+      padding: 0 0 36px;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .footer-links a,
+    .footer-version {
+      color: var(--subtle);
+      text-decoration: none;
+      font: 600 12px/1 var(--mono);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .footer-links a:hover { color: var(--text); }
+
+    @media (max-width: 720px) {
+      .site-shell {
+        width: min(100% - 24px, 1180px);
+      }
+
+      .hero,
+      .callout,
+      .panel { padding: 22px; }
+
+      .site-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header site-shell">
+    <a class="brand-lockup" href="/" aria-label="Go to evaluator homepage">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>agents-skill-eval</span>
+    </a>
+    <nav class="header-nav" aria-label="Primary">
+      <a class="nav-link" href="/">Evaluate</a>
+      <a class="nav-link" href="/faq">FAQ</a>
+      <a class="nav-link" href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main class="site-shell page">
+    <section class="hero">
+      <span class="section-label">About the evaluator</span>
+      <h1>Everything around the evaluator, without crowding the homepage.</h1>
+      <p>The main page now focuses only on running evaluations. This page keeps the supporting context: runtime boundaries, efficiency framing, scoring preview, and the reasoning behind the product.</p>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <span class="section-label">Run boundary</span>
+        <h2>What happens during an evaluation run.</h2>
+        <p>Local folder uploads and GitHub skill URLs feed the same evaluator and return the same report format.</p>
+      </div>
+      <div class="grid">
+        <article class="panel">
+          <strong>Equal entry paths</strong>
+          <p>Local folder uploads and GitHub skill URLs feed the same evaluator and return the same report format.</p>
+        </article>
+        <article class="panel">
+          <strong>Default path</strong>
+          <p>Deterministic checks only. No third-party AI provider is used unless the optional review box is enabled for that run.</p>
+        </article>
+        <article class="panel">
+          <strong>Optional AI review</strong>
+          <p>Per-run opt-in. Adds an external review step after deterministic extraction and scoring.</p>
+        </article>
+        <article class="panel">
+          <strong>What the evaluator checks</strong>
+          <p>Skill structure, trigger guidance, examples, failure handling, portability cues, and security-sensitive patterns.</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <span class="section-label">Efficiency model</span>
+        <h2>Token waste becomes visible fast.</h2>
+        <p>Illustrative estimates only. Exact token and cost savings depend on the runtime, model, prompt framing, and skill quality.</p>
+      </div>
+      <div class="grid">
+        <article class="panel">
+          <strong>Before optimization</strong>
+          <p>~12,400 tokens per run. Loose trigger text, vague instructions, and noisy context increase token drag per activation.</p>
+        </article>
+        <article class="panel">
+          <strong>After optimization</strong>
+          <p>~4,100 tokens per run. Clear triggers, tighter IO, and portable helper scripts reduce repeated context and wasted turns.</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <span class="section-label">How it works</span>
+        <h2>Three steps from upload to structured feedback.</h2>
+        <p>Upload a skill package, run deterministic checks, and review the structured result.</p>
+      </div>
+      <div class="grid">
+        <article class="panel">
+          <strong>01. Upload SKILL.md plus supporting files</strong>
+          <p>Provide a local folder or GitHub reference so the evaluator can inspect the full skill package instead of a disconnected markdown file.</p>
+        </article>
+        <article class="panel">
+          <strong>02. Run deterministic checks</strong>
+          <p>The package is validated and evaluated by the production evaluator. Optional AI review runs only after that deterministic step.</p>
+        </article>
+        <article class="panel">
+          <strong>03. Get structured feedback</strong>
+          <p>Results include score, quality tier, deterministic checklist, and optional review fields that are easy to scan and compare.</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <span class="section-label">Why it matters</span>
+        <h2>Skill quality affects cost, trigger behavior, and risk.</h2>
+        <p>Well-written skills reduce wasted context, tighten activation boundaries, and expose security problems earlier.</p>
+      </div>
+      <div class="grid">
+        <article class="panel">
+          <strong>Illustrative trigger quality</strong>
+          <p>Baseline 72%, refined 94%. Agent runtimes often use a skill's name and description to decide when it should trigger.</p>
+        </article>
+        <article class="panel">
+          <strong>Security signal</strong>
+          <p>36.82% of public skills in Snyk's February 2026 ToxicSkills study had at least one security issue, and 13.4% had at least one critical issue.</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <span class="section-label">Evaluation preview</span>
+        <h2>Preview the result format before running an evaluation.</h2>
+        <p>Preview the score, deterministic checks, and optional AI review fields returned by the live evaluator.</p>
+      </div>
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span>sample-result.json</span>
+          <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+        </div>
+        <div class="terminal-body">{
+  "status": "ok",
+  "skill_name": "dependency-upgrade-reviewer",
+  "overall_score": 92,
+  "overall_tier": "excellent",
+  "summary": "Clear trigger cues, complete examples, and isolated helper scripts keep the activation lean.",
+  "deterministic": {
+    "has_description": true,
+    "has_trigger_section": true,
+    "has_examples": true,
+    "has_error_handling": true,
+    "issues": []
+  },
+  "llm_analysis": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6",
+    "quality_tier": "excellent",
+    "strengths": ["Tight trigger language", "Concrete usage examples"],
+    "suggestions": ["Keep helper scripts strictly portable"]
+  }
+}</div>
+      </div>
+    </section>
+
+    <section class="callout">
+      <span class="eyebrow">Evaluation model</span>
+      <h2>What the evaluator optimizes for.</h2>
+      <p>High-quality skills reduce wasted context, tighten trigger boundaries, make helper scripts more portable, and surface safety issues before a skill gets reused across teams or runtimes.</p>
+    </section>
+  </main>
+
+  <footer class="site-shell site-footer">
+    <div class="footer-links">
+      <a href="/">Evaluate</a>
+      <a href="/faq">FAQ</a>
+      <a href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
+    </div>
+  </footer>
+</body>
+</html>

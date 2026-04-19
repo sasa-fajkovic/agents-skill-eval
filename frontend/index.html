@@ -1448,20 +1448,54 @@
     }
 
     .result-list {
+      list-style: none;
       margin: 0;
-      padding-left: 18px;
+      padding: 0;
+      display: grid;
+      gap: 10px;
       color: var(--muted);
-      line-height: 1.9;
+      line-height: 1.7;
       font-size: 15px;
     }
 
     .result-list li {
+      position: relative;
+      padding-left: 18px;
       color: var(--text);
       font-weight: 500;
     }
 
-    .result-list li::marker {
-      color: var(--brand);
+    .result-list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.7em;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--brand);
+      box-shadow: 0 0 10px color-mix(in srgb, var(--brand) 65%, transparent);
+      transform: translateY(-50%);
+    }
+
+    .result-list.strengths li::before {
+      background: #22c55e;
+      box-shadow: 0 0 10px rgba(34, 197, 94, 0.55);
+    }
+
+    .result-list.weaknesses li::before {
+      background: #f97316;
+      box-shadow: 0 0 10px rgba(249, 115, 22, 0.55);
+    }
+
+    .result-list.suggestions li::before {
+      background: #eab308;
+      box-shadow: 0 0 10px rgba(234, 179, 8, 0.5);
+    }
+
+    .result-list.security li::before {
+      background: #ef4444;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.55);
     }
 
     .checklist {
@@ -2502,6 +2536,7 @@
         <button type="button" class="theme-option" data-theme-value="dark" aria-pressed="true">Dark</button>
       </div>
       <a class="nav-link" href="#evaluate">Evaluate</a>
+      <a class="nav-link" href="/about">About</a>
       <a class="nav-link" href="/faq">FAQ</a>
       <a class="nav-link" href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
     </nav>
@@ -2549,12 +2584,6 @@
             </article>
           </div>
 
-          <div class="upload-actions">
-            <button id="pick-folder-button" type="button">Choose folder</button>
-            <button id="upload-button" type="button" class="primary">Run evaluation</button>
-            <button id="clear-button" type="button">Clear</button>
-          </div>
-
           <div class="llm-option">
             <label for="enable-llm">
               <input id="enable-llm" type="checkbox">
@@ -2570,6 +2599,12 @@
                 <option value="openai">OpenAI</option>
               </select>
             </div>
+          </div>
+
+          <div class="upload-actions">
+            <button id="pick-folder-button" type="button">Choose folder</button>
+            <button id="upload-button" type="button" class="primary">Run evaluation</button>
+            <button id="clear-button" type="button">Clear</button>
           </div>
 
           <div>
@@ -2591,293 +2626,6 @@
         <section id="results" class="results hidden"></section>
       </div>
 
-      <aside class="panel upload-side boundary-panel">
-        <div class="section-head">
-          <span class="section-label">Run boundary</span>
-          <p>Runtime boundaries, privacy behavior, and evaluation scope.</p>
-        </div>
-          <div class="boundary-grid">
-            <div class="support-card">
-              <strong>Equal entry paths</strong>
-              <span>Local folder uploads and GitHub skill URLs feed the same evaluator and return the same report format.</span>
-            </div>
-            <div class="support-card">
-              <strong>Default path</strong>
-              <span>Deterministic checks only. No third-party AI provider is used unless the optional review box is enabled for that run.</span>
-            </div>
-            <div class="support-card">
-              <strong>Optional AI review</strong>
-              <span>Per-run opt-in. Adds an external review step after deterministic extraction and scoring.</span>
-            </div>
-            <div class="support-card">
-              <strong>What the evaluator checks</strong>
-              <span>Skill structure, trigger guidance, examples, failure handling, portability cues, and security-sensitive patterns.</span>
-          </div>
-        </div>
-        <p class="privacy-copy">Files and results are stored only while the run is active and the result is retrievable. Uploaded content is not sent to third-party AI providers unless the optional review box is selected for that run.</p>
-      </aside>
-    </section>
-
-    <section class="section token-section" id="token-roi">
-      <aside class="hero-visual token-panel" id="hero-metrics" aria-labelledby="token-visual-title">
-        <div class="visual-header">
-          <div>
-            <span class="section-label">Illustrative efficiency model</span>
-            <h2 id="token-visual-title">Token waste becomes visible fast.</h2>
-          </div>
-          <span class="estimate-note">Illustrative estimates</span>
-        </div>
-
-        <div class="token-visual">
-          <div class="token-lane">
-            <article class="token-card poor">
-              <div class="counter-header">
-                <span>Before optimization</span>
-                <span class="status-pill poor">High burn</span>
-              </div>
-              <div class="counter-value" id="before-counter" data-value="12400">~12,400</div>
-              <div class="counter-subtext">tokens per run</div>
-              <p class="support-copy">Loose trigger text, vague instructions, and noisy context increase token drag per activation.</p>
-            </article>
-
-            <div class="delta-column" aria-hidden="true">
-              <span class="delta-arrow">→</span>
-              <span class="reduction-badge" id="reduction-badge">67% lower</span>
-            </div>
-
-            <article class="token-card good">
-              <div class="counter-header">
-                <span>After optimization</span>
-                <span class="status-pill good">Lean path</span>
-              </div>
-              <div class="counter-value" id="after-counter" data-value="4100">~4,100</div>
-              <div class="counter-subtext">tokens per run</div>
-              <p class="support-copy">Clear triggers, tighter IO, and portable helper scripts reduce repeated context and wasted turns.</p>
-            </article>
-          </div>
-        </div>
-
-        <p class="token-note">Illustrative estimate only. Exact token and cost savings depend on the runtime, model, prompt framing, and skill quality.</p>
-      </aside>
-    </section>
-
-    <section class="section">
-      <div class="section-head">
-        <span class="section-label">How it works</span>
-        <h2>Three steps from upload to structured feedback.</h2>
-        <p>Upload a skill package, run deterministic checks, and review the structured result.</p>
-      </div>
-      <div class="steps-grid">
-        <article class="step-card">
-          <span class="step-index">01</span>
-          <strong>Upload <code>SKILL.md</code> plus supporting files</strong>
-          <p>Provide a local folder or GitHub reference so the evaluator can inspect the full skill package instead of a disconnected markdown file.</p>
-        </article>
-        <article class="step-card">
-          <span class="step-index">02</span>
-          <strong>Run deterministic checks in a sandbox</strong>
-          <p>The package is validated and evaluated inside an isolated container. Optional AI review runs only after that deterministic step.</p>
-        </article>
-        <article class="step-card">
-          <span class="step-index">03</span>
-          <strong>Get structured reasons for every flag</strong>
-          <p>Results include score, quality tier, deterministic checklist, and optional review fields that are easy to scan and compare.</p>
-        </article>
-      </div>
-    </section>
-
-    <section class="section" id="why-it-matters">
-      <div class="section-head">
-        <span class="section-label">Why it matters</span>
-        <h2>Skill quality affects cost, trigger behavior, and risk.</h2>
-        <p>Well-written skills are not only easier to reuse. They also reduce wasted context, tighten activation boundaries, and expose security problems earlier.</p>
-      </div>
-
-      <div class="impact-grid">
-        <article class="impact-card chart-card panel" data-observe>
-          <span class="section-label">Illustrative cost model</span>
-          <div class="stat-strip">
-            <span class="stat-token">Cost per 1,000 runs</span>
-            <span class="stat-token">Tokens per activation</span>
-          </div>
-          <div class="chart-compare">
-            <section class="chart-group poor">
-              <strong>Poor skill quality</strong>
-              <p class="support-copy">Vague descriptions and loose trigger boundaries increase repeated context and extra corrective turns.</p>
-              <div class="chart-metrics">
-                <div class="metric-row">
-                  <div class="metric-meta">
-                    <span class="metric-name">Run cost</span>
-                    <span class="metric-value">$38 / 1k</span>
-                  </div>
-                  <div class="metric-track"><div class="metric-fill poor" style="--fill-width: 88%;"></div></div>
-                </div>
-                <div class="metric-row">
-                  <div class="metric-meta">
-                    <span class="metric-name">Token load</span>
-                    <span class="metric-value">12.4k tokens</span>
-                  </div>
-                  <div class="metric-track"><div class="metric-fill poor" style="--fill-width: 96%;"></div></div>
-                </div>
-              </div>
-            </section>
-
-            <section class="chart-group good">
-              <strong>Well-written skill</strong>
-              <p class="support-copy">Sharper descriptions and tighter helper boundaries reduce unnecessary context and keep activations lean.</p>
-              <div class="chart-metrics">
-                <div class="metric-row">
-                  <div class="metric-meta">
-                    <span class="metric-name">Run cost</span>
-                    <span class="metric-value">$12 / 1k</span>
-                  </div>
-                  <div class="metric-track"><div class="metric-fill good" style="--fill-width: 34%;"></div></div>
-                </div>
-                <div class="metric-row">
-                  <div class="metric-meta">
-                    <span class="metric-name">Token load</span>
-                    <span class="metric-value">4.1k tokens</span>
-                  </div>
-                  <div class="metric-track"><div class="metric-fill good" style="--fill-width: 38%;"></div></div>
-                </div>
-              </div>
-            </section>
-          </div>
-          <p class="token-note">Illustrative estimates only. Costs and token counts vary by model, runtime, and prompt strategy.</p>
-        </article>
-
-        <article class="impact-card panel" data-observe id="trigger-gauge-card">
-          <span class="section-label">Trigger quality</span>
-          <div class="gauge-shell">
-            <div class="gauge-frame">
-              <svg class="gauge-svg" viewBox="0 0 240 140" aria-hidden="true">
-                <defs>
-                  <linearGradient id="gaugeGradient" x1="0%" x2="100%" y1="0%" y2="0%">
-                    <stop offset="0%" stop-color="#38bdf8"></stop>
-                    <stop offset="100%" stop-color="#22c55e"></stop>
-                  </linearGradient>
-                </defs>
-                <path class="gauge-track" d="M20 120 A100 100 0 0 1 220 120"></path>
-                <path class="gauge-progress" id="gauge-progress" d="M20 120 A100 100 0 0 1 220 120"></path>
-              </svg>
-              <div class="gauge-value-wrap">
-                <div class="gauge-value" id="gauge-value">94%</div>
-                <div class="gauge-note">Illustrative trigger score</div>
-              </div>
-            </div>
-            <div class="gauge-range">
-              <span>Baseline 72%</span>
-              <span>Refined 94%</span>
-            </div>
-            <p class="support-copy">Agent runtimes often use a skill's <code>name</code> and <code>description</code> to decide when it should trigger. Clear trigger cues and descriptions matter. The percentages above are illustrative, not a benchmark.</p>
-            <div class="terminal-caption">Source: public agent-skills guidance</div>
-          </div>
-        </article>
-
-        <article class="impact-card panel" data-observe>
-          <span class="section-label">Security signal</span>
-          <div class="preview-stack">
-            <div>
-              <div class="stat-number warning">36.82%</div>
-              <div class="stat-caption">of public skills in Snyk's February 2026 ToxicSkills study had at least one security issue.</div>
-            </div>
-            <div>
-              <div class="stat-number critical">13.4%</div>
-              <div class="stat-caption">had at least one critical issue in the same 3,984-skill dataset.</div>
-            </div>
-            <p class="support-copy">That dataset is Snyk-specific and should not be generalized to every skills ecosystem, but it is a strong signal that skill review needs explicit security checks.</p>
-            <div class="terminal-caption">Source: Snyk ToxicSkills study, February 2026</div>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <section class="section" id="preview">
-      <div class="section-head">
-        <span class="section-label">Evaluation preview</span>
-        <h2>Preview the result format before running an evaluation.</h2>
-        <p>Preview the score, deterministic checks, and optional AI review fields returned by the live evaluator.</p>
-      </div>
-
-      <div class="preview-grid">
-        <article class="preview-panel">
-          <div class="preview-stack">
-            <span class="section-label">Rendered result</span>
-            <div class="preview-score">
-              <strong>92</strong>
-              <span class="preview-badge">Excellent</span>
-            </div>
-            <p class="preview-copy">A high-quality skill package shows a strong score, complete deterministic checklist, and focused feedback that explains why each issue matters.</p>
-            <ul class="preview-checklist">
-              <li><span>Description section</span><span>Present</span></li>
-              <li><span>Trigger guidance</span><span>Present</span></li>
-              <li><span>Examples</span><span>Present</span></li>
-              <li><span>Error handling</span><span>Present</span></li>
-            </ul>
-          </div>
-        </article>
-
-        <article class="preview-panel terminal" id="json-preview" data-observe>
-          <div class="terminal-bar">
-            <span>sample-result.json</span>
-            <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
-          </div>
-          <div class="terminal-body">
-            <div class="json-line"><span class="json-key">{</span></div>
-            <div class="json-line">  <span class="json-key">"status"</span>: <span class="json-string">"ok"</span>,</div>
-            <div class="json-line">  <span class="json-key">"skill_name"</span>: <span class="json-string">"dependency-upgrade-reviewer"</span>,</div>
-            <div class="json-line">  <span class="json-key">"overall_score"</span>: <span class="json-number">92</span>,</div>
-            <div class="json-line">  <span class="json-key">"overall_tier"</span>: <span class="json-string">"excellent"</span>,</div>
-            <div class="json-line">  <span class="json-key">"summary"</span>: <span class="json-string">"Clear trigger cues, complete examples, and isolated helper scripts keep the activation lean."</span>,</div>
-            <div class="json-line">  <span class="json-key">"deterministic"</span>: {</div>
-            <div class="json-line">    <span class="json-key">"has_description"</span>: <span class="json-boolean">true</span>,</div>
-            <div class="json-line">    <span class="json-key">"has_trigger_section"</span>: <span class="json-boolean">true</span>,</div>
-            <div class="json-line">    <span class="json-key">"has_examples"</span>: <span class="json-boolean">true</span>,</div>
-            <div class="json-line">    <span class="json-key">"has_error_handling"</span>: <span class="json-boolean">true</span>,</div>
-            <div class="json-line">    <span class="json-key">"issues"</span>: []</div>
-            <div class="json-line">  },</div>
-            <div class="json-line">  <span class="json-key">"llm_analysis"</span>: {</div>
-            <div class="json-line">    <span class="json-key">"provider"</span>: <span class="json-string">"anthropic"</span>,</div>
-            <div class="json-line">    <span class="json-key">"model"</span>: <span class="json-string">"claude-sonnet-4-6"</span>,</div>
-            <div class="json-line">    <span class="json-key">"quality_tier"</span>: <span class="json-string">"excellent"</span>,</div>
-            <div class="json-line">    <span class="json-key">"strengths"</span>: [<span class="json-string">"Tight trigger language"</span>, <span class="json-string">"Concrete usage examples"</span>],</div>
-            <div class="json-line">    <span class="json-key">"suggestions"</span>: [<span class="json-string">"Keep helper scripts strictly portable"</span>]</div>
-            <div class="json-line">  }</div>
-            <div class="json-line"><span class="json-key">}</span></div>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="section-head">
-        <span class="section-label">FAQ</span>
-        <h2>Common design questions, answered directly.</h2>
-        <p>The short version: skills are a portable capability format, runtime-specific slash commands are not, and portable helper scripts matter if a skill should survive across environments.</p>
-      </div>
-
-      <div class="faq-grid">
-        <article class="faq-card panel">
-          <strong>Why agent skills over slash commands?</strong>
-          <p>Skills carry trigger conditions, inputs, outputs, examples, and failure handling. Slash commands are useful shortcuts, but they are not a durable capability contract.</p>
-          <a href="/faq">Read the full answer</a>
-        </article>
-        <article class="faq-card panel">
-          <strong>Why evaluate the IO spec instead of Claude Code specifics?</strong>
-          <p>The evaluator targets portable skill definitions so one runtime's proprietary ergonomics do not dominate the score.</p>
-          <a href="/faq">Read the full answer</a>
-        </article>
-        <article class="faq-card panel">
-          <strong>Why prefer <code>.sh</code> and <code>.py</code> helper scripts?</strong>
-          <p>They are the most portable options across Linux and macOS environments. Runtime-heavy script formats make skills harder to reuse safely.</p>
-          <a href="/faq">Read the full answer</a>
-        </article>
-        <article class="faq-card panel">
-          <strong>Open source and self-hostable?</strong>
-          <p>The project is public and can be deployed without a frontend build pipeline. The evaluator is designed to ship as raw HTML, CSS, JS, and a Go backend.</p>
-          <a href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">Open the repository</a>
-        </article>
-      </div>
     </section>
   </main>
 
@@ -2913,22 +2661,15 @@
     let selectedFiles = [];
     let pollTimer = null;
     let loadingResultsVisible = false;
-    let llmDots = 0;
     let lastProgressJobId = '';
     let lastProgressLines = [];
     let lastProgressTrailer = '';
     let jobInFlight = false;
     let latestResult = null;
-    let phaseAnimationState = null;
-    let pendingFinalResult = null;
-    let pendingFinalJobId = '';
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const PHASE_FILL_STEP_MS = 200;
-    const PHASE_MIN_DURATION_MS = 2000;
     const phaseDefinitions = [
       { key: 'queued', step: '01', label: 'Queued' },
       { key: 'worker', step: '02', label: 'Worker ready' },
-      { key: 'sandbox', step: '03', label: 'Sandbox start' },
+      { key: 'sandbox', step: '03', label: 'Evaluator start' },
       { key: 'deterministic', step: '04', label: 'Deterministic checks' },
       { key: 'llm', step: '05', label: 'Optional AI review' },
       { key: 'finalizing', step: '06', label: 'Finalizing result' },
@@ -2959,101 +2700,6 @@
 
     applyTheme(document.documentElement.dataset.theme, false);
     renderPhaseTracker('idle');
-
-    function formatWithPrefix(value) {
-      return `~${Math.round(value).toLocaleString()}`;
-    }
-
-    function animateNumber(element, start, end, duration, formatter) {
-      if (!element) return;
-      if (reducedMotion) {
-        element.textContent = formatter(end);
-        return;
-      }
-
-      const startedAt = performance.now();
-
-      function frame(now) {
-        const progress = Math.min((now - startedAt) / duration, 1);
-        const eased = 1 - Math.pow(1 - progress, 3);
-        const current = start + ((end - start) * eased);
-        element.textContent = formatter(current);
-        if (progress < 1) {
-          requestAnimationFrame(frame);
-        }
-      }
-
-      requestAnimationFrame(frame);
-    }
-
-    function runHeroCounters() {
-      animateNumber(document.getElementById('before-counter'), 0, 12400, 950, formatWithPrefix);
-      window.setTimeout(() => animateNumber(document.getElementById('after-counter'), 0, 4100, 1450, formatWithPrefix), 180);
-    }
-
-    function animateGauge() {
-      const path = document.getElementById('gauge-progress');
-      const value = document.getElementById('gauge-value');
-      if (!path || !value) return;
-
-      const total = 314.159;
-      const startPercent = 72;
-      const endPercent = 94;
-      const startOffset = total * (1 - (startPercent / 100));
-      const endOffset = total * (1 - (endPercent / 100));
-
-      if (reducedMotion) {
-        path.style.strokeDashoffset = endOffset.toFixed(3);
-        value.textContent = `${endPercent}%`;
-        return;
-      }
-
-      path.style.strokeDashoffset = startOffset.toFixed(3);
-      value.textContent = `${startPercent}%`;
-      requestAnimationFrame(() => {
-        path.style.strokeDashoffset = endOffset.toFixed(3);
-        animateNumber(value, startPercent, endPercent, 1050, (current) => `${Math.round(current)}%`);
-      });
-    }
-
-    function revealJsonPreview(panel) {
-      if (!panel || panel.dataset.revealed === 'true') return;
-      panel.dataset.revealed = 'true';
-      panel.classList.add('is-visible');
-
-      if (reducedMotion) {
-        return;
-      }
-
-      const lines = Array.from(panel.querySelectorAll('.json-line'));
-      lines.forEach((line, index) => {
-        line.style.transitionDelay = `${index * 45}ms`;
-      });
-    }
-
-    if ('IntersectionObserver' in window) {
-      const observer = new IntersectionObserver((entries, instance) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
-          entry.target.classList.add('is-visible');
-          if (entry.target.id === 'trigger-gauge-card') {
-            animateGauge();
-          }
-          if (entry.target.id === 'json-preview') {
-            revealJsonPreview(entry.target);
-          }
-          instance.unobserve(entry.target);
-        });
-      }, { threshold: 0.28 });
-
-      document.querySelectorAll('[data-observe]').forEach((node) => observer.observe(node));
-    } else {
-      document.querySelectorAll('[data-observe]').forEach((node) => node.classList.add('is-visible'));
-      animateGauge();
-      revealJsonPreview(document.getElementById('json-preview'));
-    }
-
-    runHeroCounters();
 
     function fileDisplayPath(file) {
       return file.relativePath || file.webkitRelativePath || file.name;
@@ -3094,9 +2740,6 @@
 
     function resetResultsState() {
       latestResult = null;
-      pendingFinalResult = null;
-      pendingFinalJobId = '';
-      phaseAnimationState = null;
       loadingResultsVisible = false;
       results.classList.remove('loading');
       results.classList.add('hidden');
@@ -3142,7 +2785,10 @@
       if (/Optional LLM review failed/i.test(combined)) {
         return { state: 'skipped', label: 'Fallback', summary: 'Optional AI review fell back to deterministic-only output.' };
       }
-      if (/LLM evaluation|Optional LLM review completed/i.test(combined)) {
+      if (/Optional LLM review completed/i.test(combined)) {
+        return { state: 'complete', label: 'Complete', summary: 'Optional AI review completed for this run.' };
+      }
+      if (/LLM evaluation/i.test(combined)) {
         return { state: 'active', label: 'In progress', summary: 'Optional AI review is in progress.' };
       }
       return { state: 'pending', label: 'Pending', summary: 'Optional AI review has not started yet.' };
@@ -3155,88 +2801,29 @@
       if (/Preparing final evaluation result/.test(combined)) return 'finalizing';
       if (/LLM evaluation|Optional LLM review/.test(combined)) return 'llm';
       if (/Preparing deterministic result/.test(combined)) return 'deterministic';
-      if (/Starting isolated evaluator container/.test(combined)) return 'sandbox';
+      if (/Starting evaluator/.test(combined)) return 'sandbox';
       if (/Worker picked up job/.test(combined)) return 'worker';
       if (/Upload accepted|Upload received|Job queued|Polling for progress/.test(combined)) return 'queued';
       return 'idle';
     }
 
-    function getRenderedPhaseState(activeKey, trailer = '', progressLines = [], resultData = null) {
-      const actualActiveIndex = phaseDefinitions.findIndex((phase) => phase.key === activeKey);
+    function renderPhaseTracker(activeKey, trailer = '', progressLines = [], resultData = null) {
       const activeIndex = phaseDefinitions.findIndex((phase) => phase.key === activeKey);
       const aiReviewOutcome = getAiReviewOutcome(progressLines, resultData);
-      if (activeKey === 'idle') {
-        phaseAnimationState = null;
-        return {
-          visibleIndex: -1,
-          fillingKey: '',
-          fillProgress: 0,
-          aiReviewOutcome,
-        };
-      }
-
-      if (reducedMotion || actualActiveIndex < 0) {
-        return {
-          visibleIndex: activeIndex,
-          fillingKey: '',
-          fillProgress: 100,
-          aiReviewOutcome,
-        };
-      }
-
-      if (!phaseAnimationState || phaseAnimationState.targetKey !== activeKey) {
-        phaseAnimationState = {
-          targetKey: activeKey,
-          visibleIndex: Math.max(0, Math.min(actualActiveIndex, phaseAnimationState?.visibleIndex ?? 0)),
-          fillingKey: activeKey,
-          fillProgress: actualActiveIndex === 0 ? 0 : 100,
-          startedAt: performance.now(),
-        };
-      }
-
-      const now = performance.now();
-      const elapsed = now - phaseAnimationState.startedAt;
-      const nextProgress = Math.min(100, Math.floor(elapsed / PHASE_FILL_STEP_MS) * (100 / (PHASE_MIN_DURATION_MS / PHASE_FILL_STEP_MS)));
-      phaseAnimationState.fillProgress = Math.max(phaseAnimationState.fillProgress, nextProgress);
-
-      if (phaseAnimationState.fillProgress >= 100 && elapsed >= PHASE_MIN_DURATION_MS && phaseAnimationState.visibleIndex < actualActiveIndex) {
-        phaseAnimationState.visibleIndex += 1;
-        phaseAnimationState.fillingKey = phaseDefinitions[phaseAnimationState.visibleIndex]?.key || '';
-        phaseAnimationState.fillProgress = 0;
-        phaseAnimationState.startedAt = now;
-      }
-
-      if (phaseAnimationState.visibleIndex >= actualActiveIndex) {
-        phaseAnimationState.fillingKey = phaseDefinitions[actualActiveIndex]?.key || '';
-      }
-
-      return {
-        visibleIndex: phaseAnimationState.visibleIndex,
-        fillingKey: phaseAnimationState.fillingKey,
-        fillProgress: phaseAnimationState.fillProgress,
-        aiReviewOutcome,
-      };
-    }
-
-    function renderPhaseTracker(activeKey, trailer = '', progressLines = [], resultData = null) {
-      const renderedState = getRenderedPhaseState(activeKey, trailer, progressLines, resultData);
       phaseTracker.innerHTML = phaseDefinitions.map((phase, index) => {
-        let state = index < renderedState.visibleIndex ? 'complete' : index === renderedState.visibleIndex ? 'active' : 'pending';
-        if (phase.key === 'complete' && activeKey === 'complete' && renderedState.visibleIndex >= index) {
-          state = 'complete';
-        }
+        let state = index < activeIndex ? 'complete' : index === activeIndex ? 'active' : 'pending';
         let stateLabel = state === 'complete' ? 'Complete' : state === 'active' ? 'In progress' : state === 'skipped' ? 'Skipped' : 'Pending';
         if (phase.key === 'llm') {
-          state = renderedState.aiReviewOutcome.state;
-          stateLabel = renderedState.aiReviewOutcome.label;
-        }
-        if (phase.key === renderedState.fillingKey && phase.key !== 'llm' && state !== 'complete' && state !== 'skipped') {
-          state = renderedState.fillProgress >= 100 ? state : 'filling';
-          stateLabel = renderedState.fillProgress >= 100 ? stateLabel : `In progress ${Math.round(renderedState.fillProgress)}%`;
+          state = aiReviewOutcome.state;
+          stateLabel = aiReviewOutcome.label;
+          if (activeKey !== 'llm' && state === 'active') {
+            state = 'pending';
+            stateLabel = 'Pending';
+          }
         }
         const extraClass = state === 'complete' ? ' is-complete' : state === 'active' ? ' is-active' : state === 'skipped' ? ' is-skipped' : state === 'filling' ? ' is-filling' : '';
         return `
-          <article class="phase-chip${extraClass}" style="--phase-fill-progress:${phase.key === renderedState.fillingKey && phase.key !== 'llm' ? `${renderedState.fillProgress}%` : state === 'complete' ? '100%' : '0%'};">
+          <article class="phase-chip${extraClass}" style="--phase-fill-progress:${state === 'complete' || state === 'active' ? '100%' : '0%'};">
             <span class="phase-step">${escapeHtml(phase.step)}</span>
             <strong>${escapeHtml(phase.label)}</strong>
             <span class="phase-state">${escapeHtml(stateLabel)}</span>
@@ -3245,26 +2832,10 @@
       }).join('');
       phaseTracker.setAttribute('data-active-phase', activeKey);
       phaseTracker.setAttribute('aria-label', trailer && activeKey === 'complete' ? `Evaluation phases. ${trailer}` : 'Evaluation phases');
-
-      if (activeKey === 'complete' && renderedState.visibleIndex >= phaseDefinitions.length - 1 && renderedState.fillProgress >= 100 && pendingFinalResult) {
-        const finalData = pendingFinalResult;
-        const finalJobId = pendingFinalJobId;
-        pendingFinalResult = null;
-        pendingFinalJobId = '';
-        renderResult(finalData, true);
-        if (finalJobId) {
-          void releaseJobState(finalJobId);
-        }
-      }
     }
 
     function formatProgressLine(line) {
-      if (line !== 'LLM evaluation...') {
-        return `<span class="line">${escapeHtml(line)}</span>`;
-      }
-
-      const dots = '.'.repeat((llmDots % 3) + 1);
-      return `<span class="line active">LLM evaluation${dots}</span>`;
+      return `<span class="line">${escapeHtml(line)}</span>`;
     }
 
     function renderProgress(jobId, progressLines, trailer = '') {
@@ -3295,11 +2866,7 @@
     }
 
     function refreshAnimatedProgress() {
-      if (!lastProgressLines.some((line) => line === 'LLM evaluation...')) {
-        return;
-      }
-      llmDots = (llmDots + 1) % 3;
-      renderProgress(lastProgressJobId, lastProgressLines, lastProgressTrailer);
+      return;
     }
 
     function escapeHtml(value) {
@@ -3359,11 +2926,12 @@
       }
     }
 
-    function renderList(items) {
+    function renderList(items, variant = '') {
       if (!items || !items.length) {
         return '<div class="result-empty">None</div>';
       }
-      return `<ul class="result-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+      const className = variant ? `result-list ${variant}` : 'result-list';
+      return `<ul class="${className}">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
     }
 
     function providerLabel(value) {
@@ -3458,19 +3026,19 @@
           </article>
           <article class="result-card">
             <span class="result-label">Strengths</span>
-            ${renderList(data.llm_analysis?.strengths || [])}
+            ${renderList(data.llm_analysis?.strengths || [], 'strengths')}
           </article>
           <article class="result-card">
             <span class="result-label">Weaknesses</span>
-            ${renderList(data.llm_analysis?.weaknesses || [])}
+            ${renderList(data.llm_analysis?.weaknesses || [], 'weaknesses')}
           </article>
           <article class="result-card">
             <span class="result-label">Suggestions</span>
-            ${renderList(data.llm_analysis?.suggestions || [])}
+            ${renderList(data.llm_analysis?.suggestions || [], 'suggestions')}
           </article>
           <article class="result-card">
             <span class="result-label">Security flags</span>
-            ${renderList(data.llm_analysis?.security_flags || [])}
+            ${renderList(data.llm_analysis?.security_flags || [], 'security')}
           </article>
         `
         : `
@@ -3522,7 +3090,7 @@
           </article>
           <article class="result-card">
             <span class="result-label">Issues</span>
-            ${renderList(data.deterministic?.issues || [])}
+            ${renderList(data.deterministic?.issues || [], 'issues')}
           </article>
           <article class="result-card">
             <span class="result-label">Run mode</span>
@@ -3607,10 +3175,8 @@
           }
 
           renderProgress(jobId, data.progress || [], 'Evaluation completed.');
-          pendingFinalResult = data;
-          pendingFinalJobId = jobId;
-          renderLoadingResults();
-          renderPhaseTracker('complete', 'Evaluation completed.', data.progress || [], data);
+          renderResult(data);
+          void releaseJobState(jobId);
         } catch (error) {
           clearInterval(pollTimer);
           pollTimer = null;
@@ -3655,7 +3221,7 @@
       renderPhaseTracker('queued');
       renderLoadingResults();
       setStatus('Preparing evaluation...');
-      runSurface?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+      runSurface?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
       try {
         const response = await fetch('/upload', {
@@ -3819,11 +3385,10 @@
     });
 
     window.setInterval(() => {
-      refreshAnimatedProgress();
-      if (jobInFlight || pendingFinalResult) {
-        renderPhaseTracker(inferPhaseKey(lastProgressLines, lastProgressTrailer), lastProgressTrailer, lastProgressLines, pendingFinalResult || latestResult);
+      if (jobInFlight) {
+        renderPhaseTracker(inferPhaseKey(lastProgressLines, lastProgressTrailer), lastProgressTrailer, lastProgressLines, latestResult);
       }
-    }, 200);
+    }, 250);
   </script>
 </body>
 </html>
