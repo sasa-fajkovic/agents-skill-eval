@@ -259,10 +259,45 @@ chown deploy:deploy /home/deploy/.zshenv
 chmod 600 /home/deploy/.zshenv
 ```
 
-4. Install `docker/deploy-check.sh` to `/opt/agents-skill-eval/deploy-check.sh`.
+4. Install `docker/deploy-check.sh` to `/opt/agents-skill-eval/deploy-check.sh` and make it executable:
+
+```bash
+sudo install -o root -g root -m 755 docker/deploy-check.sh /opt/agents-skill-eval/deploy-check.sh
+```
+
 5. Install systemd units:
-   - `/etc/systemd/system/agents-skill-eval-poll.service`
-   - `/etc/systemd/system/agents-skill-eval-poll.timer`
+
+`/etc/systemd/system/agents-skill-eval-poll.service`
+
+```ini
+[Unit]
+Description=Poll GHCR and redeploy agents-skill-eval when needed
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+Environment=HOME=/home/deploy
+ExecStart=/opt/agents-skill-eval/deploy-check.sh
+```
+
+`/etc/systemd/system/agents-skill-eval-poll.timer`
+
+```ini
+[Unit]
+Description=Run agents-skill-eval deployment poll every minute
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+Unit=agents-skill-eval-poll.service
+
+[Install]
+WantedBy=timers.target
+```
+
 6. Reload and enable the timer:
 
 ```bash
@@ -270,7 +305,13 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now agents-skill-eval-poll.timer
 ```
 
-7. Start one manual deployment check:
+7. If public GHCR pulls fail unexpectedly, remove any stale Docker auth left on the droplet:
+
+```bash
+rm -f /home/deploy/.docker/config.json
+```
+
+8. Start one manual deployment check:
 
 ```bash
 sudo systemctl restart agents-skill-eval-poll.service
@@ -279,6 +320,8 @@ curl -fsS http://127.0.0.1:8080/version
 ```
 
 The timer then checks GHCR every 60 seconds and restarts the app container when a new image digest appears.
+
+If the poll service fails immediately, verify `/home/deploy/.zshenv` is owned by `deploy:deploy` and still has `600` permissions.
 
 ## Environment Variables
 
