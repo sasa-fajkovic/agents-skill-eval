@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(cp /Users/sasafajkovic/Desktop/agents-skill-eval/.claude/skills/skill-evaluation/scripts/eval.py /tmp/eval_old.py)",
-      "Read(//tmp/**)"
-    ]
-  }
-}
