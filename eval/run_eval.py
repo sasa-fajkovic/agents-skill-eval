@@ -171,6 +171,101 @@ def extract_skill_name(skill_path: Path, skill_content: str) -> str:
     return skill_path.stem
 
 
+def extract_frontmatter_string_field(skill_content: str, field_name: str) -> str:
+    frontmatter_match = re.match(r"^---\n(.*?)\n---\n", skill_content, re.DOTALL)
+    if not frontmatter_match:
+        return ""
+
+    frontmatter_lines = frontmatter_match.group(1).splitlines()
+    prefix = f"{field_name.lower()}:"
+    for index, line in enumerate(frontmatter_lines):
+        if not line.lower().startswith(prefix):
+            continue
+        raw_value = line.split(":", 1)[1].strip()
+        value = raw_value.strip('"\'')
+        if re.fullmatch(r"[>|][+-]?", value):
+            collected = []
+            for candidate in frontmatter_lines[index + 1:]:
+                if candidate and not candidate.startswith((" ", "\t")):
+                    break
+                collected.append(candidate.strip())
+            while collected and not collected[0]:
+                collected.pop(0)
+            while collected and not collected[-1]:
+                collected.pop()
+            if collected:
+                paragraphs = []
+                current = []
+                for item in collected:
+                    if item:
+                        current.append(item)
+                        continue
+                    if current:
+                        paragraphs.append(current)
+                        current = []
+                if current:
+                    paragraphs.append(current)
+                if value.startswith("|"):
+                    return "\n\n".join("\n".join(lines) for lines in paragraphs)
+                return "\n\n".join(" ".join(lines) for lines in paragraphs)
+            continue
+        if value.startswith((">", "|")):
+            value = value[1:].lstrip("+-").strip()
+        if value:
+            return value
+
+    return ""
+
+
+def extract_skill_description(skill_content: str) -> str:
+    description = extract_frontmatter_string_field(skill_content, "description")
+    if description:
+        return description
+
+    lines = skill_content.splitlines()
+    for index, line in enumerate(lines):
+        if line.strip().lower() in {"## description", "# description"}:
+            collected = []
+            for candidate in lines[index + 1:]:
+                stripped = candidate.strip()
+                if not stripped:
+                    collected.append("")
+                    continue
+                if stripped.startswith("#"):
+                    break
+                collected.append(stripped)
+            if collected:
+                while collected and not collected[0]:
+                    collected.pop(0)
+                while collected and not collected[-1]:
+                    collected.pop()
+                paragraphs = []
+                current = []
+                for item in collected:
+                    if item:
+                        current.append(item)
+                        continue
+                    if current:
+                        paragraphs.append(" ".join(current))
+                        current = []
+                if current:
+                    paragraphs.append(" ".join(current))
+                if paragraphs:
+                    return "\n\n".join(paragraphs)
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        return stripped
+
+    return ""
+
+
+def extract_skill_compatibility(skill_content: str) -> str:
+    return extract_frontmatter_string_field(skill_content, "compatibility")
+
+
 def summarize_issues(deterministic: dict, llm_analysis: dict) -> str:
     if deterministic["issues"]:
         primary_issue = deterministic["issues"][0]
@@ -209,6 +304,8 @@ def run_evaluation() -> dict:
     return {
         "status": "ok",
         "skill_name": extract_skill_name(skill_path, skill_content),
+        "skill_description": extract_skill_description(skill_content),
+        "skill_compatibility": extract_skill_compatibility(skill_content),
         "skill_content": skill_content,
         "supporting_context": supporting_context,
         "deterministic": deterministic,

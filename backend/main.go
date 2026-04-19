@@ -113,6 +113,8 @@ type redactionPattern struct {
 type evalContainerResult struct {
 	Status            string         `json:"status"`
 	SkillName         string         `json:"skill_name"`
+	SkillDescription  string         `json:"skill_description"`
+	SkillCompatibility string        `json:"skill_compatibility"`
 	SkillContent      string         `json:"skill_content"`
 	SupportingContext string         `json:"supporting_context"`
 	Deterministic     map[string]any `json:"deterministic"`
@@ -138,7 +140,6 @@ type llmAnalysis struct {
 	Suggestions   []string `json:"suggestions"`
 	SecurityFlags []string `json:"security_flags"`
 	QualityTier   string   `json:"quality_tier"`
-	Provider      string   `json:"provider,omitempty"`
 	Mode          string   `json:"mode,omitempty"`
 }
 
@@ -172,6 +173,7 @@ type gitHubTarget struct {
 	repo     string
 	ref      string
 	path     string
+	refPath  string
 	fileName string
 	htmlURL  string
 }
@@ -181,6 +183,15 @@ type gitHubDirectoryEntry struct {
 	Path        string `json:"path"`
 	Type        string `json:"type"`
 	DownloadURL string `json:"download_url"`
+}
+
+type statusError struct {
+	status  int
+	message string
+}
+
+func (err statusError) Error() string {
+	return err.message
 }
 
 func main() {
@@ -291,6 +302,10 @@ func (app *application) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "provide at least one file or a GitHub URL"})
 		return
 	}
+	if len(files) > 0 && githubURL != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "choose either uploaded files or a GitHub URL"})
+		return
+	}
 
 	jobID, err := newUUIDv4()
 	if err != nil {
@@ -321,7 +336,7 @@ func (app *application) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	if githubURL != "" {
 		if err := fetchGitHubFile(r.Context(), githubURL, inputDir); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeJSON(w, statusCodeForError(err, http.StatusBadRequest), map[string]string{"error": err.Error()})
 			return
 		}
 	}
@@ -353,6 +368,7 @@ func (app *application) handleResult(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "job id is required"})
 		return
 	}
+	consume := parseBool(r.URL.Query().Get("consume"))
 
 	if errorMessage, err := app.rdb.Get(r.Context(), redisErrorKey(jobID)).Result(); err == nil {
 		progress := app.getProgress(r.Context(), jobID)
@@ -360,9 +376,15 @@ func (app *application) handleResult(w http.ResponseWriter, r *http.Request) {
 		if json.Unmarshal([]byte(errorMessage), &structured) == nil {
 			structured["progress"] = progress
 			writeJSON(w, http.StatusInternalServerError, structured)
+			if consume {
+				app.releaseJobState(r.Context(), jobID)
+			}
 			return
 		}
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"status": "error", "message": errorMessage, "progress": progress})
+		if consume {
+			app.releaseJobState(r.Context(), jobID)
+		}
 		return
 	} else if err != nil && err != redis.Nil {
 		sentry.CaptureException(err)
@@ -390,11 +412,17 @@ func (app *application) handleResult(w http.ResponseWriter, r *http.Request) {
 	if json.Unmarshal([]byte(result), &structured) == nil {
 		structured["progress"] = progress
 		writeJSON(w, http.StatusOK, structured)
+		if consume {
+			app.releaseJobState(r.Context(), jobID)
+		}
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(result))
+	if consume {
+		app.releaseJobState(r.Context(), jobID)
+	}
 }
 
 func (app *application) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -505,7 +533,7 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 
 	ctx, cancel := context.WithTimeout(parent, dockerTimeout)
 	defer cancel()
-	dockerImage := getenvDefault("EVAL_DOCKER_IMAGE", "ghcr.io/sasa-fajkovic/agents-skill-eval:latest")
+	dockerImage := getenvDefault("EVAL_DOCKER_IMAGE", "agents-skill-eval-test")
 	_ = app.appendProgress(parent, job.JobID, "Starting isolated evaluator container...")
 
 	args := []string{
@@ -789,13 +817,16 @@ func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw
 	}
 
 	result := map[string]any{
-		"status":        "ok",
-		"skill_name":    container.SkillName,
-		"overall_score": computeOverallScore(container.Deterministic, analysis),
-		"summary":       summarizeIssues(container.Deterministic, analysis),
-		"deterministic": container.Deterministic,
-		"llm_enabled":   job.EnableLLM,
-		"llm_requested": job.LLMRequested,
+		"status":              "ok",
+		"skill_name":          container.SkillName,
+		"skill_description":   container.SkillDescription,
+		"skill_compatibility": container.SkillCompatibility,
+		"overall_score":       computeOverallScore(container.Deterministic, analysis),
+		"overall_tier":        computeOverallTier(container.Deterministic, analysis),
+		"summary":             summarizeIssues(container.Deterministic, analysis),
+		"deterministic":       container.Deterministic,
+		"llm_enabled":         job.EnableLLM,
+		"llm_requested":       job.LLMRequested,
 	}
 	if analysis != nil {
 		result["llm_analysis"] = analysis
@@ -833,6 +864,26 @@ func computeOverallScore(deterministic map[string]any, analysis *llmAnalysis) in
 		return 0
 	}
 	return score
+}
+
+func computeOverallTier(deterministic map[string]any, analysis *llmAnalysis) string {
+	if analysis != nil {
+		return normalizeQualityTier(analysis.QualityTier)
+	}
+	return overallTierFromScore(computeOverallScore(deterministic, nil))
+}
+
+func overallTierFromScore(score int) string {
+	switch {
+	case score >= 90:
+		return "excellent"
+	case score >= 75:
+		return "good"
+	case score >= 50:
+		return "needs_work"
+	default:
+		return "poor"
+	}
 }
 
 func summarizeIssues(deterministic map[string]any, analysis *llmAnalysis) string {
@@ -894,7 +945,6 @@ func (app *application) runAnthropicReview(ctx context.Context, container evalCo
 	if err != nil {
 		return llmAnalysis{}, err
 	}
-	analysis.Provider = "anthropic"
 	analysis.Mode = "opt_in"
 	analysis.QualityTier = normalizeQualityTier(analysis.QualityTier)
 	analysis.Strengths = uniqueStrings(analysis.Strengths)
@@ -1049,12 +1099,22 @@ func max(a, b int) int {
 func fetchGitHubFile(ctx context.Context, rawURL, rootDir string) error {
 	target, err := resolveGitHubTarget(rawURL)
 	if err != nil {
-		return err
+		return statusError{status: http.StatusBadRequest, message: err.Error()}
+	}
+	if target.hasAmbiguousRefPath() {
+		target, err = resolveGitHubTargetRef(ctx, target)
+		if err != nil {
+			return err
+		}
 	}
 	if target.kind == "directory" {
 		return fetchGitHubDirectory(ctx, target, rootDir)
 	}
+	return fetchGitHubResolvedFile(ctx, target, rootDir)
+}
 
+
+func fetchGitHubResolvedFile(ctx context.Context, target gitHubTarget, rootDir string) error {
 	client := &http.Client{
 		Timeout: 15 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -1073,21 +1133,21 @@ func fetchGitHubFile(ctx context.Context, rawURL, rootDir string) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to fetch GitHub URL: %w", err)
+		return gitHubUpstreamError(err, "failed to fetch GitHub URL")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GitHub URL returned %s", resp.Status)
+		return gitHubHTTPError(resp.StatusCode, resp.Status)
 	}
 
 	limited := io.LimitReader(resp.Body, githubFetchLimit+1)
 	content, err := io.ReadAll(limited)
 	if err != nil {
-		return errors.New("failed to read GitHub file")
+		return statusError{status: http.StatusBadGateway, message: "failed to read GitHub file"}
 	}
 	if len(content) > githubFetchLimit {
-		return errors.New("GitHub file exceeds 5MB limit")
+		return statusError{status: http.StatusBadRequest, message: "GitHub file exceeds 5MB limit"}
 	}
 
 	mimeType := http.DetectContentType(content)
@@ -1097,15 +1157,15 @@ func fetchGitHubFile(ctx context.Context, rawURL, rootDir string) error {
 		}
 	}
 	if err := validateFileType(target.fileName, mimeType); err != nil {
-		return err
+		return statusError{status: http.StatusBadRequest, message: err.Error()}
 	}
 
 	destination := filepath.Join(rootDir, filepath.FromSlash(target.path))
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
-		return fmt.Errorf("failed to prepare %s", target.fileName)
+		return statusError{status: http.StatusInternalServerError, message: fmt.Sprintf("failed to prepare %s", target.fileName)}
 	}
 	if err := os.WriteFile(destination, content, 0o644); err != nil {
-		return fmt.Errorf("failed to save %s", target.fileName)
+		return statusError{status: http.StatusInternalServerError, message: fmt.Sprintf("failed to save %s", target.fileName)}
 	}
 	return nil
 }
@@ -1127,14 +1187,12 @@ func resolveGitHubTarget(rawURL string) (gitHubTarget, error) {
 		if len(parts) < 4 {
 			return gitHubTarget{}, errors.New("GitHub raw URL must point to a file")
 		}
-		filename := filepath.Base(parsed.Path)
+		candidatePath := strings.Join(parts[3:], "/")
+		filename := filepath.Base(candidatePath)
 		if filename == "." || filename == "/" || filename == "" {
 			return gitHubTarget{}, errors.New("GitHub raw URL must point to a file")
 		}
-		parsed.RawQuery = ""
-		parsed.Fragment = ""
-		parsed.Scheme = "https"
-		return gitHubTarget{kind: "file", url: parsed.String(), fileName: filename}, nil
+		return hydrateGitHubTarget(gitHubTarget{kind: "file", owner: parts[0], repo: parts[1], ref: parts[2], path: candidatePath, refPath: strings.Join(parts[2:], "/")})
 	}
 	if len(parts) < 4 {
 		return gitHubTarget{}, errors.New("GitHub URL must point to a file or directory inside a repository")
@@ -1147,14 +1205,11 @@ func resolveGitHubTarget(rawURL string) (gitHubTarget, error) {
 		if len(parts) < 5 {
 			return gitHubTarget{}, errors.New("GitHub tree URL must include a branch and path")
 		}
-		path := strings.Join(parts[4:], "/")
-		if path == "" {
+		candidatePath := strings.Join(parts[4:], "/")
+		if candidatePath == "" {
 			return gitHubTarget{}, errors.New("GitHub tree URL must point to a directory")
 		}
-		parsed.RawQuery = ""
-		parsed.Fragment = ""
-		parsed.Scheme = "https"
-		return gitHubTarget{kind: "directory", owner: parts[0], repo: parts[1], ref: parts[3], path: path, htmlURL: parsed.String()}, nil
+		return hydrateGitHubTarget(gitHubTarget{kind: "directory", owner: parts[0], repo: parts[1], ref: parts[3], path: candidatePath, refPath: strings.Join(parts[3:], "/")})
 	}
 
 	ref, path, err := splitGitHubBlobPath(parts)
@@ -1166,12 +1221,7 @@ func resolveGitHubTarget(rawURL string) (gitHubTarget, error) {
 	if filename == "." || filename == "/" || filename == "" {
 		return gitHubTarget{}, errors.New("GitHub URL must point to a file")
 	}
-	raw := &urlpkg.URL{
-		Scheme: "https",
-		Host:   "raw.githubusercontent.com",
-		Path:   "/" + strings.Join([]string{parts[0], parts[1], ref, path}, "/"),
-	}
-	return gitHubTarget{kind: "file", url: raw.String(), fileName: filename, owner: parts[0], repo: parts[1], ref: ref, path: path}, nil
+	return hydrateGitHubTarget(gitHubTarget{kind: "file", owner: parts[0], repo: parts[1], ref: ref, path: path, refPath: strings.Join(parts[3:], "/")})
 }
 
 func splitGitHubBlobPath(parts []string) (string, string, error) {
@@ -1179,6 +1229,141 @@ func splitGitHubBlobPath(parts []string) (string, string, error) {
 		return "", "", errors.New("GitHub blob URL must include a branch and path")
 	}
 	return parts[3], strings.Join(parts[4:], "/"), nil
+}
+
+func (target gitHubTarget) hasAmbiguousRefPath() bool {
+	segments := strings.Split(strings.Trim(target.refPath, "/"), "/")
+	return len(segments) >= 3
+}
+
+func hydrateGitHubTarget(target gitHubTarget) (gitHubTarget, error) {
+	if strings.TrimSpace(target.owner) == "" || strings.TrimSpace(target.repo) == "" {
+		return gitHubTarget{}, errors.New("invalid GitHub URL")
+	}
+	target.ref = strings.Trim(strings.TrimSpace(target.ref), "/")
+	target.path = strings.Trim(strings.TrimSpace(target.path), "/")
+	if target.ref == "" || target.path == "" {
+		switch target.kind {
+		case "directory":
+			return gitHubTarget{}, errors.New("GitHub tree URL must include a branch and path")
+		default:
+			return gitHubTarget{}, errors.New("GitHub URL must point to a file")
+		}
+	}
+	if target.refPath == "" {
+		target.refPath = strings.Join([]string{target.ref, target.path}, "/")
+	}
+	switch target.kind {
+	case "directory":
+		target.htmlURL = (&urlpkg.URL{Scheme: "https", Host: "github.com", Path: "/" + strings.Join([]string{target.owner, target.repo, "tree", target.ref, target.path}, "/")}).String()
+		target.url = ""
+		target.fileName = ""
+	case "file":
+		target.fileName = filepath.Base(target.path)
+		if target.fileName == "." || target.fileName == "/" || target.fileName == "" {
+			return gitHubTarget{}, errors.New("GitHub URL must point to a file")
+		}
+		target.url = (&urlpkg.URL{Scheme: "https", Host: "raw.githubusercontent.com", Path: "/" + strings.Join([]string{target.owner, target.repo, target.ref, target.path}, "/")}).String()
+		target.htmlURL = ""
+	default:
+		return gitHubTarget{}, errors.New("invalid GitHub URL")
+	}
+	return target, nil
+}
+
+func resolveGitHubTargetRef(ctx context.Context, target gitHubTarget) (gitHubTarget, error) {
+	segments := strings.Split(strings.Trim(target.refPath, "/"), "/")
+	if len(segments) < 2 {
+		return gitHubTarget{}, statusError{status: http.StatusBadRequest, message: "GitHub URL could not be found"}
+	}
+	for split := len(segments) - 1; split >= 1; split-- {
+		candidateRef := strings.Join(segments[:split], "/")
+		candidatePath := strings.Join(segments[split:], "/")
+		kind, err := fetchGitHubContentKind(ctx, target.owner, target.repo, candidateRef, candidatePath)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return gitHubTarget{}, err
+		}
+		if target.kind == "directory" && kind != "dir" {
+			continue
+		}
+		if target.kind == "file" && kind != "file" {
+			continue
+		}
+		return hydrateGitHubTarget(gitHubTarget{
+			kind:    target.kind,
+			owner:   target.owner,
+			repo:    target.repo,
+			ref:     candidateRef,
+			path:    candidatePath,
+			refPath: target.refPath,
+		})
+	}
+	return gitHubTarget{}, statusError{status: http.StatusBadRequest, message: "GitHub URL could not be found"}
+}
+
+func fetchGitHubContentKind(ctx context.Context, owner, repo, ref, targetPath string) (string, error) {
+	apiURL := &urlpkg.URL{
+		Scheme: "https",
+		Host:   "api.github.com",
+		Path:   "/repos/" + owner + "/" + repo + "/contents/" + escapeGitHubContentPath(targetPath),
+	}
+	query := apiURL.Query()
+	query.Set("ref", ref)
+	apiURL.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL.String(), nil)
+	if err != nil {
+		return "", statusError{status: http.StatusInternalServerError, message: "failed to create GitHub metadata request"}
+	}
+	req.Header.Set("User-Agent", "agents-skill-eval")
+	req.Header.Set("Accept", "application/vnd.github+json")
+	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", gitHubUpstreamError(err, "failed to resolve GitHub URL")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return "", os.ErrNotExist
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", gitHubHTTPError(resp.StatusCode, resp.Status)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", statusError{status: http.StatusBadGateway, message: "failed to read GitHub metadata"}
+	}
+	var payload any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return "", statusError{status: http.StatusBadGateway, message: "failed to decode GitHub metadata"}
+	}
+	switch value := payload.(type) {
+	case []any:
+		return "dir", nil
+	case map[string]any:
+		kind, _ := value["type"].(string)
+		if kind == "dir" || kind == "file" {
+			return kind, nil
+		}
+	}
+	return "", statusError{status: http.StatusBadGateway, message: "failed to decode GitHub metadata"}
+}
+
+func escapeGitHubContentPath(value string) string {
+	parts := strings.Split(strings.Trim(value, "/"), "/")
+	for i, part := range parts {
+		parts[i] = urlpkg.PathEscape(part)
+	}
+	return strings.Join(parts, "/")
 }
 
 func fetchGitHubDirectory(ctx context.Context, target gitHubTarget, rootDir string) error {
@@ -1203,11 +1388,14 @@ func fetchGitHubDirectory(ctx context.Context, target gitHubTarget, rootDir stri
 		selected = append(selected, entry)
 	}
 	if len(selected) == 0 {
-		return errors.New("GitHub directory must contain SKILL.md or skill.md")
+		return statusError{status: http.StatusBadRequest, message: "GitHub directory must contain SKILL.md or skill.md"}
 	}
 	for _, entry := range selected {
-		fileURL := fmt.Sprintf("https://github.com/%s/%s/blob/%s/%s", target.owner, target.repo, target.ref, entry.Path)
-		if err := fetchGitHubFile(ctx, fileURL, rootDir); err != nil {
+		fileTarget, err := hydrateGitHubTarget(gitHubTarget{kind: "file", owner: target.owner, repo: target.repo, ref: target.ref, path: entry.Path})
+		if err != nil {
+			return statusError{status: http.StatusBadRequest, message: err.Error()}
+		}
+		if err := fetchGitHubResolvedFile(ctx, fileTarget, rootDir); err != nil {
 			return err
 		}
 	}
@@ -1218,7 +1406,7 @@ func fetchGitHubDirectoryEntries(ctx context.Context, target gitHubTarget) ([]gi
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1", target.owner, target.repo, urlpkg.PathEscape(target.ref))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return nil, errors.New("failed to create GitHub directory request")
+		return nil, statusError{status: http.StatusInternalServerError, message: "failed to create GitHub directory request"}
 	}
 	req.Header.Set("User-Agent", "agents-skill-eval")
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -1235,7 +1423,7 @@ func fetchGitHubDirectoryEntries(ctx context.Context, target gitHubTarget) ([]gi
 		return fetchGitHubDirectoryEntriesHTML(ctx, target)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub directory URL returned %s", resp.Status)
+		return nil, gitHubHTTPError(resp.StatusCode, resp.Status)
 	}
 	var tree struct {
 		Tree []struct {
@@ -1245,11 +1433,14 @@ func fetchGitHubDirectoryEntries(ctx context.Context, target gitHubTarget) ([]gi
 		Truncated bool `json:"truncated"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&tree); err != nil {
-		return nil, errors.New("failed to decode GitHub directory listing")
+		return nil, statusError{status: http.StatusBadGateway, message: "failed to decode GitHub directory listing"}
+	}
+	if tree.Truncated {
+		return nil, statusError{status: http.StatusBadRequest, message: "GitHub directory is too large to evaluate recursively"}
 	}
 	prefix := strings.Trim(strings.TrimSpace(target.path), "/")
 	if prefix == "" {
-		return nil, errors.New("GitHub directory path is empty")
+		return nil, statusError{status: http.StatusBadRequest, message: "GitHub directory path is empty"}
 	}
 	prefixWithSlash := prefix + "/"
 	entries := []gitHubDirectoryEntry{}
@@ -1275,7 +1466,7 @@ func fetchGitHubDirectoryEntries(ctx context.Context, target gitHubTarget) ([]gi
 		})
 	}
 	if len(entries) == 0 {
-		return nil, errors.New("failed to discover files from GitHub directory")
+		return nil, statusError{status: http.StatusBadRequest, message: "failed to discover files from GitHub directory"}
 	}
 	return entries, nil
 }
@@ -1283,22 +1474,22 @@ func fetchGitHubDirectoryEntries(ctx context.Context, target gitHubTarget) ([]gi
 func fetchGitHubDirectoryEntriesHTML(ctx context.Context, target gitHubTarget) ([]gitHubDirectoryEntry, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.htmlURL, nil)
 	if err != nil {
-		return nil, errors.New("failed to create GitHub directory request")
+		return nil, statusError{status: http.StatusInternalServerError, message: "failed to create GitHub directory request"}
 	}
 	req.Header.Set("User-Agent", "agents-skill-eval")
 	req.Header.Set("Accept", "text/html")
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch GitHub directory: %w", err)
+		return nil, gitHubUpstreamError(err, "failed to fetch GitHub directory")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub directory URL returned %s", resp.Status)
+		return nil, gitHubHTTPError(resp.StatusCode, resp.Status)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, errors.New("failed to read GitHub directory page")
+		return nil, statusError{status: http.StatusBadGateway, message: "failed to read GitHub directory page"}
 	}
 	html := string(body)
 	relativePath := strings.TrimPrefix(target.path, "/")
@@ -1334,9 +1525,40 @@ func fetchGitHubDirectoryEntriesHTML(ctx context.Context, target gitHubTarget) (
 		}
 	}
 	if len(entries) == 0 {
-		return nil, errors.New("failed to discover files from GitHub directory page")
+		return nil, statusError{status: http.StatusBadRequest, message: "failed to discover files from GitHub directory page"}
 	}
 	return entries, nil
+}
+
+func statusCodeForError(err error, fallback int) int {
+	var target statusError
+	if errors.As(err, &target) && target.status != 0 {
+		return target.status
+	}
+	return fallback
+}
+
+func gitHubUpstreamError(err error, fallback string) error {
+	message := fallback
+	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		message = "GitHub request timed out"
+	}
+	return statusError{status: http.StatusBadGateway, message: message}
+}
+
+func gitHubHTTPError(statusCode int, status string) error {
+	switch {
+	case statusCode == http.StatusNotFound:
+		return statusError{status: http.StatusBadRequest, message: "GitHub URL could not be found"}
+	case statusCode == http.StatusUnauthorized:
+		return statusError{status: http.StatusBadGateway, message: "GitHub rejected the request"}
+	case statusCode == http.StatusForbidden || statusCode == http.StatusTooManyRequests:
+		return statusError{status: http.StatusServiceUnavailable, message: "GitHub is temporarily unavailable"}
+	case statusCode >= 500:
+		return statusError{status: http.StatusBadGateway, message: "GitHub returned " + status}
+	default:
+		return statusError{status: http.StatusBadRequest, message: "GitHub URL returned " + status}
+	}
 }
 
 func isAllowedSupportingSkillFile(name string) bool {
@@ -1397,6 +1619,15 @@ func redisErrorKey(jobID string) string {
 
 func redisProgressKey(jobID string) string {
 	return "progress:" + jobID
+}
+
+func (app *application) releaseJobState(ctx context.Context, jobID string) {
+	if app == nil || app.rdb == nil {
+		return
+	}
+	if err := app.rdb.Del(ctx, redisResultKey(jobID), redisErrorKey(jobID), redisProgressKey(jobID)).Err(); err != nil && err != redis.Nil {
+		captureInfraEvent("job_state_release_failed", err, map[string]string{"component": "redis", "stage": "result_release"})
+	}
 }
 
 func clientIP(r *http.Request) string {

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -229,6 +232,18 @@ func TestComputeOverallScore(t *testing.T) {
 	}
 }
 
+func TestComputeOverallTier(t *testing.T) {
+	if got := computeOverallTier(map[string]any{"issues": []any{}}, nil); got != "excellent" {
+		t.Fatalf("unexpected deterministic tier: %q", got)
+	}
+	if got := computeOverallTier(map[string]any{"issues": []any{"a", "b", "c"}}, nil); got != "needs_work" {
+		t.Fatalf("unexpected deterministic tier: %q", got)
+	}
+	if got := computeOverallTier(map[string]any{"issues": []any{}}, &llmAnalysis{QualityTier: "poor"}); got != "poor" {
+		t.Fatalf("unexpected llm tier: %q", got)
+	}
+}
+
 func TestSummarizeIssues(t *testing.T) {
 	if got := summarizeIssues(map[string]any{"issues": []any{"first issue", "second"}}, nil); !strings.Contains(got, "Primary issue: first issue") {
 		t.Fatalf("unexpected summary: %q", got)
@@ -269,7 +284,7 @@ func TestResolveGitHubTarget(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if target.kind != "directory" || target.path != "skills/example" {
+		if target.kind != "directory" || target.path != "skills/example" || target.ref != "main" {
 			t.Fatalf("unexpected target: %#v", target)
 		}
 	})
@@ -279,7 +294,37 @@ func TestResolveGitHubTarget(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if target.kind != "file" || target.fileName != "SKILL.md" {
+		if target.kind != "file" || target.fileName != "SKILL.md" || target.path != "SKILL.md" {
+			t.Fatalf("unexpected target: %#v", target)
+		}
+	})
+
+	t.Run("blob url with slash ref keeps ambiguous path for later resolution", func(t *testing.T) {
+		target, err := resolveGitHubTarget("https://github.com/org/repo/blob/feature/test/path/SKILL.md")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if target.kind != "file" || target.ref != "feature" || target.path != "test/path/SKILL.md" || target.refPath != "feature/test/path/SKILL.md" {
+			t.Fatalf("unexpected target: %#v", target)
+		}
+	})
+
+	t.Run("tree url with slash ref keeps ambiguous path for later resolution", func(t *testing.T) {
+		target, err := resolveGitHubTarget("https://github.com/org/repo/tree/release/2026/skills/demo")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if target.kind != "directory" || target.ref != "release" || target.path != "2026/skills/demo" || target.refPath != "release/2026/skills/demo" {
+			t.Fatalf("unexpected target: %#v", target)
+		}
+	})
+
+	t.Run("raw url with slash ref keeps ambiguous path for later resolution", func(t *testing.T) {
+		target, err := resolveGitHubTarget("https://raw.githubusercontent.com/org/repo/release/2026/SKILL.md")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if target.kind != "file" || target.ref != "release" || target.path != "2026/SKILL.md" || target.refPath != "release/2026/SKILL.md" {
 			t.Fatalf("unexpected target: %#v", target)
 		}
 	})
@@ -360,11 +405,205 @@ func TestFetchGitHubDirectoryEntriesRecursive(t *testing.T) {
 	}
 }
 
+func TestFetchGitHubDirectoryEntriesRejectsTruncatedTree(t *testing.T) {
+	oldTransport := http.DefaultTransport
+	defer func() { http.DefaultTransport = oldTransport }()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tree":      []map[string]string{{"path": "skills/demo/SKILL.md", "type": "blob"}},
+			"truncated": true,
+		})
+	}))
+	defer server.Close()
+
+	transport := server.Client().Transport
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "api.github.com" {
+			req.URL.Scheme = "https"
+			req.URL.Host = strings.TrimPrefix(server.URL, "https://")
+		}
+		return transport.RoundTrip(req)
+	})
+
+	_, err := fetchGitHubDirectoryEntries(context.Background(), gitHubTarget{owner: "test", repo: "skills", ref: "main", path: "skills/demo"})
+	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("expected truncated tree error, got %v", err)
+	}
+	if statusCodeForError(err, 0) != http.StatusBadRequest {
+		t.Fatalf("expected bad request status, got %d", statusCodeForError(err, 0))
+	}
+}
+
+func TestStatusCodeForError(t *testing.T) {
+	if got := statusCodeForError(statusError{status: http.StatusServiceUnavailable, message: "busy"}, http.StatusBadRequest); got != http.StatusServiceUnavailable {
+		t.Fatalf("unexpected status code: %d", got)
+	}
+	if got := statusCodeForError(errors.New("plain"), http.StatusBadRequest); got != http.StatusBadRequest {
+		t.Fatalf("unexpected fallback status code: %d", got)
+	}
+}
+
+func TestResolveGitHubTargetRefWithSlashBranchFile(t *testing.T) {
+	oldTransport := http.DefaultTransport
+	defer func() { http.DefaultTransport = oldTransport }()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/org/repo/contents/path/SKILL.md" || r.URL.Query().Get("ref") != "feature/test" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"type": "file"})
+	}))
+	defer server.Close()
+
+	transport := server.Client().Transport
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "api.github.com" {
+			req.URL.Scheme = "https"
+			req.URL.Host = strings.TrimPrefix(server.URL, "https://")
+		}
+		return transport.RoundTrip(req)
+	})
+
+	target, err := resolveGitHubTarget("https://github.com/org/repo/blob/feature/test/path/SKILL.md")
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	resolved, err := resolveGitHubTargetRef(context.Background(), target)
+	if err != nil {
+		t.Fatalf("unexpected resolution error: %v", err)
+	}
+	if resolved.ref != "feature/test" || resolved.path != "path/SKILL.md" {
+		t.Fatalf("unexpected resolved target: %#v", resolved)
+	}
+	if !strings.Contains(resolved.url, "/feature/test/path/SKILL.md") {
+		t.Fatalf("unexpected resolved raw url: %s", resolved.url)
+	}
+}
+
+func TestResolveGitHubTargetRefWithSlashBranchDirectory(t *testing.T) {
+	oldTransport := http.DefaultTransport
+	defer func() { http.DefaultTransport = oldTransport }()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/org/repo/contents/skills/demo" || r.URL.Query().Get("ref") != "release/2026" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"type": "file", "name": "SKILL.md"}})
+	}))
+	defer server.Close()
+
+	transport := server.Client().Transport
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "api.github.com" {
+			req.URL.Scheme = "https"
+			req.URL.Host = strings.TrimPrefix(server.URL, "https://")
+		}
+		return transport.RoundTrip(req)
+	})
+
+	target, err := resolveGitHubTarget("https://github.com/org/repo/tree/release/2026/skills/demo")
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	resolved, err := resolveGitHubTargetRef(context.Background(), target)
+	if err != nil {
+		t.Fatalf("unexpected resolution error: %v", err)
+	}
+	if resolved.ref != "release/2026" || resolved.path != "skills/demo" {
+		t.Fatalf("unexpected resolved target: %#v", resolved)
+	}
+	if !strings.Contains(resolved.htmlURL, "/tree/release/2026/skills/demo") {
+		t.Fatalf("unexpected resolved html url: %s", resolved.htmlURL)
+	}
+}
+
+func TestResolveGitHubTargetRefWithSlashBranchRawFile(t *testing.T) {
+	oldTransport := http.DefaultTransport
+	defer func() { http.DefaultTransport = oldTransport }()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/org/repo/contents/SKILL.md" || r.URL.Query().Get("ref") != "release/2026" {
+			http.NotFound(w, r)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"type": "file"})
+	}))
+	defer server.Close()
+
+	transport := server.Client().Transport
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "api.github.com" {
+			req.URL.Scheme = "https"
+			req.URL.Host = strings.TrimPrefix(server.URL, "https://")
+		}
+		return transport.RoundTrip(req)
+	})
+
+	target, err := resolveGitHubTarget("https://raw.githubusercontent.com/org/repo/release/2026/SKILL.md")
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	resolved, err := resolveGitHubTargetRef(context.Background(), target)
+	if err != nil {
+		t.Fatalf("unexpected resolution error: %v", err)
+	}
+	if resolved.ref != "release/2026" || resolved.path != "SKILL.md" {
+		t.Fatalf("unexpected resolved target: %#v", resolved)
+	}
+}
+
+func TestGitHubHTTPErrorStatusMapping(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		status     string
+		wantCode   int
+		wantText   string
+	}{
+		{name: "not found", statusCode: http.StatusNotFound, status: "404 Not Found", wantCode: http.StatusBadRequest, wantText: "could not be found"},
+		{name: "forbidden", statusCode: http.StatusForbidden, status: "403 Forbidden", wantCode: http.StatusServiceUnavailable, wantText: "temporarily unavailable"},
+		{name: "server error", statusCode: http.StatusBadGateway, status: "502 Bad Gateway", wantCode: http.StatusBadGateway, wantText: "GitHub returned 502 Bad Gateway"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := gitHubHTTPError(tt.statusCode, tt.status)
+			if got := statusCodeForError(err, 0); got != tt.wantCode {
+				t.Fatalf("unexpected status code: got %d want %d", got, tt.wantCode)
+			}
+			if !strings.Contains(err.Error(), tt.wantText) {
+				t.Fatalf("unexpected message: %v", err)
+			}
+		})
+	}
+}
+
+func TestGitHubUpstreamErrorTimeout(t *testing.T) {
+	err := gitHubUpstreamError(timeoutErr{}, "failed to fetch GitHub URL")
+	if got := statusCodeForError(err, 0); got != http.StatusBadGateway {
+		t.Fatalf("unexpected status code: %d", got)
+	}
+	if !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
+
+type timeoutErr struct{}
+
+func (timeoutErr) Error() string   { return "timeout" }
+func (timeoutErr) Timeout() bool   { return true }
+func (timeoutErr) Temporary() bool { return true }
+
+var _ net.Error = timeoutErr{}
 
 func TestValidateFileType(t *testing.T) {
 	if err := validateFileType("script.sh", "text/plain"); err != nil {
@@ -404,13 +643,13 @@ func TestValidateFileType(t *testing.T) {
 
 func TestFinalizeEvaluation(t *testing.T) {
 	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
-	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":["missing tests"]}}`
+	raw := `{"status":"ok","skill_name":"demo","skill_description":"Use when validating skill packages.\n\nKeeps output portable.","skill_compatibility":"Claude Code\nCodex CLI","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":["missing tests"]}}`
 
 	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1"}, raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(result, `"overall_score":90`) || !strings.Contains(result, `"skill_name":"demo"`) {
+	if !strings.Contains(result, `"overall_score":90`) || !strings.Contains(result, `"overall_tier":"excellent"`) || !strings.Contains(result, `"skill_name":"demo"`) || !strings.Contains(result, `"skill_description":"Use when validating skill packages.\n\nKeeps output portable."`) || !strings.Contains(result, `"skill_compatibility":"Claude Code\nCodex CLI"`) {
 		t.Fatalf("unexpected final result: %s", result)
 	}
 }
@@ -453,8 +692,37 @@ func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"provider":"anthropic"`) {
+	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"mode":"opt_in"`) || !strings.Contains(result, `"overall_tier":"good"`) {
 		t.Fatalf("expected optional llm payload, got %s", result)
+	}
+}
+
+func TestHandleResultConsumeReleasesState(t *testing.T) {
+	ctx := context.Background()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	app := &application{rdb: rdb}
+	jobID := "job-consume"
+	result := `{"status":"ok","skill_name":"demo","overall_score":92,"overall_tier":"excellent"}`
+	if err := rdb.Set(ctx, redisResultKey(jobID), result, time.Minute).Err(); err != nil {
+		t.Fatalf("set result: %v", err)
+	}
+	if err := rdb.RPush(ctx, redisProgressKey(jobID), "Evaluation completed.").Err(); err != nil {
+		t.Fatalf("set progress: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/result/"+jobID+"?consume=true", nil)
+	rec := httptest.NewRecorder()
+	app.handleResult(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got, err := rdb.Get(ctx, redisResultKey(jobID)).Result(); err != redis.Nil || got != "" {
+		t.Fatalf("expected result to be released, got value=%q err=%v", got, err)
+	}
+	if got, err := rdb.LRange(ctx, redisProgressKey(jobID), 0, -1).Result(); err != nil || len(got) != 0 {
+		t.Fatalf("expected progress to be released, got value=%v err=%v", got, err)
 	}
 }
 
@@ -622,6 +890,122 @@ func TestHandleUploadRejectsExecutableAttachment(t *testing.T) {
 		t.Fatalf("expected 400, got %d", rr.Code)
 	}
 	if !strings.Contains(rr.Body.String(), "not an allowed upload type") {
+		t.Fatalf("unexpected body: %s", rr.Body.String())
+	}
+}
+
+func TestHandleUploadRejectsMixedSources(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("files", "skill/SKILL.md")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write([]byte("# skill")); err != nil {
+		t.Fatalf("write form file: %v", err)
+	}
+	if err := writer.WriteField("githubUrl", "https://github.com/org/repo/blob/main/SKILL.md"); err != nil {
+		t.Fatalf("write field: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/upload", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rr := httptest.NewRecorder()
+
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	app.handleUpload(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "choose either uploaded files or a GitHub URL") {
+		t.Fatalf("unexpected body: %s", rr.Body.String())
+	}
+}
+
+func TestHandleUploadSurfacesGitHubNotFoundAsBadRequest(t *testing.T) {
+	oldTransport := http.DefaultTransport
+	defer func() { http.DefaultTransport = oldTransport }()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	transport := server.Client().Transport
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "raw.githubusercontent.com" {
+			req.URL.Scheme = "https"
+			req.URL.Host = strings.TrimPrefix(server.URL, "https://")
+		}
+		return transport.RoundTrip(req)
+	})
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("githubUrl", "https://github.com/org/repo/blob/main/SKILL.md"); err != nil {
+		t.Fatalf("write field: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/upload", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rr := httptest.NewRecorder()
+
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	app.handleUpload(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "could not be found") {
+		t.Fatalf("unexpected body: %s", rr.Body.String())
+	}
+}
+
+func TestHandleUploadSurfacesGitHubRateLimitAsServiceUnavailable(t *testing.T) {
+	oldTransport := http.DefaultTransport
+	defer func() { http.DefaultTransport = oldTransport }()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	transport := server.Client().Transport
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host == "raw.githubusercontent.com" {
+			req.URL.Scheme = "https"
+			req.URL.Host = strings.TrimPrefix(server.URL, "https://")
+		}
+		return transport.RoundTrip(req)
+	})
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("githubUrl", "https://github.com/org/repo/blob/main/SKILL.md"); err != nil {
+		t.Fatalf("write field: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/upload", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rr := httptest.NewRecorder()
+
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	app.handleUpload(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "temporarily unavailable") {
 		t.Fatalf("unexpected body: %s", rr.Body.String())
 	}
 }

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>qa-theme</title>
+</head>
+<body>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const theme = params.get('theme') === 'light' ? 'light' : 'dark';
+    const target = params.get('target') || '/';
+    try {
+      localStorage.setItem('agents-skill-eval-theme', theme);
+    } catch (error) {
+      // Ignore storage errors in QA helper.
+    }
+    window.location.replace(target);
+  </script>
+</body>
+</html>
