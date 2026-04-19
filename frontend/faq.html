@@ -4,19 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FAQ | agents-skill-eval</title>
-  <meta name="description" content="FAQ for agents-skill-eval: why the platform focuses on portable agent skills and the IO specification instead of slash commands or vendor-specific runtimes.">
+  <meta name="description" content="FAQ for agents-skill-eval: why the platform focuses on portable agent skills, runtime-agnostic IO contracts, and portable helper scripts.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://agents-skill-eval.com/faq">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://agents-skill-eval.com/faq">
   <meta property="og:title" content="FAQ | agents-skill-eval">
-  <meta property="og:description" content="Why agents-skill-eval focuses on portable skills, structured IO contracts, and vendor-neutral evaluation.">
+  <meta property="og:description" content="Why agents-skill-eval focuses on portable skills, structured IO contracts, and runtime-neutral evaluation.">
   <meta property="og:site_name" content="agents-skill-eval">
   <meta property="og:locale" content="en_US">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="FAQ | agents-skill-eval">
-  <meta name="twitter:description" content="Why agents-skill-eval focuses on portable skills, structured IO contracts, and vendor-neutral evaluation.">
-  <meta name="theme-color" content="#dc2626">
+  <meta name="twitter:description" content="Why agents-skill-eval focuses on portable skills, structured IO contracts, and runtime-neutral evaluation.">
+  <meta name="theme-color" content="#0a0a0a">
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -27,7 +27,7 @@
           "name": "Why agent skills over slash commands?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Slash commands are convenient shortcuts, but skills are a stronger foundation for portable and evaluable agent capabilities because they can express activation context, structured IO contracts, and reusable behavior."
+            "text": "Slash commands are convenient shortcuts, but skills are a stronger foundation for portable and evaluable agent capabilities because they can encode trigger conditions, IO contracts, examples, and reusable behavior."
           }
         },
         {
@@ -45,299 +45,421 @@
             "@type": "Answer",
             "text": "Shell scripts (.sh) and Python scripts (.py) are preferred because they are more portable across Linux and macOS environments and usually do not require an extra runtime manager or compile step."
           }
+        },
+        {
+          "@type": "Question",
+          "name": "Is the project open source and self-hostable?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. The repository is public and the frontend ships as raw HTML, CSS, and JavaScript served by a Go backend, which keeps deployment simple and self-hosting practical."
+          }
         }
       ]
     }
   </script>
   <style>
     :root {
-      color-scheme: light dark;
+      color-scheme: dark;
+      --bg: #06070a;
+      --panel: rgba(11, 15, 20, 0.94);
+      --line: rgba(148, 163, 184, 0.16);
+      --line-strong: rgba(148, 163, 184, 0.28);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --subtle: #64748b;
+      --brand: #ef4444;
+      --brand-soft: rgba(239, 68, 68, 0.12);
+      --shadow: 0 28px 60px rgba(0, 0, 0, 0.44);
+      --radius-lg: 26px;
+      --radius-md: 18px;
       --mono: "SFMono-Regular", Menlo, Consolas, monospace;
       --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --radius-lg: 18px;
-      --shadow: 0 16px 40px rgba(0, 0, 0, 0.06);
+      --shell: min(1100px, calc(100% - 28px));
     }
 
-    :root[data-theme="light"] {
-      --bg: #fafafa;
-      --panel: #ffffff;
-      --line: rgba(0, 0, 0, 0.08);
-      --text: #111111;
-      --muted: #666666;
-      --accent: #dc2626;
-      --accent-soft: rgba(220, 38, 38, 0.06);
-    }
-
-    :root[data-theme="dark"] {
-      --bg: #0a0a0a;
-      --panel: #111111;
-      --line: rgba(255, 255, 255, 0.1);
-      --text: #f5f5f5;
-      --muted: #a3a3a3;
-      --accent: #ef4444;
-      --accent-soft: rgba(239, 68, 68, 0.08);
-      --shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
-    }
-
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
       min-height: 100vh;
       font-family: var(--sans);
-      background: var(--bg);
       color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(239, 68, 68, 0.12), transparent 26%),
+        radial-gradient(circle at top right, rgba(56, 189, 248, 0.08), transparent 22%),
+        linear-gradient(180deg, #050608 0%, #06070a 100%);
     }
 
-    main {
-      width: min(920px, calc(100% - 24px));
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.34), transparent 84%);
+      opacity: 0.3;
+    }
+
+    a { color: inherit; }
+
+    .shell {
+      width: var(--shell);
       margin: 0 auto;
-      padding: 28px 0 44px;
-      display: grid;
-      gap: 18px;
     }
 
-    .topbar {
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
       display: flex;
       justify-content: space-between;
+      align-items: center;
       gap: 16px;
-      align-items: flex-start;
       flex-wrap: wrap;
+      padding: 20px 0 18px;
+      backdrop-filter: blur(16px);
+      background: linear-gradient(180deg, rgba(6, 7, 10, 0.92), rgba(6, 7, 10, 0.72));
     }
 
-    .brand {
-      display: grid;
-      gap: 8px;
-      max-width: 700px;
-    }
-
-    .eyebrow {
-      font-family: var(--mono);
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--accent);
-    }
-
-    a.eyebrow {
+    .brand-lockup {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
       text-decoration: none;
     }
 
-    a.eyebrow:hover {
-      color: var(--accent);
-      opacity: 0.88;
+    .brand-mark {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #fb7185, #ef4444 55%, #7f1d1d);
+      box-shadow: 0 0 18px rgba(239, 68, 68, 0.5);
+    }
+
+    .brand-name {
+      color: var(--brand);
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .nav a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 11px 15px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.84);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      text-decoration: none;
+      transition: border-color 140ms ease, color 140ms ease, transform 140ms ease;
+    }
+
+    .nav a:hover {
+      color: var(--text);
+      border-color: var(--line-strong);
+      transform: translateY(-1px);
+    }
+
+    .page {
+      display: grid;
+      gap: 22px;
+      padding: 18px 0 42px;
+    }
+
+    .hero,
+    .faq-card,
+    .callout,
+    .footer-card {
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(14, 19, 26, 0.98), rgba(9, 12, 18, 0.96));
+      box-shadow: var(--shadow);
+    }
+
+    .hero,
+    .faq-card,
+    .callout,
+    .footer-card {
+      padding: 28px;
+    }
+
+    .hero::before,
+    .faq-card::before,
+    .callout::before,
+    .footer-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), transparent 45%);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      width: fit-content;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(239, 68, 68, 0.22);
+      background: rgba(239, 68, 68, 0.08);
+      color: #fca5a5;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 12px currentColor;
     }
 
     h1,
-    h2 {
+    h2,
+    h3 {
       margin: 0;
-      letter-spacing: -0.04em;
+      letter-spacing: -0.05em;
     }
 
     h1 {
-      font-size: clamp(34px, 7vw, 52px);
-      line-height: 0.96;
+      font-size: clamp(44px, 8vw, 72px);
+      line-height: 0.94;
+      max-width: 10ch;
     }
 
     h2 {
-      font-size: clamp(24px, 4vw, 32px);
-      line-height: 1.05;
+      font-size: clamp(28px, 5vw, 40px);
+      line-height: 1;
+    }
+
+    h3 {
+      font-size: 22px;
+      line-height: 1.12;
     }
 
     p,
     li {
-      line-height: 1.75;
       color: var(--muted);
+      line-height: 1.82;
       font-size: 15px;
+      margin: 0;
     }
 
-    .top-actions {
+    .hero {
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero-copy {
+      display: grid;
+      gap: 16px;
+      max-width: 72ch;
+    }
+
+    .hero-meta {
       display: flex;
+      flex-wrap: wrap;
       gap: 10px;
+    }
+
+    .hero-meta span {
+      display: inline-flex;
+      align-items: center;
+      padding: 9px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.82);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .faq-grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .faq-card,
+    .callout {
+      display: grid;
+      gap: 14px;
+    }
+
+    .faq-card ul {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .faq-card a,
+    .callout a,
+    .footer-links a {
+      color: #cbd5e1;
+      text-decoration: none;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .faq-card a:hover,
+    .callout a:hover,
+    .footer-links a:hover {
+      color: var(--text);
+    }
+
+    .footer-card {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
       align-items: center;
       flex-wrap: wrap;
     }
 
-    .link,
-    .theme-toggle {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 10px 12px;
-      background: var(--panel);
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 12px;
-      text-decoration: none;
-      cursor: pointer;
+    .footer-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
     }
 
-    .link:hover,
-    .theme-toggle:hover {
-      color: var(--text);
-      border-color: rgba(220, 38, 38, 0.22);
-    }
-
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow);
-      padding: 20px;
-    }
-
-    .label {
-      display: inline-flex;
-      align-items: center;
-      margin-bottom: 12px;
-      padding: 5px 9px;
-      border-radius: 999px;
-      border: 1px solid rgba(220, 38, 38, 0.18);
-      background: rgba(220, 38, 38, 0.08);
-      color: var(--accent);
-      font-family: var(--mono);
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.14em;
-    }
-
-    ul {
-      margin: 0;
-      padding-left: 20px;
-    }
-
-    .callout {
-      background: linear-gradient(180deg, var(--accent-soft), transparent 60%), var(--panel);
+    @media (max-width: 860px) {
+      .faq-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     @media (max-width: 640px) {
-      main {
-        width: min(100% - 18px, 920px);
-        padding-top: 18px;
+      .site-header,
+      .page {
+        padding-top: 16px;
       }
 
-      .panel {
-        padding: 16px;
+      .hero,
+      .faq-card,
+      .callout,
+      .footer-card {
+        padding: 22px;
+      }
+
+      h1 {
+        font-size: 40px;
       }
     }
   </style>
 </head>
 <body>
-  <main>
-    <section class="topbar">
-      <div class="brand">
-        <a class="eyebrow" href="/">agents-skill-eval</a>
-        <h1>FAQ</h1>
-        <p>Why this platform focuses on portable agent skills, structured IO definitions, and runtime-agnostic evaluation.</p>
-      </div>
-      <div class="top-actions">
-        <button id="theme-toggle" type="button" class="theme-toggle">Theme: Auto</button>
-        <a class="link" href="/">Back to evaluator</a>
+  <header class="site-header shell">
+    <a class="brand-lockup" href="/" aria-label="Go to homepage">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">agents-skill-eval</span>
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a href="/">Evaluator</a>
+      <a href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
+    </nav>
+  </header>
+
+  <main class="shell page">
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="eyebrow">FAQ</span>
+        <h1>Portable skills, not runtime glue.</h1>
+        <p>agents-skill-eval focuses on the part that should survive across runtimes: the skill definition, its trigger conditions, its IO contract, and the supporting assets required to use it safely and predictably.</p>
+        <div class="hero-meta">
+          <span>Runtime-agnostic</span>
+          <span>Portable helper scripts</span>
+          <span>Open source</span>
+        </div>
       </div>
     </section>
 
-    <section class="panel callout">
-      <span class="label">Positioning</span>
+    <section class="callout">
+      <span class="eyebrow">Positioning</span>
       <h2>Why agent skills over slash commands?</h2>
-      <p>Slash commands are useful shortcuts, but they are a weak foundation for portable, evaluable agent capabilities. This platform focuses on skills because skills can be activated by context, inspected systematically, and reused across runtimes.</p>
+      <p>Slash commands are useful shortcuts, but they are a weak foundation for portable, evaluable agent capabilities. Skills can encode activation context, inputs, outputs, examples, and reusable behavior. That makes them much easier to inspect and compare.</p>
     </section>
 
-    <section class="panel">
-      <span class="label">Why not slash commands?</span>
-      <ul>
-        <li>Commands are imperative, one-shot triggers. They do not naturally carry activation context, state, or structured IO contracts.</li>
-        <li>Commands are usually tightly coupled to one runtime such as Claude Code `/commands`, Codex prompts, or another vendor-specific invocation model.</li>
-        <li>Commands rarely define when they should activate, what they require, or what they return. They depend on the user already knowing how and when to use them.</li>
-        <li>That makes them harder to evaluate consistently. A command may be convenient, but it is not the same thing as a portable capability definition.</li>
-      </ul>
+    <section class="faq-grid">
+      <article class="faq-card">
+        <span class="eyebrow">Question</span>
+        <h3>Why not just score Claude Code slash commands?</h3>
+        <ul>
+          <li>Commands are imperative one-shot triggers, not portable capability definitions.</li>
+          <li>They are usually coupled to one runtime's invocation model.</li>
+          <li>They rarely explain when they should trigger, what inputs they require, or what outputs they return.</li>
+          <li>That makes consistent evaluation much harder.</li>
+        </ul>
+      </article>
+
+      <article class="faq-card">
+        <span class="eyebrow">Question</span>
+        <h3>Why evaluate the IO spec instead of one vendor's runtime?</h3>
+        <ul>
+          <li>The evaluator focuses on the portable skill definition itself.</li>
+          <li>Trigger definitions, input contracts, outputs, and examples matter more than runtime-specific syntax.</li>
+          <li>The goal is vendor-neutral reuse across Claude Code, Codex, Gemini CLI, Cursor, and similar environments.</li>
+        </ul>
+      </article>
+
+      <article class="faq-card">
+        <span class="eyebrow">Question</span>
+        <h3>Why prefer `.sh` and `.py` helper scripts?</h3>
+        <ul>
+          <li>They are the most portable script options across Linux and macOS environments.</li>
+          <li>They usually do not require a runtime manager, compile step, or package bootstrap.</li>
+          <li>Runtime-heavy script formats increase friction and reduce portability.</li>
+        </ul>
+      </article>
+
+      <article class="faq-card">
+        <span class="eyebrow">Question</span>
+        <h3>Is the project open source and self-hostable?</h3>
+        <p>Yes. The repository is public and the frontend ships as raw HTML, CSS, and JavaScript served by a Go backend. That keeps the deployment path simple and transparent.</p>
+        <a href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">Open the repository</a>
+      </article>
     </section>
 
-    <section class="panel">
-      <span class="label">Why SKILL.md?</span>
-      <ul>
-        <li>Skills are declarative. A good skill defines trigger conditions, required inputs, expected outputs, and behavior in a structured, readable format.</li>
-        <li>Skills are self-documenting and evaluable. You can review their structure, activation logic, examples, edge cases, and coverage.</li>
-        <li>Skills can activate autonomously when the surrounding context matches, instead of relying on manual invocation every time.</li>
-        <li>Skills are where the ecosystem is heading. Anthropic, VoltAgent, Composio, and related tools are converging on reusable skill and capability definitions rather than one-off runtime commands.</li>
-      </ul>
+    <section class="callout">
+      <span class="eyebrow">Evaluation model</span>
+      <h2>What the evaluator optimizes for.</h2>
+      <p>High-quality skills reduce wasted context, tighten trigger boundaries, make helper scripts more portable, and surface safety issues before a skill gets reused across teams or runtimes.</p>
     </section>
 
-    <section class="panel callout">
-      <span class="label">Agent-Agnostic Evaluation</span>
-      <h2>Why evaluate the IO spec instead of a specific agent?</h2>
-      <p>agents-skill-eval.com focuses on the portable skill definition itself: the `SKILL.md` structure, trigger definitions, and input/output contract. It does not score a skill based on Claude Code-only or Codex-only conventions.</p>
-    </section>
-
-    <section class="panel">
-      <span class="label">Portable by design</span>
-      <ul>
-        <li>A well-written skill should be portable. It should work across Claude Code, Codex, Gemini CLI, OpenClaw, Cursor, and any other agent runtime that implements the skill standard.</li>
-        <li>Evaluations focus on portability, clarity, and reliability of the skill definition itself, not whether it uses one runtime's proprietary syntax or ergonomics.</li>
-        <li>The goal is vendor-neutral, runtime-agnostic agent capabilities. Locking skills to proprietary runtime features weakens portability and makes skills harder to reuse and compare.</li>
-        <li>That is why the platform evaluates the IO specification and behavior contract first. The runtime should be interchangeable; the skill definition should remain understandable and useful across environments.</li>
-      </ul>
-    </section>
-
-    <section class="panel callout">
-      <span class="label">Script Guidance</span>
-      <h2>Preferred script types inside skills: `.sh` and `.py`</h2>
-      <p>Bundled skill scripts should favor shell (`.sh`) and Python (`.py`) because they are the most portable options across Linux and macOS environments where agent skills are likely to run.</p>
-    </section>
-
-    <section class="panel">
-      <span class="label">Why `.sh` and `.py`?</span>
-      <ul>
-        <li>Both are commonly available on Linux and macOS without requiring an extra runtime manager.</li>
-        <li>Shell scripts run directly through `/bin/sh` or `/bin/bash` with effectively zero setup.</li>
-        <li>Python 3 is a standard dependency on Linux systems and widely available across agent development environments.</li>
-        <li>Neither requires a compile step, package manager bootstrap, or runtime installation dance just to execute a small helper script.</li>
-      </ul>
-    </section>
-
-    <section class="panel">
-      <span class="label">Discouraged runtimes</span>
-      <ul>
-        <li>Node.js scripts (`.js`, `.ts`) require a separate runtime install and are not guaranteed to exist in every skill environment.</li>
-        <li>Go files (`.go`) require the Go toolchain and do not run directly as portable scripts.</li>
-        <li>Adding these runtimes increases setup friction, broadens dependency surface area, and reduces cross-runtime portability.</li>
-        <li>Our skill evaluator treats these non-portable script types as soft portability warnings so agents and maintainers can see the tradeoff clearly.</li>
-      </ul>
+    <section class="footer-card">
+      <p>More context on the project and the broader developer tooling perspective is available in the public repository and personal site.</p>
+      <div class="footer-links">
+        <a href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
+        <a href="https://linkedin.com/in/sasa-fajkovic" target="_blank" rel="noreferrer">LinkedIn</a>
+        <a href="https://sasa-fajkovic.com/" target="_blank" rel="noreferrer">sasa-fajkovic.com</a>
+      </div>
     </section>
   </main>
-
-  <script>
-    const themeToggle = document.getElementById('theme-toggle');
-
-    function getSystemTheme() {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-
-    function applyTheme(theme) {
-      const resolved = theme === 'auto' ? getSystemTheme() : theme;
-      document.documentElement.dataset.theme = resolved;
-      themeToggle.textContent = `Theme: ${theme.charAt(0).toUpperCase()}${theme.slice(1)}`;
-    }
-
-    const savedTheme = localStorage.getItem('agents-skill-eval-theme') || 'auto';
-    applyTheme(savedTheme);
-
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      if ((localStorage.getItem('agents-skill-eval-theme') || 'auto') === 'auto') {
-        applyTheme('auto');
-      }
-    });
-
-    themeToggle.addEventListener('click', () => {
-      const current = localStorage.getItem('agents-skill-eval-theme') || 'auto';
-      const next = current === 'auto' ? 'dark' : current === 'dark' ? 'light' : 'auto';
-      localStorage.setItem('agents-skill-eval-theme', next);
-      applyTheme(next);
-    });
-  </script>
 </body>
 </html>

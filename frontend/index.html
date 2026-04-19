@@ -3,20 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agent Skill Evaluator for SKILL.md | agents-skill-eval</title>
-  <meta name="description" content="Evaluate SKILL.md files and GitHub-hosted agent skills against the official AgentSkills.io specification with deterministic checks and optional host-side LLM review.">
+  <title>agents-skill-eval | Evaluate Agent Skills for Quality, Cost, and Reliability</title>
+  <meta name="description" content="Evaluate SKILL.md packages for trigger quality, token efficiency, cost control, reliability, and security using deterministic checks with optional Anthropic review.">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://agents-skill-eval.com/">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://agents-skill-eval.com/">
-  <meta property="og:title" content="Agent Skill Evaluator for SKILL.md">
-  <meta property="og:description" content="Evaluate uploaded or GitHub-hosted agent skills against the official AgentSkills.io specification.">
+  <meta property="og:title" content="agents-skill-eval">
+  <meta property="og:description" content="Evaluate agent skills for trigger quality, token efficiency, cost control, reliability, and security.">
   <meta property="og:site_name" content="agents-skill-eval">
   <meta property="og:locale" content="en_US">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Agent Skill Evaluator for SKILL.md">
-  <meta name="twitter:description" content="Evaluate uploaded or GitHub-hosted agent skills against the official AgentSkills.io specification.">
-  <meta name="theme-color" content="#dc2626">
+  <meta name="twitter:title" content="agents-skill-eval">
+  <meta name="twitter:description" content="Evaluate agent skills for trigger quality, token efficiency, cost control, reliability, and security.">
+  <meta name="theme-color" content="#0a0a0a">
+  <script>document.documentElement.classList.add('js');</script>
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -25,7 +26,7 @@
       "url": "https://agents-skill-eval.com/",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "Web",
-      "description": "Evaluate SKILL.md files and GitHub-hosted agent skills against the official AgentSkills.io specification using deterministic checks and optional host-side LLM review.",
+      "description": "Evaluate SKILL.md packages for trigger quality, token efficiency, cost control, reliability, and security using deterministic checks with optional Anthropic review.",
       "offers": {
         "@type": "Offer",
         "price": "0",
@@ -35,302 +36,711 @@
   </script>
   <style>
     :root {
-      color-scheme: light dark;
+      color-scheme: dark;
+      --bg: #06070a;
+      --panel: rgba(11, 15, 20, 0.92);
+      --panel-strong: rgba(14, 19, 26, 0.98);
+      --panel-soft: rgba(16, 23, 34, 0.88);
+      --line: rgba(148, 163, 184, 0.16);
+      --line-strong: rgba(148, 163, 184, 0.28);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --subtle: #64748b;
+      --brand: #ef4444;
+      --brand-soft: rgba(239, 68, 68, 0.14);
+      --good: #22c55e;
+      --good-soft: rgba(34, 197, 94, 0.16);
+      --poor: #f97316;
+      --poor-soft: rgba(249, 115, 22, 0.16);
+      --cyan: #38bdf8;
+      --shadow: 0 28px 60px rgba(0, 0, 0, 0.45);
+      --radius-lg: 26px;
+      --radius-md: 18px;
+      --radius-sm: 14px;
       --mono: "SFMono-Regular", Menlo, Consolas, monospace;
       --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --radius-lg: 18px;
-      --radius-md: 12px;
-      --shadow: 0 16px 40px rgba(0, 0, 0, 0.06);
-    }
-
-    :root[data-theme="light"] {
-      --bg: #fafafa;
-      --panel: #ffffff;
-      --panel-soft: #f6f6f6;
-      --line: rgba(0, 0, 0, 0.08);
-      --text: #111111;
-      --muted: #666666;
-      --accent: #dc2626;
-      --accent-soft: rgba(220, 38, 38, 0.06);
-      --excellent: #15803d;
-      --good: #16a34a;
-      --needs-work: #d97706;
-      --poor: #dc2626;
-    }
-
-    :root[data-theme="dark"] {
-      --bg: #0a0a0a;
-      --panel: #111111;
-      --panel-soft: #171717;
-      --line: rgba(255, 255, 255, 0.1);
-      --text: #f5f5f5;
-      --muted: #a3a3a3;
-      --accent: #ef4444;
-      --accent-soft: rgba(239, 68, 68, 0.08);
-      --excellent: #22c55e;
-      --good: #34d399;
-      --needs-work: #f59e0b;
-      --poor: #ef4444;
-      --shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+      --shell: min(1180px, calc(100% - 28px));
     }
 
     * {
       box-sizing: border-box;
     }
 
+    html {
+      scroll-behavior: smooth;
+    }
+
     body {
       margin: 0;
       min-height: 100vh;
       font-family: var(--sans);
-      background: var(--bg);
       color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(239, 68, 68, 0.12), transparent 28%),
+        radial-gradient(circle at top right, rgba(34, 197, 94, 0.08), transparent 24%),
+        linear-gradient(180deg, #050608 0%, #06070a 52%, #070a0f 100%);
     }
 
-    main {
-      width: min(920px, calc(100% - 24px));
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.35), transparent 82%);
+      opacity: 0.32;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .site-shell {
+      width: var(--shell);
       margin: 0 auto;
-      padding: 28px 0 44px;
-      display: grid;
-      gap: 18px;
     }
 
-    .topbar {
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
       display: flex;
+      align-items: center;
       justify-content: space-between;
       gap: 16px;
-      align-items: flex-start;
-      flex-wrap: wrap;
+      padding: 20px 0 18px;
+      backdrop-filter: blur(16px);
+      background: linear-gradient(180deg, rgba(6, 7, 10, 0.92), rgba(6, 7, 10, 0.72));
     }
 
-    .brand {
-      display: grid;
-      gap: 8px;
-      max-width: 680px;
-    }
-
-    .eyebrow {
-      font-family: var(--mono);
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--accent);
-    }
-
-    a.eyebrow {
-      text-decoration: none;
-    }
-
-    a.eyebrow:hover {
-      color: var(--accent);
-      opacity: 0.88;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: clamp(34px, 7vw, 52px);
-      line-height: 0.96;
-      letter-spacing: -0.05em;
-    }
-
-    .subtitle {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.75;
-      font-size: 15px;
-      max-width: 60ch;
-    }
-
-    .top-actions {
-      display: flex;
-      gap: 10px;
+    .brand-lockup {
+      display: inline-flex;
       align-items: center;
-      flex-wrap: wrap;
+      gap: 12px;
+      text-decoration: none;
+      min-width: 0;
     }
 
-    .link,
-    .theme-toggle,
-    .chip,
+    .brand-mark {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #fb7185, #ef4444 55%, #7f1d1d);
+      box-shadow: 0 0 18px rgba(239, 68, 68, 0.5);
+      flex: 0 0 auto;
+    }
+
+    .brand-name {
+      color: var(--brand);
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .nav-link,
+    .button,
     button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      gap: 8px;
+      min-height: 44px;
+      padding: 11px 15px;
+      border-radius: 999px;
       border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 10px 12px;
-      background: var(--panel);
+      background: rgba(15, 23, 34, 0.82);
       color: var(--muted);
       font-family: var(--mono);
       font-size: 12px;
       text-decoration: none;
+      transition: border-color 140ms ease, color 140ms ease, transform 140ms ease, background 140ms ease;
     }
 
-    .theme-toggle,
-    button {
-      cursor: pointer;
-    }
-
-    .link:hover,
-    .theme-toggle:hover,
+    .nav-link:hover,
+    .button:hover,
     button:hover {
       color: var(--text);
-      border-color: rgba(220, 38, 38, 0.22);
+      border-color: var(--line-strong);
+      transform: translateY(-1px);
     }
 
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--line);
+    .button-primary,
+    .primary {
+      border-color: rgba(34, 197, 94, 0.42);
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.24), rgba(22, 163, 74, 0.14));
+      color: #d1fae5;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .button-secondary {
+      background: rgba(15, 23, 34, 0.92);
+    }
+
+    .page {
+      display: grid;
+      gap: 28px;
+      padding: 16px 0 44px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+      gap: 22px;
+      align-items: stretch;
+    }
+
+    .hero-copy,
+    .hero-visual,
+    .panel,
+    .status-panel,
+    .results .result-card,
+    .results .summary-card {
+      position: relative;
+      overflow: hidden;
       border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(14, 19, 26, 0.98), rgba(9, 12, 18, 0.96));
       box-shadow: var(--shadow);
     }
 
-    .results .card {
-      border-color: rgba(220, 38, 38, 0.12);
-      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.08);
+    .hero-copy {
+      padding: 34px;
+      display: grid;
+      gap: 22px;
+      min-height: 100%;
     }
 
-    .panel-body,
-    .card {
-      padding: 18px;
+    .hero-copy::before,
+    .hero-visual::before,
+    .panel::before,
+    .status-panel::before,
+    .results .result-card::before,
+    .results .summary-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), transparent 45%);
     }
 
-    .label {
+    .eyebrow,
+    .section-label {
       display: inline-flex;
       align-items: center;
-      margin-bottom: 12px;
-      padding: 5px 9px;
+      gap: 10px;
+      width: fit-content;
+      padding: 7px 10px;
       border-radius: 999px;
-      border: 1px solid rgba(220, 38, 38, 0.18);
-      background: rgba(220, 38, 38, 0.08);
-      color: var(--accent);
+      border: 1px solid rgba(239, 68, 68, 0.22);
+      background: rgba(239, 68, 68, 0.08);
+      color: #fca5a5;
       font-family: var(--mono);
       font-size: 11px;
       font-weight: 700;
-      text-transform: uppercase;
       letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before,
+    .section-label::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 12px currentColor;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      letter-spacing: -0.05em;
+    }
+
+    h1 {
+      max-width: 11ch;
+      font-size: clamp(46px, 8vw, 84px);
+      line-height: 0.94;
+    }
+
+    h2 {
+      font-size: clamp(28px, 5vw, 42px);
+      line-height: 0.98;
+    }
+
+    h3 {
+      font-size: 20px;
+      line-height: 1.08;
+    }
+
+    .hero-subtitle,
+    .section-copy,
+    .support-copy,
+    .faq-card p,
+    .step-card p,
+    .preview-copy,
+    .impact-card p,
+    .privacy-copy,
+    .dropzone p,
+    .token-note,
+    .result-summary,
+    .footer-copy,
+    .llm-copy,
+    .file-caption {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.8;
+    }
+
+    .hero-subtitle {
+      max-width: 60ch;
+      font-size: 17px;
+    }
+
+    .cta-row,
+    .signal-grid,
+    .action-row,
+    .drop-meta,
+    .upload-actions,
+    .footer-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .signal-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .signal-card {
+      padding: 14px 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.72);
+      display: grid;
+      gap: 6px;
+    }
+
+    .signal-card strong,
+    .support-card strong,
+    .stat-number,
+    .step-card strong,
+    .faq-card strong,
+    .impact-card strong,
+    .upload-side strong,
+    .result-metric strong {
+      color: var(--text);
+      font-size: 16px;
+      line-height: 1.25;
+    }
+
+    .signal-card span,
+    .support-card span,
+    .stat-caption,
+    .mini-label,
+    .estimate-note,
+    .footer-note,
+    .terminal-caption,
+    .bar-label,
+    .gauge-note,
+    .result-meta,
+    .support-chip,
+    .section-micro {
+      color: var(--subtle);
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      line-height: 1.6;
+    }
+
+    .hero-visual {
+      padding: 28px;
+      display: grid;
+      gap: 18px;
+      align-content: start;
+      min-height: 100%;
+    }
+
+    .visual-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .visual-header h2 {
+      font-size: clamp(24px, 4vw, 32px);
+      max-width: 12ch;
+    }
+
+    .estimate-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(56, 189, 248, 0.18);
+      background: rgba(56, 189, 248, 0.08);
+      color: #7dd3fc;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .token-visual {
+      display: grid;
+      gap: 14px;
+      position: relative;
+      padding-top: 4px;
+    }
+
+    .token-visual::before {
+      content: "";
+      position: absolute;
+      left: 20px;
+      right: 20px;
+      top: 50%;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(249, 115, 22, 0.35), rgba(148, 163, 184, 0.1), rgba(34, 197, 94, 0.42));
+      transform: translateY(-50%);
+    }
+
+    .token-lane {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+    }
+
+    .token-card {
+      padding: 18px;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(9, 13, 18, 0.94);
+      display: grid;
+      gap: 8px;
+      min-height: 190px;
+      align-content: start;
+    }
+
+    .token-card.poor {
+      box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.16);
+    }
+
+    .token-card.good {
+      box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.16);
+    }
+
+    .counter-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      color: var(--subtle);
+      font-family: var(--mono);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+    }
+
+    .status-pill::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 12px currentColor;
+    }
+
+    .status-pill.poor {
+      background: var(--poor-soft);
+      color: #fdba74;
+    }
+
+    .status-pill.good {
+      background: var(--good-soft);
+      color: #86efac;
+    }
+
+    .counter-value {
+      font-family: var(--mono);
+      font-size: clamp(34px, 5vw, 54px);
+      line-height: 0.98;
+      letter-spacing: -0.06em;
+      color: var(--text);
+    }
+
+    .counter-subtext {
+      font-family: var(--mono);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .delta-column {
+      display: grid;
+      gap: 12px;
+      justify-items: center;
+      text-align: center;
+      z-index: 1;
+    }
+
+    .delta-arrow {
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.92);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text);
+      font-size: 20px;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
+    }
+
+    .reduction-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 124px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.32), rgba(22, 163, 74, 0.18));
+      color: #dcfce7;
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.24), 0 0 24px rgba(34, 197, 94, 0.16);
+      animation: pulseBadge 2.1s ease-in-out infinite;
+    }
+
+    .token-note {
+      padding: 14px 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(56, 189, 248, 0.18);
+      background: rgba(56, 189, 248, 0.06);
+    }
+
+    .section {
+      display: grid;
+      gap: 18px;
+    }
+
+    .section-head {
+      display: grid;
+      gap: 12px;
+      max-width: 76ch;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.8;
+      font-size: 16px;
+    }
+
+    .workspace-grid,
+    .steps-grid,
+    .impact-grid,
+    .preview-grid,
+    .faq-grid,
+    .results-top,
+    .results-grid {
+      display: grid;
+      gap: 18px;
+    }
+
+    .workspace-grid {
+      grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+      align-items: start;
+    }
+
+    .workspace-panel,
+    .upload-side,
+    .step-card,
+    .impact-card,
+    .preview-panel,
+    .faq-card,
+    .results .result-card,
+    .results .summary-card {
+      padding: 24px;
+    }
+
+    .field-stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    .field-label {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
     }
 
     .url-input {
       width: 100%;
+      min-height: 54px;
       border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 14px 16px;
-      background: var(--panel-soft);
+      border-radius: var(--radius-sm);
+      padding: 15px 16px;
+      background: rgba(15, 23, 34, 0.82);
       color: var(--text);
       font: inherit;
     }
 
     .url-input::placeholder {
-      color: var(--muted);
+      color: var(--subtle);
     }
 
     .dropzone {
       display: grid;
       gap: 18px;
-      min-height: 360px;
-      padding: 28px;
-      border-radius: 16px;
-      border: 1px dashed rgba(220, 38, 38, 0.28);
-      background: linear-gradient(180deg, var(--accent-soft), transparent 34%), var(--panel-soft);
+      padding: 26px;
+      border-radius: 22px;
+      border: 1px dashed rgba(148, 163, 184, 0.28);
+      background:
+        radial-gradient(circle at top right, rgba(34, 197, 94, 0.1), transparent 24%),
+        linear-gradient(180deg, rgba(15, 23, 34, 0.9), rgba(9, 13, 18, 0.94));
+      transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
       cursor: pointer;
-      transition: border-color 140ms ease, transform 140ms ease;
+      min-height: 260px;
+      align-content: space-between;
     }
 
     .dropzone.dragging {
-      border-color: var(--accent);
+      border-color: rgba(34, 197, 94, 0.48);
       transform: translateY(-1px);
+      background:
+        radial-gradient(circle at top right, rgba(34, 197, 94, 0.18), transparent 24%),
+        linear-gradient(180deg, rgba(15, 23, 34, 0.94), rgba(9, 13, 18, 0.98));
     }
 
     .dropzone strong {
       display: block;
-      font-size: clamp(30px, 5vw, 44px);
-      line-height: 0.96;
+      max-width: 10ch;
+      font-size: clamp(30px, 5vw, 48px);
+      line-height: 0.94;
       letter-spacing: -0.05em;
-      max-width: 12ch;
-    }
-
-    .dropzone p {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.75;
-      max-width: 56ch;
-      font-size: 15px;
-    }
-
-    .drop-meta,
-    .actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
     }
 
     .drop-meta {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 6px;
+      gap: 10px;
     }
 
-    .chip {
-      padding: 6px 10px;
-      font-size: 11px;
-      background: transparent;
-      border-color: transparent;
-      border-width: 0;
-      padding-left: 0;
-      padding-right: 0;
-    }
-
-    .primary {
-      border-color: rgba(34, 197, 94, 0.28);
-      background: rgba(34, 197, 94, 0.12);
-      color: #22c55e;
-      font-weight: 700;
-      min-height: 52px;
-      padding: 14px 22px;
-      font-size: 15px;
-    }
-
-    .actions {
+    .support-chip {
+      display: inline-flex;
       align-items: center;
-      padding-top: 10px;
-      padding-bottom: 8px;
+      gap: 8px;
+      padding: 9px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.88);
+      color: var(--text);
+    }
+
+    .support-chip::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--good);
+      box-shadow: 0 0 12px rgba(34, 197, 94, 0.42);
+    }
+
+    .upload-actions {
+      margin-top: 2px;
     }
 
     button {
-      padding: 10px 16px;
-      font-size: 13px;
+      cursor: pointer;
     }
 
     button:disabled {
-      opacity: 0.55;
       cursor: wait;
+      opacity: 0.62;
+      transform: none;
+    }
+
+    .llm-option {
+      display: grid;
+      gap: 10px;
+      padding: 16px 18px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(56, 189, 248, 0.18);
+      background: rgba(56, 189, 248, 0.05);
+    }
+
+    .llm-option label {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      cursor: pointer;
+    }
+
+    .llm-option input {
+      margin-top: 4px;
+    }
+
+    .llm-copy strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 16px;
+      color: var(--text);
     }
 
     .file-list {
       display: grid;
-      gap: 8px;
+      gap: 10px;
       min-height: 56px;
-      align-content: start;
-      margin-top: 4px;
     }
 
     .file-item {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 12px;
-      padding: 10px 12px;
-      border-radius: var(--radius-md);
+      align-items: center;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
       border: 1px solid var(--line);
-      background: var(--panel-soft);
+      background: rgba(15, 23, 34, 0.7);
       color: var(--muted);
       font-family: var(--mono);
       font-size: 13px;
-    }
-
-    .empty {
-      padding: 2px 2px 0;
-      color: var(--muted);
-      font-style: normal;
-      font-size: 14px;
     }
 
     .file-item span:first-child {
@@ -341,173 +751,53 @@
       color: var(--text);
     }
 
-    .status {
-      padding: 14px 16px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--line);
-      background: var(--panel);
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 13px;
-      white-space: pre-wrap;
+    .result-empty,
+    .file-list .empty {
+      color: var(--subtle);
+      font-size: 14px;
+      padding: 4px 2px;
     }
 
-    .status .line {
-      display: block;
-    }
-
-    .status .line.active {
-      color: var(--text);
-      animation: pulseText 1.6s ease-in-out infinite;
-    }
-
-    .status.error {
-      color: var(--poor);
-      border-color: rgba(220, 38, 38, 0.24);
-    }
-
-    .about-grid,
-    .highlight-grid,
-    .steps-grid,
-    .results-header,
-    .results-grid {
+    .upload-side {
       display: grid;
       gap: 16px;
     }
 
-    .highlight-grid,
-    .about-grid,
-    .results-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .steps-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .section-heading {
+    .support-card {
+      padding: 16px 18px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.72);
       display: grid;
       gap: 8px;
-      margin-bottom: 2px;
     }
 
-    .section-heading h2 {
-      margin: 0;
-      font-size: clamp(24px, 4vw, 34px);
-      line-height: 1.02;
-      letter-spacing: -0.04em;
-    }
-
-    .section-heading p {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.75;
-      font-size: 15px;
-      max-width: 62ch;
-    }
-
-    .highlight-card {
+    .status-stack {
       display: grid;
-      gap: 10px;
+      gap: 16px;
     }
 
-    .highlight-card strong,
-    .step-card strong {
-      font-size: 18px;
-      line-height: 1.2;
-      color: var(--text);
-    }
-
-    .highlight-card p,
-    .step-card p {
-      margin: 0;
+    .status-panel {
+      padding: 18px 20px;
       color: var(--muted);
-      line-height: 1.75;
-      font-size: 15px;
-    }
-
-    .step-card {
-      display: grid;
-      gap: 10px;
-    }
-
-    .step-number {
-      display: inline-flex;
-      width: 34px;
-      height: 34px;
-      align-items: center;
-      justify-content: center;
-      border-radius: 999px;
-      background: rgba(220, 38, 38, 0.1);
-      color: var(--accent);
       font-family: var(--mono);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
+      font-size: 13px;
+      line-height: 1.8;
+      white-space: pre-wrap;
     }
 
-    .inline-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 8px;
+    .status-panel.error {
+      border-color: rgba(249, 115, 22, 0.32);
+      color: #fdba74;
     }
 
-    .inline-list span {
-      display: inline-flex;
-      align-items: center;
-      padding: 8px 10px;
-      border-radius: 999px;
-      background: var(--panel-soft);
-      border: 1px solid var(--line);
+    .status-panel .line {
+      display: block;
+    }
+
+    .status-panel .line.active {
       color: var(--text);
-      font-family: var(--mono);
-      font-size: 12px;
-    }
-
-    .privacy-note {
-      padding: 14px 16px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--line);
-      background: var(--panel);
-      color: var(--muted);
-      font-size: 14px;
-      line-height: 1.75;
-    }
-
-    .privacy-note strong {
-      color: var(--text);
-    }
-
-    .llm-option {
-      display: grid;
-      gap: 10px;
-      padding: 14px 16px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: var(--panel-soft);
-    }
-
-    .llm-option label {
-      display: flex;
-      gap: 12px;
-      align-items: flex-start;
-      cursor: pointer;
-    }
-
-    .llm-option input {
-      margin-top: 3px;
-    }
-
-    .llm-option p {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.6;
-      font-size: 14px;
-    }
-
-    .results-header {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      animation: pulseText 1.4s ease-in-out infinite;
     }
 
     .results {
@@ -519,14 +809,129 @@
       display: none;
     }
 
-    .results.loading {
-      opacity: 1;
+    .results-top {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .results-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .metric-card {
+      display: grid;
+      gap: 10px;
+    }
+
+    .result-label {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      padding: 6px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      background: rgba(148, 163, 184, 0.06);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .score-number {
+      font-family: var(--mono);
+      font-size: clamp(48px, 7vw, 78px);
+      line-height: 0.9;
+      letter-spacing: -0.08em;
+    }
+
+    .score-number.excellent,
+    .tier-badge.excellent { color: #86efac; }
+    .score-number.good,
+    .tier-badge.good { color: #4ade80; }
+    .score-number.needs_work,
+    .tier-badge.needs_work { color: #fbbf24; }
+    .score-number.poor,
+    .tier-badge.poor { color: #fb923c; }
+
+    .tier-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid currentColor;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .tier-badge::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 12px currentColor;
+    }
+
+    .result-summary {
+      font-size: 16px;
+    }
+
+    .result-list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.9;
+      font-size: 15px;
+    }
+
+    .result-list li {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .result-list li::marker {
+      color: var(--brand);
+    }
+
+    .checklist {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    .checklist li {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 11px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.7);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .checklist li span:last-child {
+      font-family: var(--mono);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
     }
 
     .skeleton {
       position: relative;
       overflow: hidden;
-      animation: fadeInUp 240ms ease both;
     }
 
     .skeleton::after {
@@ -538,20 +943,448 @@
       animation: shimmer 1.4s ease-in-out infinite;
     }
 
-    .skeleton-block {
-      height: 16px;
-      border-radius: 8px;
-      background: var(--panel-soft);
+    .stack {
+      display: grid;
+      gap: 12px;
     }
 
+    .skeleton-block {
+      height: 14px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.1);
+    }
+
+    .skeleton-block.score { width: 38%; height: 76px; }
     .skeleton-block.sm { width: 32%; }
     .skeleton-block.md { width: 58%; }
     .skeleton-block.lg { width: 82%; }
-    .skeleton-block.score { width: 38%; height: 68px; }
 
-    .card.stack {
+    .steps-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .step-card,
+    .impact-card,
+    .faq-card,
+    .preview-panel {
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(12, 18, 27, 0.94), rgba(8, 12, 18, 0.94));
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .step-card,
+    .impact-card,
+    .faq-card {
+      display: grid;
+      gap: 14px;
+    }
+
+    .step-index {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      background: rgba(239, 68, 68, 0.1);
+      color: #fecaca;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.22);
+    }
+
+    .impact-grid {
+      grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 0.9fr));
+      align-items: stretch;
+    }
+
+    .chart-card {
+      gap: 18px;
+    }
+
+    .stat-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .stat-token {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.7);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .chart-compare {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .chart-group {
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.76);
+      display: grid;
+      gap: 16px;
+    }
+
+    .chart-group.poor {
+      box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.12);
+    }
+
+    .chart-group.good {
+      box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.12);
+    }
+
+    .chart-group strong {
+      font-size: 18px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      align-items: end;
+      min-height: 220px;
+    }
+
+    .bar-stat {
       display: grid;
       gap: 12px;
+    }
+
+    .bar-value {
+      font-family: var(--mono);
+      color: var(--text);
+      font-size: 14px;
+      letter-spacing: -0.02em;
+    }
+
+    .bar-track {
+      position: relative;
+      height: 170px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(6, 10, 16, 0.9);
+      overflow: hidden;
+      display: flex;
+      align-items: flex-end;
+      padding: 8px;
+    }
+
+    .bar-fill {
+      width: 100%;
+      border-radius: 14px;
+      transform-origin: bottom;
+      transform: scaleY(1);
+      transition: transform 800ms cubic-bezier(.2, .9, .2, 1);
+      height: var(--bar-height, 50%);
+    }
+
+    .bar-fill.poor {
+      background: linear-gradient(180deg, rgba(251, 146, 60, 0.95), rgba(239, 68, 68, 0.88));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+
+    .bar-fill.good {
+      background: linear-gradient(180deg, rgba(74, 222, 128, 0.95), rgba(21, 128, 61, 0.88));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+
+    .js .chart-card:not(.is-visible) .bar-fill {
+      transform: scaleY(0);
+    }
+
+    .gauge-shell {
+      display: grid;
+      gap: 16px;
+    }
+
+    .gauge-frame {
+      position: relative;
+      padding: 10px 8px 0;
+    }
+
+    .gauge-svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      overflow: visible;
+    }
+
+    .gauge-track {
+      fill: none;
+      stroke: rgba(148, 163, 184, 0.14);
+      stroke-width: 18;
+      stroke-linecap: round;
+    }
+
+    .gauge-progress {
+      fill: none;
+      stroke: url(#gaugeGradient);
+      stroke-width: 18;
+      stroke-linecap: round;
+      stroke-dasharray: 314.159;
+      stroke-dashoffset: 18.85;
+      transition: stroke-dashoffset 1100ms cubic-bezier(.2, .9, .2, 1);
+      filter: drop-shadow(0 0 12px rgba(34, 197, 94, 0.22));
+    }
+
+    .gauge-value-wrap {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 14px;
+      display: grid;
+      justify-items: center;
+      gap: 4px;
+      text-align: center;
+    }
+
+    .gauge-value {
+      font-family: var(--mono);
+      font-size: 38px;
+      line-height: 1;
+      letter-spacing: -0.06em;
+      color: var(--text);
+    }
+
+    .gauge-range {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--subtle);
+    }
+
+    .stat-number {
+      font-family: var(--mono);
+      font-size: clamp(34px, 5vw, 54px);
+      line-height: 0.92;
+      letter-spacing: -0.08em;
+    }
+
+    .stat-number.warning {
+      color: #fdba74;
+    }
+
+    .stat-number.critical {
+      color: #fb923c;
+    }
+
+    .preview-grid {
+      grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
+      align-items: stretch;
+    }
+
+    .preview-panel {
+      padding: 24px;
+    }
+
+    .preview-stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .preview-score {
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .preview-score strong {
+      font-family: var(--mono);
+      font-size: clamp(50px, 7vw, 78px);
+      line-height: 0.9;
+      letter-spacing: -0.08em;
+      color: #86efac;
+    }
+
+    .preview-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      background: rgba(34, 197, 94, 0.08);
+      color: #86efac;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .preview-checklist {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    .preview-checklist li {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.7);
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .preview-checklist span:last-child {
+      font-family: var(--mono);
+      color: #86efac;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .terminal {
+      padding: 0;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(7, 10, 14, 0.98), rgba(6, 8, 12, 1));
+    }
+
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.86);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .terminal-dots {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .terminal-dots span {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.24);
+    }
+
+    .terminal-body {
+      padding: 18px;
+      display: grid;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.8;
+      color: #dbeafe;
+    }
+
+    .json-line {
+      white-space: pre-wrap;
+      word-break: break-word;
+      opacity: 1;
+      transform: none;
+      transition: opacity 220ms ease, transform 220ms ease;
+    }
+
+    .js .terminal:not(.is-visible) .json-line {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    .json-key { color: #7dd3fc; }
+    .json-string { color: #86efac; }
+    .json-number { color: #f9a8d4; }
+    .json-boolean { color: #fdba74; }
+
+    .faq-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .faq-card a {
+      color: #cbd5e1;
+      text-decoration: none;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .faq-card a:hover {
+      color: var(--text);
+    }
+
+    .site-footer {
+      width: var(--shell);
+      margin: 0 auto;
+      padding: 10px 0 42px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .footer-copy {
+      max-width: 56ch;
+    }
+
+    .footer-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .footer-links a:hover {
+      color: var(--text);
+    }
+
+    .js [data-observe] {
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 540ms ease, transform 540ms ease;
+    }
+
+    .js [data-observe].is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .js [data-observe].terminal {
+      opacity: 1;
+      transform: none;
+    }
+
+    .hidden {
+      display: none;
     }
 
     @keyframes shimmer {
@@ -560,326 +1393,519 @@
       }
     }
 
-    @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translateY(8px);
+    @keyframes pulseBadge {
+      0%, 100% {
+        box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.24), 0 0 20px rgba(34, 197, 94, 0.12);
       }
-      to {
-        opacity: 1;
-        transform: translateY(0);
+      50% {
+        box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.3), 0 0 30px rgba(34, 197, 94, 0.24);
       }
     }
 
     @keyframes pulseText {
       0%, 100% {
-        opacity: 0.72;
+        opacity: 0.74;
       }
       50% {
         opacity: 1;
       }
     }
 
-    .score {
-      font-size: 72px;
-      line-height: 0.9;
-      letter-spacing: -0.08em;
-    }
-
-    .score.excellent { color: var(--excellent); }
-    .score.good { color: var(--good); }
-    .score.needs_work { color: var(--needs-work); }
-    .score.poor { color: var(--poor); }
-
-    .summary {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.75;
-      font-size: 15px;
-    }
-
-    .results .summary {
-      font-size: 16px;
-      line-height: 1.8;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 7px 10px;
-      border-radius: 999px;
-      border: 1px solid currentColor;
-      font-family: var(--mono);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-    }
-
-    .badge::before {
-      content: "";
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: currentColor;
-    }
-
-    .badge.excellent { color: var(--excellent); }
-    .badge.good { color: var(--good); }
-    .badge.needs_work { color: var(--needs-work); }
-    .badge.poor { color: var(--poor); }
-
-    ul {
-      margin: 0;
-      padding-left: 18px;
-      color: var(--muted);
-      line-height: 1.8;
-      font-size: 16px;
-    }
-
-    .results-grid .card {
-      padding: 22px;
-    }
-
-    .results-grid .label,
-    .results-header .label {
-      margin-bottom: 12px;
-      font-size: 12px;
-      color: var(--accent);
-    }
-
-    .results-grid ul li,
-    .results-grid .empty,
-    .checklist li {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--text);
-    }
-
-    .results-grid ul li::marker {
-      color: var(--accent);
-    }
-
-    .results-grid .card,
-    .results-header .card {
-      transform: translateY(0);
-      transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
-    }
-
-    .results-grid .card:hover,
-    .results-header .card:hover {
-      transform: translateY(-2px);
-      border-color: rgba(220, 38, 38, 0.22);
-      box-shadow: 0 24px 52px rgba(0, 0, 0, 0.12);
-    }
-
-    .checklist {
-      list-style: none;
-      padding: 0;
-      display: grid;
-      gap: 8px;
-    }
-
-    .checklist li {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 12px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid var(--line);
-      background: var(--panel-soft);
-      font-size: 14px;
-    }
-
-    .footer {
-      display: flex;
-      justify-content: center;
-      padding-top: 6px;
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
-    .hidden {
-      display: none;
-    }
-
-    @media (max-width: 820px) {
-      .about-grid,
-      .highlight-grid,
-      .steps-grid,
-      .results-header,
-      .results-grid {
+    @media (max-width: 1080px) {
+      .hero,
+      .workspace-grid,
+      .impact-grid,
+      .preview-grid {
         grid-template-columns: 1fr;
       }
 
-      .dropzone {
-        min-height: 320px;
+      .impact-grid {
+        gap: 18px;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .signal-grid,
+      .steps-grid,
+      .results-top,
+      .results-grid,
+      .faq-grid,
+      .chart-compare {
+        grid-template-columns: 1fr;
+      }
+
+      .token-lane {
+        grid-template-columns: 1fr;
+      }
+
+      .token-visual::before {
+        display: none;
+      }
+
+      .delta-column {
+        justify-items: flex-start;
+      }
+
+      .bar-row {
+        min-height: 180px;
       }
     }
 
     @media (max-width: 640px) {
-      main {
-        width: min(100% - 16px, 920px);
-        padding-top: 22px;
+      .site-header {
+        padding-top: 16px;
       }
 
-      .panel-body,
-      .card {
-        padding: 14px;
+      .page {
+        gap: 22px;
+        padding-bottom: 36px;
       }
 
-      .dropzone {
-        padding: 22px;
-        min-height: 280px;
+      .hero-copy,
+      .hero-visual,
+      .workspace-panel,
+      .upload-side,
+      .step-card,
+      .impact-card,
+      .preview-panel,
+      .faq-card,
+      .results .result-card,
+      .results .summary-card,
+      .status-panel {
+        padding: 20px;
       }
 
       h1 {
-        font-size: 36px;
+        font-size: 42px;
       }
 
-      .score {
+      .dropzone {
+        min-height: 220px;
+        padding: 20px;
+      }
+
+      .dropzone strong {
+        font-size: 34px;
+      }
+
+      .counter-value {
+        font-size: 38px;
+      }
+
+      .preview-score strong,
+      .score-number {
         font-size: 56px;
+      }
+
+      .site-footer {
+        padding-bottom: 34px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+      }
+
+      .js [data-observe] {
+        opacity: 1;
+        transform: none;
+      }
+
+      .js .chart-card .bar-fill,
+      .js .terminal .json-line {
+        opacity: 1;
+        transform: none;
       }
     }
   </style>
 </head>
 <body>
-  <main>
-    <section class="topbar">
-      <div class="brand">
-        <a class="eyebrow" href="/">agents-skill-eval</a>
-        <h1>Evaluate a skill.</h1>
-        <p class="subtitle">Upload files or provide a GitHub skill file or directory URL, then evaluate the skill against the official AgentSkills.io specification.</p>
-      </div>
-      <div class="top-actions">
-        <button id="theme-toggle" type="button" class="theme-toggle">Theme: Auto</button>
-        <a class="link" href="/faq">FAQ</a>
-      </div>
-    </section>
+  <header class="site-header site-shell">
+    <a class="brand-lockup" href="/" aria-label="Go to homepage">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">agents-skill-eval</span>
+    </a>
+    <nav class="header-nav" aria-label="Primary">
+      <a class="nav-link" href="#evaluate">Upload</a>
+      <a class="nav-link" href="#why-it-matters">Why it matters</a>
+      <a class="nav-link" href="/faq">FAQ</a>
+      <a class="nav-link" href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
+    </nav>
+  </header>
 
-    <section class="highlight-grid">
-      <article class="panel card highlight-card">
-        <span class="label">Default path</span>
-        <strong>Deterministic by default</strong>
-        <p>Uploaded skill content stays on the platform infrastructure unless optional Anthropic review is explicitly enabled for that run.</p>
-      </article>
-
-      <article class="panel card highlight-card">
-        <span class="label">Input support</span>
-        <strong>Local folders and GitHub URLs</strong>
-        <p>Use a full local skill folder or point to a GitHub `SKILL.md` file or skill directory. Nested supporting files are preserved and evaluated together.</p>
-      </article>
-    </section>
-
-    <section class="panel panel-body">
-      <span class="label">GitHub URL</span>
-      <input id="github-url" class="url-input" type="url" inputmode="url" placeholder="https://github.com/owner/repo/tree/main/skill-name or .../blob/.../SKILL.md">
-    </section>
-
-    <section class="panel panel-body">
-      <input id="folder-input" type="file" webkitdirectory directory multiple class="hidden">
-      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload files">
-        <div>
-          <strong>Drop a skill folder here</strong>
-          <p>Add a full skill directory with `SKILL.md` and supporting files, or use a GitHub skill file or directory URL above. Local uploads must be folders, not individual files.</p>
+  <main class="site-shell page">
+    <section class="hero">
+      <article class="hero-copy">
+        <span class="eyebrow">Precision skill evaluation</span>
+        <div class="section-head">
+          <h1>Evaluate agent skills before they waste tokens.</h1>
+          <p class="hero-subtitle">Upload a `SKILL.md` package and get a structured evaluation for trigger quality, reliability, portability, security, and token efficiency. Clear skills reduce wasted context, lower cost, and make activation more predictable.</p>
         </div>
-        <div class="drop-meta">
-          <span class="chip">Folder upload</span>
-          <span class="chip">Single skill folder</span>
-          <span class="chip">Max 5MB</span>
-          <span class="chip">GitHub only</span>
+        <div class="cta-row">
+          <a class="button button-primary" href="#evaluate">Upload a skill</a>
+          <a class="button button-secondary" href="/faq">Read FAQ</a>
         </div>
-      </div>
-
-      <div class="actions">
-        <button id="pick-folder-button" type="button">Choose folder</button>
-        <button id="upload-button" type="button" class="primary">Run evaluation</button>
-        <button id="clear-button" type="button">Clear</button>
-      </div>
-
-      <div class="llm-option">
-        <label for="enable-llm">
-          <input id="enable-llm" type="checkbox">
-          <span>
-            <strong>Enable optional LLM review</strong>
-            <p>If selected, uploaded skill content will also be sent to Anthropic for an extra review step after deterministic checks. Leave this off to keep evaluation deterministic-only on the platform infrastructure.</p>
-          </span>
-        </label>
-      </div>
-
-      <div id="file-list" class="file-list"></div>
-    </section>
-
-    <section id="status" class="status">Waiting for files.</section>
-
-    <section class="privacy-note">
-      <strong>Privacy:</strong> By default, uploads are processed transiently on the platform infrastructure for deterministic evaluation only. Optional LLM review is off by default. If enabled, the uploaded skill content for that run is also sent to Anthropic so it can generate the extra review. Files and results are stored only temporarily while the job runs and while results are available, then removed automatically.
-    </section>
-
-    <section id="results" class="results hidden"></section>
-
-    <section class="about-grid">
-      <article class="panel card">
-        <span class="label">Why</span>
-        <p class="summary">Deterministic evaluation is the default so uploads stay on the platform infrastructure and the result remains predictable. Anthropic review is an explicit per-run opt-in.</p>
+        <div class="signal-grid">
+          <article class="signal-card">
+            <strong>Deterministic by default</strong>
+            <span>Uploads stay on platform infrastructure unless optional Anthropic review is enabled.</span>
+          </article>
+          <article class="signal-card">
+            <strong>Sandboxed evaluation</strong>
+            <span>Deterministic checks run inside an isolated container with no network and strict limits.</span>
+          </article>
+          <article class="signal-card">
+            <strong>Explain every flag</strong>
+            <span>Findings are returned with explicit reasons, score, and structured follow-up guidance.</span>
+          </article>
+        </div>
       </article>
 
-      <article class="panel card">
-        <span class="label">About</span>
-        <p class="summary">This runs deterministic checks from the official AgentSkills.io specification inside a locked-down container. Optional LLM review, when enabled, sends the uploaded skill content to Anthropic after the container finishes.</p>
-      </article>
+      <aside class="hero-visual" id="hero-metrics" aria-labelledby="token-visual-title">
+        <div class="visual-header">
+          <div>
+            <span class="section-label">Illustrative efficiency model</span>
+            <h2 id="token-visual-title">Token waste becomes visible fast.</h2>
+          </div>
+          <span class="estimate-note">Illustrative estimates</span>
+        </div>
+
+        <div class="token-visual">
+          <div class="token-lane">
+            <article class="token-card poor">
+              <div class="counter-header">
+                <span>Before optimization</span>
+                <span class="status-pill poor">High burn</span>
+              </div>
+              <div class="counter-value" id="before-counter" data-value="12400">~12,400</div>
+              <div class="counter-subtext">tokens per run</div>
+              <p class="support-copy">Loose trigger text, vague instructions, and noisy context increase token drag per activation.</p>
+            </article>
+
+            <div class="delta-column" aria-hidden="true">
+              <span class="delta-arrow">→</span>
+              <span class="reduction-badge" id="reduction-badge">67% lower</span>
+            </div>
+
+            <article class="token-card good">
+              <div class="counter-header">
+                <span>After optimization</span>
+                <span class="status-pill good">Lean path</span>
+              </div>
+              <div class="counter-value" id="after-counter" data-value="4100">~4,100</div>
+              <div class="counter-subtext">tokens per run</div>
+              <p class="support-copy">Clear triggers, tighter IO, and portable helper scripts reduce repeated context and wasted turns.</p>
+            </article>
+          </div>
+        </div>
+
+        <p class="token-note">Illustrative estimate only. Exact token and cost savings depend on the runtime, model, prompt framing, and skill quality.</p>
+      </aside>
     </section>
 
-    <section class="panel panel-body">
-      <div class="section-heading">
-        <span class="label">How it works</span>
-        <h2>Evaluation flow built for clarity</h2>
-        <p>The upload flow is intentionally simple: provide a local skill folder or GitHub URL, run deterministic checks in isolation, and optionally add Anthropic review only when that tradeoff is wanted.</p>
+    <section class="section" id="evaluate">
+      <div class="section-head">
+        <span class="section-label">Evaluate now</span>
+        <h2>Upload a skill package and inspect the result.</h2>
+        <p>Local folder uploads preserve nested files. GitHub URLs support `blob` and `tree` skill references. The live evaluator below uses the production backend.</p>
+      </div>
+
+      <div class="workspace-grid">
+        <section class="panel workspace-panel">
+          <div class="field-stack">
+            <div>
+              <label class="field-label" for="github-url">GitHub URL</label>
+              <input id="github-url" class="url-input" type="url" inputmode="url" placeholder="https://github.com/owner/repo/tree/main/skill-name or .../blob/.../SKILL.md">
+            </div>
+
+            <div>
+              <input id="folder-input" type="file" webkitdirectory directory multiple class="hidden">
+              <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload a skill folder">
+                <div>
+                  <strong>Drop a skill folder here.</strong>
+                  <p>Add one local folder with `SKILL.md` plus supporting files, or use the GitHub field above. Local uploads must be folders, not individual files.</p>
+                </div>
+                <div class="drop-meta" aria-label="Upload requirements">
+                  <span class="support-chip">Single skill folder</span>
+                  <span class="support-chip">Nested files preserved</span>
+                  <span class="support-chip">5 MB max upload</span>
+                  <span class="support-chip">GitHub file or directory URLs</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="upload-actions">
+              <button id="pick-folder-button" type="button">Choose folder</button>
+              <button id="upload-button" type="button" class="primary">Run evaluation</button>
+              <button id="clear-button" type="button">Clear</button>
+            </div>
+
+            <div class="llm-option">
+              <label for="enable-llm">
+                <input id="enable-llm" type="checkbox">
+                <span class="llm-copy">
+                  <strong>Enable optional Anthropic review</strong>
+                  If selected, uploaded skill content for that run is also sent to Anthropic after deterministic evaluation. Leave this off to keep the run deterministic-only.
+                </span>
+              </label>
+            </div>
+
+            <div>
+              <span class="field-label">Selected files</span>
+              <div id="file-list" class="file-list"><div class="empty">No files selected.</div></div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel upload-side">
+          <span class="section-label">Run boundary</span>
+          <div class="support-card">
+            <strong>Default path</strong>
+            <span>Deterministic checks only. Uploaded content stays on platform infrastructure.</span>
+          </div>
+          <div class="support-card">
+            <strong>Optional Anthropic review</strong>
+            <span>Per-run opt-in. Adds an external review step after deterministic extraction and scoring.</span>
+          </div>
+          <div class="support-card">
+            <strong>What the evaluator checks</strong>
+            <span>Skill structure, trigger guidance, examples, failure handling, portability cues, and security-sensitive patterns.</span>
+          </div>
+          <p class="privacy-copy">Files and results are stored only while the run is active and the result is retrievable. Uploaded content is not sent to third-party AI providers unless the optional review box is selected.</p>
+        </aside>
+      </div>
+
+      <div class="status-stack">
+        <section id="status" class="status-panel" aria-live="polite">Waiting for files.</section>
+        <section id="results" class="results hidden"></section>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="section-label">How it works</span>
+        <h2>Three steps from upload to structured feedback.</h2>
+        <p>The flow is intentionally simple and inspection-friendly. Every stage is designed to make the evaluation understandable rather than opaque.</p>
       </div>
       <div class="steps-grid">
         <article class="step-card">
-          <span class="step-number">01</span>
-          <strong>Provide the skill package</strong>
-          <p>Upload one local skill folder with `SKILL.md` and supporting files, or paste a GitHub file or directory URL.</p>
+          <span class="step-index">01</span>
+          <strong>Upload `SKILL.md` plus supporting files</strong>
+          <p>Provide a local folder or GitHub reference so the evaluator can inspect the full skill package instead of a disconnected markdown file.</p>
         </article>
         <article class="step-card">
-          <span class="step-number">02</span>
-          <strong>Run isolated checks</strong>
-          <p>Validation and deterministic scoring run inside a locked-down container with no network and strict resource limits.</p>
+          <span class="step-index">02</span>
+          <strong>Run deterministic checks in a sandbox</strong>
+          <p>The package is validated and evaluated inside an isolated container. Optional Anthropic review runs only after that deterministic step.</p>
         </article>
         <article class="step-card">
-          <span class="step-number">03</span>
-          <strong>Review the result</strong>
-          <p>Get issues, score, summary, and optional review guidance with a result format that is easy to scan and compare.</p>
+          <span class="step-index">03</span>
+          <strong>Get structured reasons for every flag</strong>
+          <p>Results include score, quality tier, deterministic checklist, and optional review fields that are easy to scan and compare.</p>
         </article>
       </div>
     </section>
 
-    <section class="panel panel-body">
-      <div class="section-heading">
-        <span class="label">Supported inputs</span>
-        <h2>Built for real skill packages</h2>
-        <p>The evaluator is designed for nested skill packages rather than isolated markdown files, so supporting references, scripts, schemas, and assets can be reviewed in context.</p>
+    <section class="section" id="why-it-matters">
+      <div class="section-head">
+        <span class="section-label">Why it matters</span>
+        <h2>Skill quality affects cost, trigger behavior, and risk.</h2>
+        <p>Well-written skills are not only easier to reuse. They also reduce wasted context, tighten activation boundaries, and expose security problems earlier.</p>
       </div>
-      <div class="inline-list" aria-label="Supported input types">
-        <span>Local folder upload</span>
-        <span>GitHub blob URLs</span>
-        <span>GitHub tree URLs</span>
-        <span>Nested supporting files</span>
-        <span>Deterministic default</span>
-        <span>Optional Anthropic review</span>
+
+      <div class="impact-grid">
+        <article class="impact-card chart-card panel" data-observe>
+          <span class="section-label">Illustrative cost model</span>
+          <div class="stat-strip">
+            <span class="stat-token">Cost per 1,000 runs</span>
+            <span class="stat-token">Tokens per activation</span>
+          </div>
+          <div class="chart-compare">
+            <section class="chart-group poor">
+              <strong>Poor skill quality</strong>
+              <p class="support-copy">Vague descriptions and loose trigger boundaries increase repeated context and extra corrective turns.</p>
+              <div class="bar-row">
+                <div class="bar-stat">
+                  <div class="bar-value">$38 / 1k runs</div>
+                  <div class="bar-track"><div class="bar-fill poor" style="--bar-height: 88%;"></div></div>
+                  <div class="bar-label">Illustrative cost</div>
+                </div>
+                <div class="bar-stat">
+                  <div class="bar-value">12.4k tokens</div>
+                  <div class="bar-track"><div class="bar-fill poor" style="--bar-height: 96%;"></div></div>
+                  <div class="bar-label">Illustrative activation size</div>
+                </div>
+              </div>
+            </section>
+
+            <section class="chart-group good">
+              <strong>Well-written skill</strong>
+              <p class="support-copy">Sharper descriptions and tighter helper boundaries reduce unnecessary context and keep activations lean.</p>
+              <div class="bar-row">
+                <div class="bar-stat">
+                  <div class="bar-value">$12 / 1k runs</div>
+                  <div class="bar-track"><div class="bar-fill good" style="--bar-height: 34%;"></div></div>
+                  <div class="bar-label">Illustrative cost</div>
+                </div>
+                <div class="bar-stat">
+                  <div class="bar-value">4.1k tokens</div>
+                  <div class="bar-track"><div class="bar-fill good" style="--bar-height: 38%;"></div></div>
+                  <div class="bar-label">Illustrative activation size</div>
+                </div>
+              </div>
+            </section>
+          </div>
+          <p class="token-note">Illustrative estimates only. Costs and token counts vary by model, runtime, and prompt strategy.</p>
+        </article>
+
+        <article class="impact-card panel" data-observe id="trigger-gauge-card">
+          <span class="section-label">Trigger quality</span>
+          <div class="gauge-shell">
+            <div class="gauge-frame">
+              <svg class="gauge-svg" viewBox="0 0 240 140" aria-hidden="true">
+                <defs>
+                  <linearGradient id="gaugeGradient" x1="0%" x2="100%" y1="0%" y2="0%">
+                    <stop offset="0%" stop-color="#38bdf8"></stop>
+                    <stop offset="100%" stop-color="#22c55e"></stop>
+                  </linearGradient>
+                </defs>
+                <path class="gauge-track" d="M20 120 A100 100 0 0 1 220 120"></path>
+                <path class="gauge-progress" id="gauge-progress" d="M20 120 A100 100 0 0 1 220 120"></path>
+              </svg>
+              <div class="gauge-value-wrap">
+                <div class="gauge-value" id="gauge-value">94%</div>
+                <div class="gauge-note">Illustrative trigger confidence model</div>
+              </div>
+            </div>
+            <div class="gauge-range">
+              <span>Baseline 72%</span>
+              <span>Refined 94%</span>
+            </div>
+            <p class="support-copy">Anthropic says agents use a skill's `name` and `description` to decide when it should trigger. Clear trigger cues and descriptions matter. The percentages above are illustrative, not an Anthropic benchmark.</p>
+            <div class="terminal-caption">Source: Anthropic engineering post on agent skills</div>
+          </div>
+        </article>
+
+        <article class="impact-card panel" data-observe>
+          <span class="section-label">Security signal</span>
+          <div class="preview-stack">
+            <div>
+              <div class="stat-number warning">36.82%</div>
+              <div class="stat-caption">of public skills in Snyk's February 2026 ToxicSkills study had at least one security issue.</div>
+            </div>
+            <div>
+              <div class="stat-number critical">13.4%</div>
+              <div class="stat-caption">had at least one critical issue in the same 3,984-skill dataset.</div>
+            </div>
+            <p class="support-copy">That dataset is Snyk-specific and should not be generalized to every skills ecosystem, but it is a strong signal that skill review needs explicit security checks.</p>
+            <div class="terminal-caption">Source: Snyk ToxicSkills study, February 2026</div>
+          </div>
+        </article>
       </div>
     </section>
 
-    <!--
-    <footer class="footer">
-      <span>Made by <a class="link" href="https://sasa-fajkovic.com/" target="_blank" rel="noreferrer">Sasa Fajkovic</a></span>
-    </footer>
-    -->
+    <section class="section" id="preview">
+      <div class="section-head">
+        <span class="section-label">Evaluation preview</span>
+        <h2>Preview the result format before uploading.</h2>
+        <p>The preview below shows how score, deterministic checks, and optional review fields are surfaced. The JSON reveal animates on scroll and mirrors the shape returned by the live evaluator.</p>
+      </div>
+
+      <div class="preview-grid">
+        <article class="preview-panel">
+          <div class="preview-stack">
+            <span class="section-label">Rendered result</span>
+            <div class="preview-score">
+              <strong>92</strong>
+              <span class="preview-badge">Good</span>
+            </div>
+            <p class="preview-copy">A high-quality skill package shows a strong score, complete deterministic checklist, and focused feedback that explains why each issue matters.</p>
+            <ul class="preview-checklist">
+              <li><span>Description section</span><span>Present</span></li>
+              <li><span>Trigger guidance</span><span>Present</span></li>
+              <li><span>Examples</span><span>Present</span></li>
+              <li><span>Error handling</span><span>Present</span></li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="preview-panel terminal" id="json-preview" data-observe>
+          <div class="terminal-bar">
+            <span>sample-result.json</span>
+            <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+          </div>
+          <div class="terminal-body">
+            <div class="json-line"><span class="json-key">{</span></div>
+            <div class="json-line">  <span class="json-key">"status"</span>: <span class="json-string">"ok"</span>,</div>
+            <div class="json-line">  <span class="json-key">"skill_name"</span>: <span class="json-string">"dependency-upgrade-reviewer"</span>,</div>
+            <div class="json-line">  <span class="json-key">"overall_score"</span>: <span class="json-number">92</span>,</div>
+            <div class="json-line">  <span class="json-key">"summary"</span>: <span class="json-string">"Clear trigger cues, complete examples, and isolated helper scripts keep the activation lean."</span>,</div>
+            <div class="json-line">  <span class="json-key">"deterministic"</span>: {</div>
+            <div class="json-line">    <span class="json-key">"has_description"</span>: <span class="json-boolean">true</span>,</div>
+            <div class="json-line">    <span class="json-key">"has_trigger_section"</span>: <span class="json-boolean">true</span>,</div>
+            <div class="json-line">    <span class="json-key">"has_examples"</span>: <span class="json-boolean">true</span>,</div>
+            <div class="json-line">    <span class="json-key">"has_error_handling"</span>: <span class="json-boolean">true</span>,</div>
+            <div class="json-line">    <span class="json-key">"issues"</span>: []</div>
+            <div class="json-line">  },</div>
+            <div class="json-line">  <span class="json-key">"llm_analysis"</span>: {</div>
+            <div class="json-line">    <span class="json-key">"quality_tier"</span>: <span class="json-string">"good"</span>,</div>
+            <div class="json-line">    <span class="json-key">"strengths"</span>: [<span class="json-string">"Tight trigger language"</span>, <span class="json-string">"Concrete usage examples"</span>],</div>
+            <div class="json-line">    <span class="json-key">"suggestions"</span>: [<span class="json-string">"Keep helper scripts strictly portable"</span>]</div>
+            <div class="json-line">  }</div>
+            <div class="json-line"><span class="json-key">}</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <span class="section-label">FAQ</span>
+        <h2>Common design questions, answered directly.</h2>
+        <p>The short version: skills are a portable capability format, runtime-specific slash commands are not, and portable helper scripts matter if a skill should survive across environments.</p>
+      </div>
+
+      <div class="faq-grid">
+        <article class="faq-card panel">
+          <strong>Why agent skills over slash commands?</strong>
+          <p>Skills carry trigger conditions, inputs, outputs, examples, and failure handling. Slash commands are useful shortcuts, but they are not a durable capability contract.</p>
+          <a href="/faq">Read the full answer</a>
+        </article>
+        <article class="faq-card panel">
+          <strong>Why evaluate the IO spec instead of Claude Code specifics?</strong>
+          <p>The evaluator targets portable skill definitions so one runtime's proprietary ergonomics do not dominate the score.</p>
+          <a href="/faq">Read the full answer</a>
+        </article>
+        <article class="faq-card panel">
+          <strong>Why prefer `.sh` and `.py` helper scripts?</strong>
+          <p>They are the most portable options across Linux and macOS environments. Runtime-heavy script formats make skills harder to reuse safely.</p>
+          <a href="/faq">Read the full answer</a>
+        </article>
+        <article class="faq-card panel">
+          <strong>Open source and self-hostable?</strong>
+          <p>The project is public and can be deployed without a frontend build pipeline. The evaluator is designed to ship as raw HTML, CSS, JS, and a Go backend.</p>
+          <a href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">Open the repository</a>
+        </article>
+      </div>
+    </section>
   </main>
+
+  <footer class="site-footer">
+    <p class="footer-copy">Developer-facing skill evaluation for portability, reliability, token efficiency, and security. Built as a raw HTML/CSS/JS frontend served by a Go backend.</p>
+    <div class="footer-links">
+      <a href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
+      <a href="https://linkedin.com/in/sasa-fajkovic" target="_blank" rel="noreferrer">LinkedIn</a>
+      <a href="https://sasa-fajkovic.com/" target="_blank" rel="noreferrer">sasa-fajkovic.com</a>
+    </div>
+  </footer>
 
   <script>
     const dropzone = document.getElementById('dropzone');
@@ -891,7 +1917,6 @@
     const fileList = document.getElementById('file-list');
     const statusBox = document.getElementById('status');
     const results = document.getElementById('results');
-    const themeToggle = document.getElementById('theme-toggle');
     const enableLlmCheckbox = document.getElementById('enable-llm');
 
     let selectedFiles = [];
@@ -902,22 +1927,102 @@
     let lastProgressLines = [];
     let lastProgressTrailer = '';
     let jobInFlight = false;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    function getSystemTheme() {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    function formatWithPrefix(value) {
+      return `~${Math.round(value).toLocaleString()}`;
     }
 
-    function applyTheme(theme) {
-      const resolved = theme === 'auto' ? getSystemTheme() : theme;
-      document.documentElement.dataset.theme = resolved;
-      themeToggle.textContent = `Theme: ${theme.charAt(0).toUpperCase()}${theme.slice(1)}`;
+    function animateNumber(element, start, end, duration, formatter) {
+      if (!element) return;
+      if (reducedMotion) {
+        element.textContent = formatter(end);
+        return;
+      }
+
+      const startedAt = performance.now();
+
+      function frame(now) {
+        const progress = Math.min((now - startedAt) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const current = start + ((end - start) * eased);
+        element.textContent = formatter(current);
+        if (progress < 1) {
+          requestAnimationFrame(frame);
+        }
+      }
+
+      requestAnimationFrame(frame);
     }
 
-    function formatBytes(bytes) {
-      if (bytes < 1024) return `${bytes} B`;
-      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    function runHeroCounters() {
+      animateNumber(document.getElementById('before-counter'), 0, 12400, 950, formatWithPrefix);
+      window.setTimeout(() => animateNumber(document.getElementById('after-counter'), 0, 4100, 1450, formatWithPrefix), 180);
     }
+
+    function animateGauge() {
+      const path = document.getElementById('gauge-progress');
+      const value = document.getElementById('gauge-value');
+      if (!path || !value) return;
+
+      const total = 314.159;
+      const startPercent = 72;
+      const endPercent = 94;
+      const startOffset = total * (1 - (startPercent / 100));
+      const endOffset = total * (1 - (endPercent / 100));
+
+      if (reducedMotion) {
+        path.style.strokeDashoffset = endOffset.toFixed(3);
+        value.textContent = `${endPercent}%`;
+        return;
+      }
+
+      path.style.strokeDashoffset = startOffset.toFixed(3);
+      value.textContent = `${startPercent}%`;
+      requestAnimationFrame(() => {
+        path.style.strokeDashoffset = endOffset.toFixed(3);
+        animateNumber(value, startPercent, endPercent, 1050, (current) => `${Math.round(current)}%`);
+      });
+    }
+
+    function revealJsonPreview(panel) {
+      if (!panel || panel.dataset.revealed === 'true') return;
+      panel.dataset.revealed = 'true';
+      panel.classList.add('is-visible');
+
+      if (reducedMotion) {
+        return;
+      }
+
+      const lines = Array.from(panel.querySelectorAll('.json-line'));
+      lines.forEach((line, index) => {
+        line.style.transitionDelay = `${index * 45}ms`;
+      });
+    }
+
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries, instance) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add('is-visible');
+          if (entry.target.id === 'trigger-gauge-card') {
+            animateGauge();
+          }
+          if (entry.target.id === 'json-preview') {
+            revealJsonPreview(entry.target);
+          }
+          instance.unobserve(entry.target);
+        });
+      }, { threshold: 0.28 });
+
+      document.querySelectorAll('[data-observe]').forEach((node) => observer.observe(node));
+    } else {
+      document.querySelectorAll('[data-observe]').forEach((node) => node.classList.add('is-visible'));
+      animateGauge();
+      revealJsonPreview(document.getElementById('json-preview'));
+    }
+
+    runHeroCounters();
 
     function fileDisplayPath(file) {
       return file.relativePath || file.webkitRelativePath || file.name;
@@ -1042,9 +2147,9 @@
 
     function renderList(items) {
       if (!items || !items.length) {
-        return '<div class="empty">None</div>';
+        return '<div class="result-empty">None</div>';
       }
-      return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+      return `<ul class="result-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
     }
 
     function renderChecklist(deterministic) {
@@ -1075,61 +2180,57 @@
       const score = Number(data.overall_score ?? 0);
       const tier = data.llm_analysis?.quality_tier || (score >= 90 ? 'excellent' : score >= 75 ? 'good' : score >= 50 ? 'needs_work' : 'poor');
       const scoreTier = score >= 90 ? 'excellent' : score >= 75 ? 'good' : score >= 50 ? 'needs_work' : 'poor';
-      const reviewMode = data.llm_analysis ? 'Optional LLM review enabled' : 'Deterministic-only review';
+      const reviewMode = data.llm_analysis ? 'Optional Anthropic review enabled' : 'Deterministic-only review';
       results.innerHTML = `
-        <div class="results-header">
-          <article class="panel card">
-            <span class="label">Overall score</span>
-            <div class="score ${escapeHtml(scoreTier)}">${escapeHtml(score)}</div>
+        <div class="results-top">
+          <article class="result-card metric-card">
+            <span class="result-label">Overall score</span>
+            <div class="score-number ${escapeHtml(scoreTier)}">${escapeHtml(score)}</div>
           </article>
-          <article class="panel card">
-            <span class="label">Quality tier</span>
-            <div class="badge ${escapeHtml(tier)}">${escapeHtml(tier.replace('_', ' '))}</div>
+          <article class="result-card metric-card">
+            <span class="result-label">Quality tier</span>
+            <div class="tier-badge ${escapeHtml(tier)}">${escapeHtml(tier.replace('_', ' '))}</div>
           </article>
-          <article class="panel card">
-            <span class="label">Skill</span>
-            <p class="summary">${escapeHtml(data.skill_name || 'Unknown skill')}</p>
+          <article class="result-card metric-card">
+            <span class="result-label">Skill</span>
+            <strong>${escapeHtml(data.skill_name || 'Unknown skill')}</strong>
+            <div class="result-meta">Primary skill package name</div>
+          </article>
+          <article class="result-card metric-card">
+            <span class="result-label">Review mode</span>
+            <strong>${escapeHtml(reviewMode)}</strong>
+            <div class="result-meta">Deterministic path stays on platform infrastructure</div>
           </article>
         </div>
 
-        <article class="panel card">
-          <span class="label">Review mode</span>
-          <p class="summary">${escapeHtml(reviewMode)}</p>
-        </article>
-
-        <article class="panel card">
-          <span class="label">Summary</span>
-          <p class="summary">${escapeHtml(data.summary || 'No summary available.')}</p>
+        <article class="summary-card">
+          <span class="result-label">Summary</span>
+          <p class="result-summary">${escapeHtml(data.summary || 'No summary available.')}</p>
         </article>
 
         <div class="results-grid">
-          <article class="panel card">
-            <span class="label">Deterministic checks</span>
+          <article class="result-card">
+            <span class="result-label">Deterministic checks</span>
             ${renderChecklist(data.deterministic || {})}
           </article>
-
-          <article class="panel card">
-            <span class="label">Issues</span>
+          <article class="result-card">
+            <span class="result-label">Issues</span>
             ${renderList(data.deterministic?.issues || [])}
           </article>
-
-          <article class="panel card">
-            <span class="label">Strengths</span>
+          <article class="result-card">
+            <span class="result-label">Strengths</span>
             ${renderList(data.llm_analysis?.strengths || [])}
           </article>
-
-          <article class="panel card">
-            <span class="label">Weaknesses</span>
+          <article class="result-card">
+            <span class="result-label">Weaknesses</span>
             ${renderList(data.llm_analysis?.weaknesses || [])}
           </article>
-
-          <article class="panel card">
-            <span class="label">Suggestions</span>
+          <article class="result-card">
+            <span class="result-label">Suggestions</span>
             ${renderList(data.llm_analysis?.suggestions || [])}
           </article>
-
-          <article class="panel card">
-            <span class="label">Security flags</span>
+          <article class="result-card">
+            <span class="result-label">Security flags</span>
             ${renderList(data.llm_analysis?.security_flags || [])}
           </article>
         </div>
@@ -1145,31 +2246,33 @@
       loadingResultsVisible = true;
       results.classList.add('loading');
       results.innerHTML = `
-        <div class="results-header">
-          <article class="panel card stack skeleton">
-            <span class="label">Overall score</span>
+        <div class="results-top">
+          <article class="result-card stack skeleton">
+            <span class="result-label">Overall score</span>
             <div class="skeleton-block score"></div>
           </article>
-          <article class="panel card stack skeleton">
-            <span class="label">Quality tier</span>
+          <article class="result-card stack skeleton">
+            <span class="result-label">Quality tier</span>
             <div class="skeleton-block sm"></div>
           </article>
-          <article class="panel card stack skeleton">
-            <span class="label">Skill</span>
+          <article class="result-card stack skeleton">
+            <span class="result-label">Skill</span>
+            <div class="skeleton-block md"></div>
+          </article>
+          <article class="result-card stack skeleton">
+            <span class="result-label">Review mode</span>
             <div class="skeleton-block md"></div>
           </article>
         </div>
-
-        <article class="panel card stack skeleton">
-          <span class="label">Summary</span>
+        <article class="summary-card stack skeleton">
+          <span class="result-label">Summary</span>
           <div class="skeleton-block lg"></div>
           <div class="skeleton-block md"></div>
         </article>
-
         <div class="results-grid">
           ${Array.from({ length: 6 }).map(() => `
-            <article class="panel card stack skeleton">
-              <span class="label">Loading</span>
+            <article class="result-card stack skeleton">
+              <span class="result-label">Loading</span>
               <div class="skeleton-block lg"></div>
               <div class="skeleton-block md"></div>
               <div class="skeleton-block sm"></div>
@@ -1227,6 +2330,7 @@
       if (jobInFlight) {
         return;
       }
+
       const githubUrl = githubUrlInput.value.trim();
       if (!selectedFiles.length && !githubUrl) {
         setStatus('Select at least one file or provide a GitHub URL before uploading.', true);
@@ -1261,6 +2365,12 @@
         setJobRunning(false);
         setStatus(error.message || 'Upload failed.', true);
       }
+    }
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
     }
 
     async function readDroppedEntry(entry, prefix = '') {
@@ -1354,25 +2464,7 @@
       setJobRunning(false);
     });
 
-    themeToggle.addEventListener('click', () => {
-      const current = localStorage.getItem('themePreference') || 'auto';
-      const next = current === 'auto' ? 'light' : current === 'light' ? 'dark' : 'auto';
-      localStorage.setItem('themePreference', next);
-      applyTheme(next);
-    });
-
-    setInterval(refreshAnimatedProgress, 3000);
-
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      const preference = localStorage.getItem('themePreference') || 'auto';
-      if (preference === 'auto') {
-        applyTheme('auto');
-      }
-    });
-
-    applyTheme(localStorage.getItem('themePreference') || 'auto');
-    setJobRunning(false);
-    renderFileList();
+    window.setInterval(refreshAnimatedProgress, 3000);
   </script>
 </body>
 </html>
