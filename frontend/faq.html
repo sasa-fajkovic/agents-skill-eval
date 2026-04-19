@@ -73,7 +73,7 @@
           "name": "Is there a prebuilt Docker image?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. A prebuilt evaluator image is published as ghcr.io/sasa-fajkovic/agents-skill-eval:latest. Self-hosters can point EVAL_DOCKER_IMAGE at that tag, while local development can still build agents-skill-eval-test from docker/Dockerfile."
+            "text": "Yes. A prebuilt application image is published as ghcr.io/sasa-fajkovic/agents-skill-eval-app:latest. It bundles the Go backend, frontend assets, Redis, and deterministic evaluator so self-hosters can deploy the site as a single container."
           }
         },
         {
@@ -722,7 +722,7 @@
           <li>The package is still processed locally for the duration of the run.</li>
           <li>After the completed result is delivered to the browser, transient server-side progress and result state is released.</li>
           <li>The final JSON remains available in the current browser tab for viewing and download, but it is not kept after refresh.</li>
-          <li>If optional AI review is enabled, uploaded skill content for that run is also sent to the selected external provider after deterministic evaluation.</li>
+          <li>If optional AI review is enabled, uploaded skill content for that run is sent to the single provider selected for that run after deterministic evaluation.</li>
         </ul>
       </article>
 
@@ -730,9 +730,9 @@
         <span class="eyebrow">Question</span>
         <h3>Is there a prebuilt Docker image?</h3>
         <ul>
-          <li>Yes. A prebuilt evaluator image is published as <code>ghcr.io/sasa-fajkovic/agents-skill-eval:latest</code>.</li>
-          <li>Self-hosters can point <code>EVAL_DOCKER_IMAGE</code> at that tag instead of building the evaluator image on the host.</li>
-          <li>For local development, the repo still defaults to <code>agents-skill-eval-test</code>, built from <code>docker/Dockerfile</code>.</li>
+          <li>Yes. A prebuilt application image is published as <code>ghcr.io/sasa-fajkovic/agents-skill-eval-app:latest</code>.</li>
+          <li>It bundles the Go backend, frontend assets, Redis, and deterministic evaluator into a single deployable container.</li>
+          <li>For local development, you can still build the image directly from <code>docker/Dockerfile.app</code>.</li>
         </ul>
       </article>
 

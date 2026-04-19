@@ -1,11 +1,11 @@
-.PHONY: start stop restart build test image health
+.PHONY: start stop restart build test image image-app health
 
 PORT ?= 18080
 REDIS_ADDR ?= 127.0.0.1:6379
 DISABLE_ABUSE_PROTECTION ?= true
 EVAL_DOCKER_IMAGE ?= agents-skill-eval-test
-EVAL_DOCKER_NETWORK ?= bridge
-ANTHROPIC_MODEL ?= claude-sonnet-4-20250514
+APP_DOCKER_IMAGE ?= agents-skill-eval-app-test
+ANTHROPIC_MODEL ?= claude-sonnet-4-6
 ANTHROPIC_MAX_TOKENS ?= 2500
 SERVER_LOG ?= /tmp/agents-skill-eval-server.log
 SERVER_PID ?= /tmp/agents-skill-eval-server.pid
@@ -14,7 +14,7 @@ start:
 	@mkdir -p backend/bin
 	@$(MAKE) stop >/dev/null 2>&1 || true
 	@cd backend && go build -o bin/app .
-	@PORT=$(PORT) REDIS_ADDR=$(REDIS_ADDR) DISABLE_ABUSE_PROTECTION=$(DISABLE_ABUSE_PROTECTION) EVAL_DOCKER_IMAGE=$(EVAL_DOCKER_IMAGE) EVAL_DOCKER_NETWORK=$(EVAL_DOCKER_NETWORK) ANTHROPIC_MODEL=$(ANTHROPIC_MODEL) ANTHROPIC_MAX_TOKENS=$(ANTHROPIC_MAX_TOKENS) ANTHROPIC_API_KEY="$$ANTHROPIC_API_KEY" nohup ./backend/bin/app > $(SERVER_LOG) 2>&1 < /dev/null & echo $$! > $(SERVER_PID)
+	@PORT=$(PORT) REDIS_ADDR=$(REDIS_ADDR) DISABLE_ABUSE_PROTECTION=$(DISABLE_ABUSE_PROTECTION) ANTHROPIC_MODEL=$(ANTHROPIC_MODEL) ANTHROPIC_MAX_TOKENS=$(ANTHROPIC_MAX_TOKENS) ANTHROPIC_API_KEY="$$ANTHROPIC_API_KEY" OPENAI_API_KEY="$$OPENAI_API_KEY" nohup ./backend/bin/app > $(SERVER_LOG) 2>&1 < /dev/null & echo $$! > $(SERVER_PID)
 	@sleep 3
 	@$(MAKE) health
 	@echo "app started on http://127.0.0.1:$(PORT)"
@@ -34,6 +34,7 @@ build:
 	@mkdir -p backend/bin
 	@cd backend && go build -o bin/app .
 	@docker build -f docker/Dockerfile -t $(EVAL_DOCKER_IMAGE) .
+	@docker build -f docker/Dockerfile.app -t $(APP_DOCKER_IMAGE) .
 
 test:
 	@python3 -m py_compile eval/run_eval.py
@@ -42,6 +43,9 @@ test:
 
 image:
 	@docker build -f docker/Dockerfile -t $(EVAL_DOCKER_IMAGE) .
+
+image-app:
+	@docker build -f docker/Dockerfile.app -t $(APP_DOCKER_IMAGE) .
 
 health:
 	@curl -fsS http://127.0.0.1:$(PORT)/health

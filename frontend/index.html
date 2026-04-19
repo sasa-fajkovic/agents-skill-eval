@@ -907,6 +907,57 @@
       margin-top: 4px;
     }
 
+    .llm-provider-row {
+      display: grid;
+      gap: 8px;
+    }
+
+    .llm-provider-row label {
+      display: block;
+      cursor: default;
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .llm-provider-row select {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.94));
+      color: #0f172a;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+      color: var(--text);
+      font: inherit;
+      font-weight: 600;
+      line-height: 1.3;
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgba(15, 23, 42, 0.8) 50%),
+        linear-gradient(135deg, rgba(15, 23, 42, 0.8) 50%, transparent 50%),
+        linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.94));
+      background-position:
+        calc(100% - 20px) calc(50% - 3px),
+        calc(100% - 14px) calc(50% - 3px),
+        0 0;
+      background-size: 6px 6px, 6px 6px, 100% 100%;
+      background-repeat: no-repeat;
+    }
+
+    .llm-provider-row select:disabled {
+      opacity: 0.7;
+      color: rgba(15, 23, 42, 0.72);
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgba(15, 23, 42, 0.45) 50%),
+        linear-gradient(135deg, rgba(15, 23, 42, 0.45) 50%, transparent 50%),
+        linear-gradient(180deg, rgba(241, 245, 249, 0.9), rgba(226, 232, 240, 0.88));
+      cursor: not-allowed;
+    }
+
     .llm-copy strong {
       display: block;
       margin-bottom: 6px;
@@ -2161,6 +2212,15 @@
       color: var(--text);
     }
 
+    .footer-version {
+      color: var(--subtle);
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
     .js [data-observe] {
       opacity: 0;
       transform: translateY(18px);
@@ -2479,10 +2539,17 @@
             <label for="enable-llm">
               <input id="enable-llm" type="checkbox">
               <span class="llm-copy">
-                <strong>Enable optional Anthropic review</strong>
-                If selected, uploaded skill content for that run is also sent to Anthropic after deterministic evaluation. Leave this off to keep the run deterministic-only.
+                <strong>Enable optional AI review</strong>
+                If selected, uploaded skill content for that run is also sent to the selected provider after deterministic evaluation. Leave this off to keep the run deterministic-only.
               </span>
             </label>
+            <div class="llm-provider-row">
+              <label for="llm-provider">AI provider</label>
+              <select id="llm-provider" disabled>
+                <option value="anthropic">Anthropic Claude</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </div>
           </div>
 
           <div>
@@ -2527,7 +2594,7 @@
               <span>Skill structure, trigger guidance, examples, failure handling, portability cues, and security-sensitive patterns.</span>
           </div>
         </div>
-        <p class="privacy-copy">Files and results are stored only while the run is active and the result is retrievable. Uploaded content is not sent to third-party AI providers unless the optional review box is selected.</p>
+        <p class="privacy-copy">Files and results are stored only while the run is active and the result is retrievable. Uploaded content is not sent to third-party AI providers unless the optional review box is selected for that run.</p>
       </aside>
     </section>
 
@@ -2750,6 +2817,8 @@
             <div class="json-line">    <span class="json-key">"issues"</span>: []</div>
             <div class="json-line">  },</div>
             <div class="json-line">  <span class="json-key">"llm_analysis"</span>: {</div>
+            <div class="json-line">    <span class="json-key">"provider"</span>: <span class="json-string">"anthropic"</span>,</div>
+            <div class="json-line">    <span class="json-key">"model"</span>: <span class="json-string">"claude-sonnet-4-6"</span>,</div>
             <div class="json-line">    <span class="json-key">"quality_tier"</span>: <span class="json-string">"excellent"</span>,</div>
             <div class="json-line">    <span class="json-key">"strengths"</span>: [<span class="json-string">"Tight trigger language"</span>, <span class="json-string">"Concrete usage examples"</span>],</div>
             <div class="json-line">    <span class="json-key">"suggestions"</span>: [<span class="json-string">"Keep helper scripts strictly portable"</span>]</div>
@@ -2798,6 +2867,7 @@
       <a href="https://linkedin.com/in/sasa-fajkovic" target="_blank" rel="noreferrer">LinkedIn</a>
       <a href="https://sasa-fajkovic.com/" target="_blank" rel="noreferrer">sasa-fajkovic.com</a>
     </div>
+    <div class="footer-version" id="footer-version">Deployed version: loading</div>
   </footer>
 
   <script>
@@ -2814,6 +2884,8 @@
     const results = document.getElementById('results');
     const runSurface = document.querySelector('.run-surface');
     const enableLlmCheckbox = document.getElementById('enable-llm');
+    const llmProviderSelect = document.getElementById('llm-provider');
+    const footerVersion = document.getElementById('footer-version');
     const themeColorMeta = document.querySelector('meta[name="theme-color"]');
     const THEME_KEY = 'agents-skill-eval-theme';
     const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -3044,8 +3116,8 @@
       if (resultData?.llm_enabled === false) {
         return { state: 'skipped', label: 'Not enabled', summary: 'Optional AI review was not enabled for this run.' };
       }
-      if (/requested, but the server is not configured/i.test(combined)) {
-        return { state: 'skipped', label: 'Unavailable', summary: 'Optional AI review was requested, but this server is not configured for it.' };
+      if (/selected provider is not configured/i.test(combined)) {
+        return { state: 'skipped', label: 'Unavailable', summary: 'Optional AI review was requested, but the selected provider is not configured on this server.' };
       }
       if (/Optional LLM review failed/i.test(combined)) {
         return { state: 'skipped', label: 'Fallback', summary: 'Optional AI review fell back to deterministic-only output.' };
@@ -3274,6 +3346,32 @@
       return `<ul class="result-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
     }
 
+    function providerLabel(value) {
+      switch (String(value || '').toLowerCase()) {
+        case 'openai':
+          return 'OpenAI';
+        default:
+          return 'Anthropic Claude';
+      }
+    }
+
+    async function loadVersion() {
+      if (!footerVersion) {
+        return;
+      }
+      try {
+        const response = await fetch('/version', { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error('version unavailable');
+        }
+        const payload = await response.json();
+        const commit = String(payload.commit || payload.version || '').trim();
+        footerVersion.textContent = commit ? `Deployed version: ${commit.slice(0, 7)}` : 'Deployed version: unavailable';
+      } catch (error) {
+        footerVersion.textContent = 'Deployed version: unavailable';
+      }
+    }
+
     function renderChecklist(deterministic) {
       const checks = [
         ['Description', deterministic.has_description],
@@ -3329,9 +3427,15 @@
       const skillName = String(data.skill_name || 'Unnamed skill').trim() || 'Unnamed skill';
       const skillDescription = String(data.skill_description || '').trim();
       const skillCompatibility = String(data.skill_compatibility || '').trim();
+      const llmProvider = String(data.llm_analysis?.provider || '').trim();
+      const llmModel = String(data.llm_analysis?.model || '').trim();
       const aiReviewSummary = explainAiReviewOutcome(data.progress || [], data);
       const aiReviewCards = data.llm_analysis
         ? `
+          <article class="result-card">
+            <span class="result-label">Optional AI review</span>
+            <p class="result-summary">${escapeHtml(providerLabel(llmProvider))}${llmModel ? ` · ${escapeHtml(llmModel)}` : ''}</p>
+          </article>
           <article class="result-card">
             <span class="result-label">Strengths</span>
             ${renderList(data.llm_analysis?.strengths || [])}
@@ -3522,6 +3626,9 @@
         formData.append('githubUrl', githubUrl);
       }
       formData.append('enableLlm', enableLlmCheckbox.checked ? 'true' : 'false');
+      if (enableLlmCheckbox.checked) {
+        formData.append('llmProvider', llmProviderSelect.value);
+      }
 
       setJobRunning(true);
       resetResultsState();
@@ -3670,11 +3777,17 @@
       }
       folderInput.click();
     });
+    enableLlmCheckbox.addEventListener('change', () => {
+      llmProviderSelect.disabled = !enableLlmCheckbox.checked;
+    });
+    loadVersion();
     uploadButton.addEventListener('click', uploadFiles);
     clearButton.addEventListener('click', () => {
       folderInput.value = '';
       githubUrlInput.value = '';
       enableLlmCheckbox.checked = false;
+      llmProviderSelect.value = 'anthropic';
+      llmProviderSelect.disabled = true;
       updateFiles([]);
       renderPhaseTracker('idle');
       resetResultsState();
