@@ -1,6 +1,9 @@
 .git
 .github
-.claude
+.claude/*
+!.claude/skills/
+!.claude/skills/skill-evaluation/
+!.claude/skills/skill-evaluation/**
 backend/bin
 __pycache__
 *.pyc
