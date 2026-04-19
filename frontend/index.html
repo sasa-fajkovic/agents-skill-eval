@@ -2691,6 +2691,7 @@
     let lastProgressJobId = '';
     let lastProgressLines = [];
     let lastProgressTrailer = '';
+    let activePhaseSince = 0;
     let jobInFlight = false;
     let latestResult = null;
     const phaseDefinitions = [
@@ -2813,10 +2814,11 @@
     function getAiReviewOutcome(progressLines, resultData = null) {
       const lines = Array.isArray(progressLines) ? progressLines : [];
       const combined = lines.join(' ');
+      const llmRequested = resultData?.llm_enabled ?? enableLlmCheckbox.checked;
       if (resultData?.llm_analysis) {
         return { state: 'complete', label: 'Complete', summary: 'Optional AI review completed for this run.' };
       }
-      if (resultData?.llm_enabled === false) {
+      if (!llmRequested) {
         return { state: 'skipped', label: 'Not enabled', summary: 'Optional AI review was not enabled for this run.' };
       }
       if (/selected provider is not configured/i.test(combined)) {
@@ -2834,6 +2836,50 @@
       return { state: 'pending', label: 'Pending', summary: 'Optional AI review has not started yet.' };
     }
 
+    function getObservedPhaseKeys(progressLines, trailer = '', resultData = null) {
+      const lines = Array.isArray(progressLines) ? progressLines : [];
+      const combined = [...lines, trailer].join(' ');
+      const observed = new Set();
+
+      if (/Upload accepted|Upload received|Job queued|Polling for progress|Waiting for worker/.test(combined)) observed.add('queued');
+      if (/Worker picked up job/.test(combined)) observed.add('worker');
+      if (/Starting evaluator/.test(combined)) observed.add('sandbox');
+      if (/Preparing deterministic result/.test(combined)) observed.add('deterministic');
+      if (/LLM evaluation|Optional LLM review/.test(combined) || resultData?.llm_analysis) observed.add('llm');
+      if (/Preparing final evaluation result/.test(combined)) observed.add('finalizing');
+      if (/Evaluation completed\./.test(combined)) observed.add('complete');
+
+      if (resultData) {
+        observed.add('queued');
+        observed.add('worker');
+        observed.add('sandbox');
+        observed.add('deterministic');
+        observed.add('finalizing');
+        observed.add('complete');
+      }
+
+      return observed;
+    }
+
+    function getPhaseFillProgress(activeKey, resultData = null) {
+      if (!activeKey || activeKey === 'idle' || activeKey === 'complete') {
+        return 0;
+      }
+      if (!activePhaseSince) {
+        activePhaseSince = Date.now();
+        return 8;
+      }
+
+      const llmEnabled = resultData?.llm_enabled ?? enableLlmCheckbox.checked;
+      const targetDurationMs = activeKey === 'llm'
+        ? 2200
+        : activeKey === 'finalizing' && !llmEnabled
+          ? 700
+          : 1400;
+      const elapsed = Date.now() - activePhaseSince;
+      return Math.max(8, Math.min(92, Math.round((elapsed / targetDurationMs) * 100)));
+    }
+
     function inferPhaseKey(progressLines, trailer = '') {
       const lines = Array.isArray(progressLines) ? progressLines : [];
       const combined = [...lines, trailer].join(' ');
@@ -2848,10 +2894,17 @@
     }
 
     function renderPhaseTracker(activeKey, trailer = '', progressLines = [], resultData = null) {
-      const activeIndex = phaseDefinitions.findIndex((phase) => phase.key === activeKey);
+      if (activeKey === 'idle' || activeKey === 'complete') {
+        activePhaseSince = 0;
+      } else if (phaseTracker.getAttribute('data-active-phase') !== activeKey) {
+        activePhaseSince = Date.now();
+      }
+
       const aiReviewOutcome = getAiReviewOutcome(progressLines, resultData);
+      const observedPhases = getObservedPhaseKeys(progressLines, trailer, resultData);
+      const activeFillProgress = getPhaseFillProgress(activeKey, resultData);
       phaseTracker.innerHTML = phaseDefinitions.map((phase, index) => {
-        let state = index < activeIndex ? 'complete' : index === activeIndex ? 'active' : 'pending';
+        let state = observedPhases.has(phase.key) ? 'complete' : activeKey === phase.key ? 'active' : 'pending';
         let stateLabel = state === 'complete' ? 'Complete' : state === 'active' ? 'In progress' : state === 'skipped' ? 'Skipped' : 'Pending';
         if (phase.key === 'llm') {
           state = aiReviewOutcome.state;
@@ -2862,8 +2915,9 @@
           }
         }
         const extraClass = state === 'complete' ? ' is-complete' : state === 'active' ? ' is-active' : state === 'skipped' ? ' is-skipped' : state === 'filling' ? ' is-filling' : '';
+        const fillProgress = state === 'complete' ? '100%' : state === 'active' ? `${activeFillProgress}%` : '0%';
         return `
-          <article class="phase-chip${extraClass}" style="--phase-fill-progress:${state === 'complete' || state === 'active' ? '100%' : '0%'};">
+          <article class="phase-chip${extraClass}" style="--phase-fill-progress:${fillProgress};">
             <span class="phase-step">${escapeHtml(phase.step)}</span>
             <strong>${escapeHtml(phase.label)}</strong>
             <span class="phase-state">${escapeHtml(stateLabel)}</span>
