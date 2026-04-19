@@ -907,6 +907,35 @@
       margin-top: 4px;
     }
 
+    .llm-provider-row {
+      display: grid;
+      gap: 8px;
+    }
+
+    .llm-provider-row label {
+      display: block;
+      cursor: default;
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .llm-provider-row select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.88);
+      color: var(--text);
+      font: inherit;
+    }
+
+    .llm-provider-row select:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
     .llm-copy strong {
       display: block;
       margin-bottom: 6px;
@@ -2479,10 +2508,18 @@
             <label for="enable-llm">
               <input id="enable-llm" type="checkbox">
               <span class="llm-copy">
-                <strong>Enable optional Anthropic review</strong>
-                If selected, uploaded skill content for that run is also sent to Anthropic after deterministic evaluation. Leave this off to keep the run deterministic-only.
+                <strong>Enable optional AI review</strong>
+                If selected, uploaded skill content for that run is also sent to the selected provider after deterministic evaluation. Leave this off to keep the run deterministic-only.
               </span>
             </label>
+            <div class="llm-provider-row">
+              <label for="llm-provider">AI provider</label>
+              <select id="llm-provider" disabled>
+                <option value="anthropic">Anthropic Claude</option>
+                <option value="openai">OpenAI</option>
+                <option value="mistral">Mistral</option>
+              </select>
+            </div>
           </div>
 
           <div>
@@ -2527,7 +2564,7 @@
               <span>Skill structure, trigger guidance, examples, failure handling, portability cues, and security-sensitive patterns.</span>
           </div>
         </div>
-        <p class="privacy-copy">Files and results are stored only while the run is active and the result is retrievable. Uploaded content is not sent to third-party AI providers unless the optional review box is selected.</p>
+        <p class="privacy-copy">Files and results are stored only while the run is active and the result is retrievable. Uploaded content is not sent to third-party AI providers unless the optional review box is selected for that run.</p>
       </aside>
     </section>
 
@@ -2750,6 +2787,8 @@
             <div class="json-line">    <span class="json-key">"issues"</span>: []</div>
             <div class="json-line">  },</div>
             <div class="json-line">  <span class="json-key">"llm_analysis"</span>: {</div>
+            <div class="json-line">    <span class="json-key">"provider"</span>: <span class="json-string">"anthropic"</span>,</div>
+            <div class="json-line">    <span class="json-key">"model"</span>: <span class="json-string">"claude-sonnet-4-20250514"</span>,</div>
             <div class="json-line">    <span class="json-key">"quality_tier"</span>: <span class="json-string">"excellent"</span>,</div>
             <div class="json-line">    <span class="json-key">"strengths"</span>: [<span class="json-string">"Tight trigger language"</span>, <span class="json-string">"Concrete usage examples"</span>],</div>
             <div class="json-line">    <span class="json-key">"suggestions"</span>: [<span class="json-string">"Keep helper scripts strictly portable"</span>]</div>
@@ -2814,6 +2853,7 @@
     const results = document.getElementById('results');
     const runSurface = document.querySelector('.run-surface');
     const enableLlmCheckbox = document.getElementById('enable-llm');
+    const llmProviderSelect = document.getElementById('llm-provider');
     const themeColorMeta = document.querySelector('meta[name="theme-color"]');
     const THEME_KEY = 'agents-skill-eval-theme';
     const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -3044,8 +3084,8 @@
       if (resultData?.llm_enabled === false) {
         return { state: 'skipped', label: 'Not enabled', summary: 'Optional AI review was not enabled for this run.' };
       }
-      if (/requested, but the server is not configured/i.test(combined)) {
-        return { state: 'skipped', label: 'Unavailable', summary: 'Optional AI review was requested, but this server is not configured for it.' };
+      if (/selected provider is not configured/i.test(combined)) {
+        return { state: 'skipped', label: 'Unavailable', summary: 'Optional AI review was requested, but the selected provider is not configured on this server.' };
       }
       if (/Optional LLM review failed/i.test(combined)) {
         return { state: 'skipped', label: 'Fallback', summary: 'Optional AI review fell back to deterministic-only output.' };
@@ -3274,6 +3314,17 @@
       return `<ul class="result-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
     }
 
+    function providerLabel(value) {
+      switch (String(value || '').toLowerCase()) {
+        case 'openai':
+          return 'OpenAI';
+        case 'mistral':
+          return 'Mistral';
+        default:
+          return 'Anthropic Claude';
+      }
+    }
+
     function renderChecklist(deterministic) {
       const checks = [
         ['Description', deterministic.has_description],
@@ -3329,9 +3380,15 @@
       const skillName = String(data.skill_name || 'Unnamed skill').trim() || 'Unnamed skill';
       const skillDescription = String(data.skill_description || '').trim();
       const skillCompatibility = String(data.skill_compatibility || '').trim();
+      const llmProvider = String(data.llm_analysis?.provider || '').trim();
+      const llmModel = String(data.llm_analysis?.model || '').trim();
       const aiReviewSummary = explainAiReviewOutcome(data.progress || [], data);
       const aiReviewCards = data.llm_analysis
         ? `
+          <article class="result-card">
+            <span class="result-label">Optional AI review</span>
+            <p class="result-summary">${escapeHtml(providerLabel(llmProvider))}${llmModel ? ` · ${escapeHtml(llmModel)}` : ''}</p>
+          </article>
           <article class="result-card">
             <span class="result-label">Strengths</span>
             ${renderList(data.llm_analysis?.strengths || [])}
@@ -3522,6 +3579,9 @@
         formData.append('githubUrl', githubUrl);
       }
       formData.append('enableLlm', enableLlmCheckbox.checked ? 'true' : 'false');
+      if (enableLlmCheckbox.checked) {
+        formData.append('llmProvider', llmProviderSelect.value);
+      }
 
       setJobRunning(true);
       resetResultsState();
@@ -3670,11 +3730,16 @@
       }
       folderInput.click();
     });
+    enableLlmCheckbox.addEventListener('change', () => {
+      llmProviderSelect.disabled = !enableLlmCheckbox.checked;
+    });
     uploadButton.addEventListener('click', uploadFiles);
     clearButton.addEventListener('click', () => {
       folderInput.value = '';
       githubUrlInput.value = '';
       enableLlmCheckbox.checked = false;
+      llmProviderSelect.value = 'anthropic';
+      llmProviderSelect.disabled = true;
       updateFiles([]);
       renderPhaseTracker('idle');
       resetResultsState();

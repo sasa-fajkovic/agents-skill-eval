@@ -657,6 +657,7 @@ func TestFinalizeEvaluation(t *testing.T) {
 func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
 	old := os.Getenv("ANTHROPIC_API_KEY")
 	oldBaseURL := os.Getenv("ANTHROPIC_BASE_URL")
+	oldProvider := os.Getenv("LLM_PROVIDER")
 	defer func() {
 		if old == "" {
 			_ = os.Unsetenv("ANTHROPIC_API_KEY")
@@ -668,8 +669,14 @@ func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
 		} else {
 			_ = os.Setenv("ANTHROPIC_BASE_URL", oldBaseURL)
 		}
+		if oldProvider == "" {
+			_ = os.Unsetenv("LLM_PROVIDER")
+		} else {
+			_ = os.Setenv("LLM_PROVIDER", oldProvider)
+		}
 	}()
 	_ = os.Setenv("ANTHROPIC_API_KEY", "configured")
+	_ = os.Setenv("LLM_PROVIDER", "anthropic")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/messages" {
@@ -688,11 +695,11 @@ func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
 	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), httpClient: server.Client()}
 	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":[]}}`
 
-	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true}, raw)
+	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true, LLMProvider: "anthropic"}, raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"mode":"opt_in"`) || !strings.Contains(result, `"overall_tier":"good"`) {
+	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"mode":"opt_in"`) || !strings.Contains(result, `"overall_tier":"good"`) || !strings.Contains(result, `"provider":"anthropic"`) || !strings.Contains(result, `"model":"claude-sonnet-4-20250514"`) {
 		t.Fatalf("expected optional llm payload, got %s", result)
 	}
 }
@@ -729,6 +736,7 @@ func TestHandleResultConsumeReleasesState(t *testing.T) {
 func TestFinalizeEvaluationWithOptionalLLMFallsBackOnProviderError(t *testing.T) {
 	old := os.Getenv("ANTHROPIC_API_KEY")
 	oldBaseURL := os.Getenv("ANTHROPIC_BASE_URL")
+	oldProvider := os.Getenv("LLM_PROVIDER")
 	defer func() {
 		if old == "" {
 			_ = os.Unsetenv("ANTHROPIC_API_KEY")
@@ -740,8 +748,14 @@ func TestFinalizeEvaluationWithOptionalLLMFallsBackOnProviderError(t *testing.T)
 		} else {
 			_ = os.Setenv("ANTHROPIC_BASE_URL", oldBaseURL)
 		}
+		if oldProvider == "" {
+			_ = os.Unsetenv("LLM_PROVIDER")
+		} else {
+			_ = os.Setenv("LLM_PROVIDER", oldProvider)
+		}
 	}()
 	_ = os.Setenv("ANTHROPIC_API_KEY", "configured")
+	_ = os.Setenv("LLM_PROVIDER", "anthropic")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
@@ -753,7 +767,7 @@ func TestFinalizeEvaluationWithOptionalLLMFallsBackOnProviderError(t *testing.T)
 	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), httpClient: server.Client()}
 	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":[]}}`
 
-	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true}, raw)
+	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true, LLMProvider: "anthropic"}, raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -783,8 +797,8 @@ func TestParseAnthropicError(t *testing.T) {
 	}
 }
 
-func TestBuildAnthropicPrompt(t *testing.T) {
-	prompt := buildAnthropicPrompt(evalContainerResult{
+func TestBuildLLMPrompt(t *testing.T) {
+	prompt := buildLLMPrompt(evalContainerResult{
 		SkillContent:      strings.Repeat("a", 20),
 		SupportingContext: "context",
 		Deterministic:     map[string]any{"issues": []any{"missing examples"}},
@@ -793,6 +807,129 @@ func TestBuildAnthropicPrompt(t *testing.T) {
 		if !strings.Contains(prompt, expected) {
 			t.Fatalf("expected %q in prompt: %s", expected, prompt)
 		}
+	}
+}
+
+func TestParseOpenAIAnalysis(t *testing.T) {
+	body := []byte(`{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Clear\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"excellent\"}"}}]}`)
+	analysis, err := parseOpenAIAnalysis(body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if analysis.QualityTier != "excellent" || len(analysis.Strengths) != 1 {
+		t.Fatalf("unexpected analysis: %+v", analysis)
+	}
+}
+
+func TestParseMistralAnalysis(t *testing.T) {
+	body := []byte(`{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Portable\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"good\"}"}}]}`)
+	analysis, err := parseMistralAnalysis(body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if analysis.QualityTier != "good" || len(analysis.Strengths) != 1 {
+		t.Fatalf("unexpected analysis: %+v", analysis)
+	}
+}
+
+func TestParseOpenAIError(t *testing.T) {
+	msg := parseOpenAIError([]byte(`{"error":{"message":"OPENAI_API_KEY=secret"}}`), "bad gateway")
+	if strings.Contains(msg, "secret") {
+		t.Fatalf("expected secret to be redacted: %q", msg)
+	}
+	if !strings.Contains(msg, "openai request failed") {
+		t.Fatalf("unexpected error message: %q", msg)
+	}
+}
+
+func TestParseMistralError(t *testing.T) {
+	msg := parseMistralError([]byte(`{"error":{"message":"MISTRAL_API_KEY=secret"}}`), "bad gateway")
+	if strings.Contains(msg, "secret") {
+		t.Fatalf("expected secret to be redacted: %q", msg)
+	}
+	if !strings.Contains(msg, "mistral request failed") {
+		t.Fatalf("unexpected error message: %q", msg)
+	}
+}
+
+func TestRunLLMReviewWithOpenAI(t *testing.T) {
+	oldKey := os.Getenv("OPENAI_API_KEY")
+	oldBaseURL := os.Getenv("OPENAI_BASE_URL")
+	defer func() {
+		if oldKey == "" {
+			_ = os.Unsetenv("OPENAI_API_KEY")
+		} else {
+			_ = os.Setenv("OPENAI_API_KEY", oldKey)
+		}
+		if oldBaseURL == "" {
+			_ = os.Unsetenv("OPENAI_BASE_URL")
+		} else {
+			_ = os.Setenv("OPENAI_BASE_URL", oldBaseURL)
+		}
+	}()
+	_ = os.Setenv("OPENAI_API_KEY", "configured-openai")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer configured-openai" {
+			t.Fatalf("unexpected auth header: %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Concise\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"good\"}"}}]}`)
+	}))
+	defer server.Close()
+	_ = os.Setenv("OPENAI_BASE_URL", server.URL)
+	app := &application{httpClient: server.Client()}
+	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if analysis.Provider != "openai" || analysis.Model != "gpt-4.1" || analysis.QualityTier != "good" {
+		t.Fatalf("unexpected analysis: %+v", analysis)
+	}
+}
+
+func TestRunLLMReviewWithMistral(t *testing.T) {
+	oldKey := os.Getenv("MISTRAL_API_KEY")
+	oldBaseURL := os.Getenv("MISTRAL_BASE_URL")
+	defer func() {
+		if oldKey == "" {
+			_ = os.Unsetenv("MISTRAL_API_KEY")
+		} else {
+			_ = os.Setenv("MISTRAL_API_KEY", oldKey)
+		}
+		if oldBaseURL == "" {
+			_ = os.Unsetenv("MISTRAL_BASE_URL")
+		} else {
+			_ = os.Setenv("MISTRAL_BASE_URL", oldBaseURL)
+		}
+	}()
+	_ = os.Setenv("MISTRAL_API_KEY", "configured-mistral")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer configured-mistral" {
+			t.Fatalf("unexpected auth header: %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Broad\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"excellent\"}"}}]}`)
+	}))
+	defer server.Close()
+	_ = os.Setenv("MISTRAL_BASE_URL", server.URL)
+	app := &application{httpClient: server.Client()}
+	analysis, err := app.runLLMReview(context.Background(), "mistral", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if analysis.Provider != "mistral" || analysis.Model != "mistral-large-latest" || analysis.QualityTier != "excellent" {
+		t.Fatalf("unexpected analysis: %+v", analysis)
+	}
+}
+
+func TestSupportedLLMProvider(t *testing.T) {
+	for _, provider := range []string{"anthropic", "openai", "mistral"} {
+		if !isSupportedLLMProvider(provider) {
+			t.Fatalf("expected provider %q to be supported", provider)
+		}
+	}
+	if isSupportedLLMProvider("unknown") {
+		t.Fatal("expected unknown provider to be rejected")
 	}
 }
 
