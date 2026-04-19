@@ -39,9 +39,9 @@ const (
 	evalTimeout      = 2 * time.Minute
 	maxMemoryBytes   = 256
 	maxQueueDepth    = 50
-	rateLimitMax     = 5
+	rateLimitMax     = 20
 	rateLimitTTL     = time.Hour
-	llmRateLimitMax  = 3
+	llmRateLimitMax  = 10
 	llmRateLimitTTL  = 24 * time.Hour
 	maxActiveJobsPerIP = 2
 	githubFetchLimit = 5 << 20
