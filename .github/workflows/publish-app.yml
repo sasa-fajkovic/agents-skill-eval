@@ -12,6 +12,7 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - '.claude/skills/skill-evaluation/**'
+      - '.dockerignore'
       - 'docker/**'
       - '.github/workflows/publish-app.yml'
 
