@@ -130,6 +130,54 @@ description: Evaluate skills. Use when validating a skill package.
         self.assertEqual(runtime_issues[0]["severity"], "warning")
         self.assertIn(".js", payload["metadata"]["unsupported_script_types"])
 
+    def test_flags_long_inline_code_as_token_warning(self) -> None:
+        body = """Use when validating a skill package.
+
+```bash
+echo one
+echo two
+echo three
+echo four
+echo five
+echo six
+```
+"""
+        skill_dir = self.make_skill_dir(body)
+        findings = skill_eval.evaluate(str(skill_dir))
+        self.assertTrue(any(f.check_id == "3.1" for f in findings), findings)
+
+    def test_flags_missing_success_criteria(self) -> None:
+        body = """Use when validating a skill package.
+
+## Process
+
+1. Read the skill.
+2. Review it carefully.
+3. Continue as needed.
+"""
+        skill_dir = self.make_skill_dir(body)
+        findings = skill_eval.evaluate(str(skill_dir))
+        self.assertTrue(any(f.check_id == "4.6" for f in findings), findings)
+
+    def test_flags_argument_without_default_behavior(self) -> None:
+        body = """Use when validating a skill package.
+
+## Input
+
+- `--target`
+
+## Process
+
+Run the script with `--target` and summarize the result.
+
+## Output
+
+Return a short summary.
+"""
+        skill_dir = self.make_skill_dir(body)
+        findings = skill_eval.evaluate(str(skill_dir))
+        self.assertTrue(any(f.check_id == "4.4" for f in findings), findings)
+
 
 if __name__ == "__main__":
     unittest.main()

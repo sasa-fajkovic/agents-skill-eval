@@ -12,6 +12,7 @@ import os
 import json
 import re
 import sys
+import difflib
 from pathlib import Path
 
 try:
@@ -50,6 +51,12 @@ BOLD = "\033[1m" if _use_color else ""
 RESET = "\033[0m" if _use_color else ""
 
 BOX_WIDTH = 60
+ALL_CHECK_IDS = [
+    "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10", "1.11",
+    "2.1", "2.2", "2.3",
+    "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7",
+    "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7",
+]
 MAX_SUPPORTING_CONTEXT_CHARS = 12000
 MAX_FILE_EXCERPT_CHARS = 1500
 ALLOWED_TEXT_EXTENSIONS = {
@@ -188,6 +195,30 @@ MCP_NEGATION = re.compile(
     r"(?i)(do not|don't|never|avoid|instead of|not allowed|prohibited|"
     r"forbidden|disallow(?:ed)?|must not|ban(?:ned)?|use .* instead|prefer .* instead)"
 )
+VERBOSE_PROSE = re.compile(
+    r"(?i)\b(first,? you need to|in order to|the next step is to|to accomplish this|"
+    r"you should now|it is important to)\b"
+)
+STANDARD_TOOL_TUTORIAL = re.compile(
+    r"(?i)(to check .* run `?git status`?|pipe the output to jq|"
+    r"the `-[a-z]` flag|use `?\$\(.+?\)`? for command substitution|"
+    r"send a post request with content-type: application/json)"
+)
+PRELOAD_REFERENCE = re.compile(
+    r"(?i)(read all files in references/|load references/ first|start by reading every file in references/|"
+    r"pre-load the following references|preload the following references)"
+)
+AMBIGUOUS_LANGUAGE = re.compile(
+    r"(?i)\b(appropriately|as needed|relevant|suitable|proper|reasonable|"
+    r"when necessary|if applicable|the correct format|the standard approach|concise|clear|well-structured)\b"
+)
+NEGATIVE_ONLY = re.compile(r"(?i)\b(don't|do not|never|avoid|must not)\b")
+POSITIVE_ALTERNATIVE = re.compile(r"(?i)\b(use|write|prefer|instead|choose|return|format|do .* not)\b")
+DEFAULT_BEHAVIOR = re.compile(r"(?i)(defaults to|if omitted|if not provided|required|when omitted|must provide|optional)")
+IDEMPOTENT_GUARD = re.compile(r"(?i)(if not exists|if missing|already exists|mkdir -p|ensure|idempotent|skip if|update if)")
+NON_IDEMPOTENT_OP = re.compile(r"(?i)(>>|\bmkdir\s+(?!-p)\S|\bcurl\s+.*-x\s+post|\bgh pr create\b|\bacli\s+jira\s+workitem\s+create\b)")
+OUTPUT_OR_FORMAT = re.compile(r"(?i)(^#{1,3}\s+output\b|output format|format as|use the following format|template|tone guidance)")
+SUCCESS_CRITERIA = re.compile(r"(?i)(^#{1,3}\s+output\b|done when|complete when|completion condition|returns?\b|produces?\b)")
 
 
 class Finding:
@@ -411,6 +442,94 @@ def extract_skill_description(skill_text: str, fm: dict | None) -> str:
 
 def extract_skill_compatibility(fm: dict | None) -> str:
     return extract_frontmatter_string_field(fm, "compatibility")
+
+
+def fenced_code_blocks(body: str) -> list[tuple[int, int, str, str]]:
+    lines = body.splitlines()
+    blocks = []
+    in_fence = False
+    start = 0
+    lang = ""
+    collected: list[str] = []
+    for index, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if not in_fence:
+                in_fence = True
+                start = index
+                lang = stripped[3:].strip().lower()
+                collected = []
+            else:
+                blocks.append((start, index, lang, "\n".join(collected)))
+                in_fence = False
+                lang = ""
+                collected = []
+            continue
+        if in_fence:
+            collected.append(line)
+    return blocks
+
+
+def heading_ranges(body: str) -> list[tuple[int, int, str, str]]:
+    lines = body.splitlines()
+    headings: list[tuple[int, str, str]] = []
+    for index, line in enumerate(lines, start=1):
+        match = re.match(r"^(#{1,3})\s+(.+?)\s*$", line.strip())
+        if match:
+            headings.append((index, match.group(1), match.group(2).strip()))
+    ranges = []
+    for idx, (line_num, hashes, title) in enumerate(headings):
+        end_line = len(lines)
+        for next_line, next_hashes, _next_title in headings[idx + 1:]:
+            if len(next_hashes) <= len(hashes):
+                end_line = next_line - 1
+                break
+        ranges.append((line_num, end_line, hashes, title))
+    return ranges
+
+
+def extract_output_section(body: str) -> tuple[int, str]:
+    lines = body.splitlines()
+    for start, end, _hashes, title in heading_ranges(body):
+        if title.lower() == "output":
+            return start, "\n".join(lines[start:end])
+    return 0, ""
+
+
+def has_nearby_example(lines: list[str], index: int, window: int = 20) -> bool:
+    start = max(0, index - window)
+    end = min(len(lines), index + window)
+    context = "\n".join(lines[start:end])
+    return bool(re.search(r"(?i)\bexample\b|```", context))
+
+
+def normalize_text_block(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def body_paragraphs(body: str) -> list[tuple[int, str]]:
+    paragraphs = []
+    current: list[str] = []
+    start_line = 1
+    lines = body.splitlines()
+    for index, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if not stripped:
+            if current:
+                paragraphs.append((start_line, " ".join(current)))
+                current = []
+            continue
+        if not current:
+            start_line = index
+        if stripped.startswith("#") or stripped.startswith("```") or stripped.startswith("-") or stripped.startswith("*"):
+            if current:
+                paragraphs.append((start_line, " ".join(current)))
+                current = []
+            continue
+        current.append(stripped)
+    if current:
+        paragraphs.append((start_line, " ".join(current)))
+    return paragraphs
 
 
 def check_1_1(fm: dict, skill_dir: str) -> list[Finding]:
@@ -681,7 +800,7 @@ def quality_tier_for(findings: list[Finding]) -> str:
 def overall_score_for(findings: list[Finding]) -> int:
     errors = sum(1 for f in findings if f.severity == "ERROR")
     warnings = sum(1 for f in findings if f.severity == "WARN")
-    score = 100 - min(errors * 18, 72) - min(warnings * 5, 20)
+    score = 100 - min(errors * 14, 70) - min(warnings * 3, 24)
     return max(0, min(100, score))
 
 
@@ -753,7 +872,7 @@ def build_json_result(skill_path: Path, findings: list[Finding]) -> dict:
         "quality_tier": overall_tier,
         "summary": summary,
         "deterministic": {
-            "passed": max(0, 14 - len(findings)),
+            "passed": max(0, len(ALL_CHECK_IDS) - len(findings)),
             "failed": len(findings),
             "file_count": metadata["file_count"],
             "line_count": metadata["line_count"],
@@ -863,6 +982,180 @@ def check_2_3(body: str, skill_dir: str) -> list[Finding]:
     return findings
 
 
+def check_3_1(body: str) -> list[Finding]:
+    findings = []
+    for start, end, lang, content in fenced_code_blocks(body):
+        lines = [line for line in content.splitlines() if line.strip()]
+        if len(lines) <= 5:
+            continue
+        if lang in {"json", "yaml", "yml", "text", "output"}:
+            continue
+        findings.append(Finding("3.1", "WARN", f"code block at lines {start}-{end} is {len(lines)} lines; move long executable logic into scripts/"))
+    return findings
+
+
+def check_3_2(body: str) -> list[Finding]:
+    findings = []
+    lines = body.splitlines()
+    table_start = None
+    table_rows = 0
+    for index, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.endswith("|"):
+            table_start = table_start or index
+            table_rows += 1
+        else:
+            if table_start and table_rows > 12:
+                findings.append(Finding("3.2", "WARN", f"table at lines {table_start}-{index - 1} has {table_rows - 2} data rows; move large reference material to references/"))
+            table_start = None
+            table_rows = 0
+    if table_start and table_rows > 12:
+        findings.append(Finding("3.2", "WARN", f"table at lines {table_start}-{len(lines)} has {table_rows - 2} data rows; move large reference material to references/"))
+
+    for start, end, _lang, content in fenced_code_blocks(body):
+        block_lines = [line for line in content.splitlines() if line.strip()]
+        if len(block_lines) > 15 and any(line.strip().startswith(("{", "}", "[", "]")) or ":" in line for line in block_lines[:5]):
+            findings.append(Finding("3.2", "WARN", f"mapping-style block at lines {start}-{end} is {len(block_lines)} lines; move dense reference data to references/"))
+    return findings
+
+
+def check_3_3(body: str) -> list[Finding]:
+    findings = []
+    for line_num, line in enumerate(body.splitlines(), start=1):
+        if STANDARD_TOOL_TUTORIAL.search(line):
+            findings.append(Finding("3.3", "WARN", f"line {line_num}: explains standard tool usage the agent likely already knows"))
+    return findings
+
+
+def check_3_4(body: str) -> list[Finding]:
+    findings = []
+    blocks = fenced_code_blocks(body)
+    normalized = [(start, end, normalize_text_block(content)) for start, end, _lang, content in blocks]
+    seen_pairs = set()
+    for i, (start_a, end_a, block_a) in enumerate(normalized):
+        if not block_a:
+            continue
+        for start_b, end_b, block_b in normalized[i + 1:]:
+            if not block_b:
+                continue
+            key = (start_a, start_b)
+            if key in seen_pairs:
+                continue
+            seen_pairs.add(key)
+            similarity = difflib.SequenceMatcher(None, "\n".join(block_a), "\n".join(block_b)).ratio()
+            if similarity >= 0.8:
+                findings.append(Finding("3.4", "WARN", f"code blocks at lines {start_a}-{end_a} and {start_b}-{end_b} are duplicated or near-duplicated"))
+    return findings
+
+
+def check_3_5(body: str) -> list[Finding]:
+    findings = []
+    for line_num, paragraph in body_paragraphs(body):
+        sentence_count = max(1, len(re.findall(r"[.!?](?:\s|$)", paragraph)))
+        if sentence_count > 3 or VERBOSE_PROSE.search(paragraph):
+            findings.append(Finding("3.5", "WARN", f"line {line_num}: verbose prose could likely be condensed without losing meaning"))
+    return findings
+
+
+def check_3_6(body: str) -> list[Finding]:
+    findings = []
+    for line_num, line in enumerate(body.splitlines(), start=1):
+        if PRELOAD_REFERENCE.search(line):
+            findings.append(Finding("3.6", "WARN", f"line {line_num}: instructs preloading references instead of conditional loading"))
+    return findings
+
+
+def check_3_7(body: str, findings_so_far: list[Finding]) -> list[Finding]:
+    findings = []
+    tier_2_mcp = any(f.check_id == "2.3" for f in findings_so_far)
+    if tier_2_mcp:
+        return findings
+    for line_num, line in enumerate(body.splitlines(), start=1):
+        if MCP_REFERENCE.search(line) and not MCP_NEGATION.search(line):
+            findings.append(Finding("3.7", "WARN", f"line {line_num}: MCP references waste tokens and should be removed"))
+    return findings
+
+
+def check_4_1(body: str) -> list[Finding]:
+    findings = []
+    for line_num, line in enumerate(body.splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", "```")):
+            continue
+        if AMBIGUOUS_LANGUAGE.search(stripped):
+            findings.append(Finding("4.1", "WARN", f"line {line_num}: instruction may be ambiguous or underspecified"))
+    return findings
+
+
+def check_4_2(body: str) -> list[Finding]:
+    findings = []
+    lines = body.splitlines()
+    output_line, output_section = extract_output_section(body)
+    if output_section and not re.search(r"(?i)\bexample\b|```", output_section):
+        findings.append(Finding("4.2", "WARN", f"line {output_line}: output requirements are present without a concrete example"))
+    for index, line in enumerate(lines):
+        if OUTPUT_OR_FORMAT.search(line) and not has_nearby_example(lines, index):
+            findings.append(Finding("4.2", "WARN", f"line {index + 1}: output or formatting guidance lacks a nearby concrete example"))
+    return findings
+
+
+def check_4_3(body: str) -> list[Finding]:
+    findings = []
+    lines = body.splitlines()
+    for index, line in enumerate(lines):
+        if not NEGATIVE_ONLY.search(line):
+            continue
+        context = "\n".join(lines[index:index + 3])
+        if not POSITIVE_ALTERNATIVE.search(context):
+            findings.append(Finding("4.3", "WARN", f"line {index + 1}: negative-only instruction does not say what to do instead"))
+    return findings
+
+
+def check_4_4(body: str) -> list[Finding]:
+    findings = []
+    lines = body.splitlines()
+    for index, line in enumerate(lines):
+        if "$ARGUMENTS" in line or re.search(r"\$[0-9]+", line) or re.search(r"--[a-z0-9-]+", line, re.IGNORECASE):
+            context = "\n".join(lines[max(0, index - 2): min(len(lines), index + 3)])
+            if not DEFAULT_BEHAVIOR.search(context):
+                findings.append(Finding("4.4", "WARN", f"line {index + 1}: input or flag is referenced without clear default behavior"))
+    return findings
+
+
+def check_4_5(body: str) -> list[Finding]:
+    findings = []
+    lines = body.splitlines()
+    for index, line in enumerate(lines):
+        if not NON_IDEMPOTENT_OP.search(line):
+            continue
+        context = "\n".join(lines[max(0, index - 2): min(len(lines), index + 3)])
+        if not IDEMPOTENT_GUARD.search(context):
+            findings.append(Finding("4.5", "WARN", f"line {index + 1}: action may not be idempotent if retried"))
+    return findings
+
+
+def check_4_6(body: str) -> list[Finding]:
+    if SUCCESS_CRITERIA.search(body):
+        return []
+    return [Finding("4.6", "WARN", "no clear success criteria or output contract found")]
+
+
+def check_4_7(skill_dir: str) -> list[Finding]:
+    findings = []
+    for script_path, display in _scripts_under(skill_dir):
+        try:
+            content = read_text_file(script_path)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if script_path.suffix == ".py":
+            if "sys.exit(" in content and not re.search(r"sys\.exit\((2|3|4|5|6|7|8|9)", content):
+                findings.append(Finding("4.7", "WARN", f"{display} appears to use only basic exit codes; document and use more specific exit codes where meaningful"))
+        elif script_path.suffix == ".sh":
+            if "exit " in content and not re.search(r"\bexit\s+(2|3|4|5|6|7|8|9)\b", content):
+                findings.append(Finding("4.7", "WARN", f"{display} appears to use only basic exit codes; document and use more specific exit codes where meaningful"))
+    return findings
+
+
 def evaluate(path: str) -> list[Finding]:
     """Run all checks on a SKILL.md file."""
     skill_path = Path(path)
@@ -901,6 +1194,20 @@ def evaluate(path: str) -> list[Finding]:
     findings.extend(check_2_1(body))
     findings.extend(check_2_2(body))
     findings.extend(check_2_3(body, skill_dir))
+    findings.extend(check_3_1(body))
+    findings.extend(check_3_2(body))
+    findings.extend(check_3_3(body))
+    findings.extend(check_3_4(body))
+    findings.extend(check_3_5(body))
+    findings.extend(check_3_6(body))
+    findings.extend(check_3_7(body, findings))
+    findings.extend(check_4_1(body))
+    findings.extend(check_4_2(body))
+    findings.extend(check_4_3(body))
+    findings.extend(check_4_4(body))
+    findings.extend(check_4_5(body))
+    findings.extend(check_4_6(body))
+    findings.extend(check_4_7(skill_dir))
     emit_progress("Collecting supporting context...")
     _ = collect_supporting_context(skill_path)
     return findings
@@ -984,10 +1291,26 @@ def main():
         print_box_bottom()
         print()
 
-        # Phase 2: LLM (placeholder — the LLM tiers run outside this script)
-        print_separator("LLM EVALUATION (Tier 3-4)")
-        print(f"  {DIM}Tier 3 (Token Efficiency) and Tier 4 (Effectiveness)")
-        print(f"  are evaluated by the LLM after this script completes.{RESET}")
+        token_checks = [f for f in findings if f.check_id.startswith("3.")]
+        print_box_top("Tier 3 — Token Efficiency (3.1-3.7)")
+        if token_checks:
+            for f in token_checks:
+                icon = "🔴" if f.severity == "ERROR" else "🟡"
+                print_box_line(f"{icon} {BOLD}{f.check_id}{RESET}: {f.message[:40]}")
+        else:
+            print_box_line("🟢 All checks passed")
+        print_box_bottom()
+        print()
+
+        effectiveness_checks = [f for f in findings if f.check_id.startswith("4.")]
+        print_box_top("Tier 4 — Effectiveness (4.1-4.7)")
+        if effectiveness_checks:
+            for f in effectiveness_checks:
+                icon = "🔴" if f.severity == "ERROR" else "🟡"
+                print_box_line(f"{icon} {BOLD}{f.check_id}{RESET}: {f.message[:40]}")
+        else:
+            print_box_line("🟢 All checks passed")
+        print_box_bottom()
         print()
 
         # Summary — deterministic findings
