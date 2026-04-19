@@ -206,6 +206,59 @@ func TestRedactSecrets(t *testing.T) {
 	}
 }
 
+func TestClientIPTrustsOnlyLoopbackProxy(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "203.0.113.8:4321"
+	req.Header.Set("X-Forwarded-For", "198.51.100.4")
+	if got := clientIP(req); got != "203.0.113.8" {
+		t.Fatalf("expected remote addr IP, got %q", got)
+	}
+
+	trusted := httptest.NewRequest(http.MethodGet, "/", nil)
+	trusted.RemoteAddr = "127.0.0.1:9000"
+	trusted.Header.Set("X-Forwarded-For", "198.51.100.4, 127.0.0.1")
+	if got := clientIP(trusted); got != "198.51.100.4" {
+		t.Fatalf("expected forwarded IP, got %q", got)
+	}
+}
+
+func TestHashEvaluationRequestStableForSameFiles(t *testing.T) {
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+	files := map[string]string{
+		"SKILL.md":            "# Demo\ntrigger",
+		"scripts/helper.sh":   "echo ok",
+		"references/readme.md": "context",
+	}
+	for name, content := range files {
+		pathA := filepath.Join(dirA, filepath.FromSlash(name))
+		pathB := filepath.Join(dirB, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(pathA), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(pathB), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(pathA, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(pathB, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hashA, err := hashEvaluationRequest(dirA, true, "openai")
+	if err != nil {
+		t.Fatalf("hash A: %v", err)
+	}
+	hashB, err := hashEvaluationRequest(dirB, true, "openai")
+	if err != nil {
+		t.Fatalf("hash B: %v", err)
+	}
+	if hashA != hashB {
+		t.Fatalf("expected stable hash, got %q vs %q", hashA, hashB)
+	}
+}
+
 func TestDeterministicIssues(t *testing.T) {
 	got := deterministicIssues([]any{" one ", "", 2, nil})
 	want := []string{"one", "2", "<nil>"}
@@ -699,7 +752,7 @@ func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"mode":"opt_in"`) || !strings.Contains(result, `"overall_tier":"good"`) || !strings.Contains(result, `"provider":"anthropic"`) || !strings.Contains(result, `"model":"claude-sonnet-4-20250514"`) {
+	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"mode":"opt_in"`) || !strings.Contains(result, `"overall_tier":"good"`) || !strings.Contains(result, `"provider":"anthropic"`) || !strings.Contains(result, `"model":"claude-sonnet-4-6"`) {
 		t.Fatalf("expected optional llm payload, got %s", result)
 	}
 }
@@ -821,17 +874,6 @@ func TestParseOpenAIAnalysis(t *testing.T) {
 	}
 }
 
-func TestParseMistralAnalysis(t *testing.T) {
-	body := []byte(`{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Portable\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"good\"}"}}]}`)
-	analysis, err := parseMistralAnalysis(body)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if analysis.QualityTier != "good" || len(analysis.Strengths) != 1 {
-		t.Fatalf("unexpected analysis: %+v", analysis)
-	}
-}
-
 func TestParseOpenAIError(t *testing.T) {
 	msg := parseOpenAIError([]byte(`{"error":{"message":"OPENAI_API_KEY=secret"}}`), "bad gateway")
 	if strings.Contains(msg, "secret") {
@@ -842,13 +884,246 @@ func TestParseOpenAIError(t *testing.T) {
 	}
 }
 
-func TestParseMistralError(t *testing.T) {
-	msg := parseMistralError([]byte(`{"error":{"message":"MISTRAL_API_KEY=secret"}}`), "bad gateway")
-	if strings.Contains(msg, "secret") {
-		t.Fatalf("expected secret to be redacted: %q", msg)
+func TestBuildOpenAIRequestBodyUsesMaxTokensForGPT41(t *testing.T) {
+	body, err := buildOpenAIRequestBody("gpt-4.1", 1200, "sys", "user")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(msg, "mistral request failed") {
-		t.Fatalf("unexpected error message: %q", msg)
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	jsonBody := string(encoded)
+	if !strings.Contains(jsonBody, `"max_tokens":1200`) {
+		t.Fatalf("expected max_tokens in request body: %s", jsonBody)
+	}
+	if strings.Contains(jsonBody, `"max_completion_tokens"`) {
+		t.Fatalf("did not expect max_completion_tokens in request body: %s", jsonBody)
+	}
+}
+
+func TestBuildOpenAIRequestBodyUsesMaxCompletionTokensForGPT53ChatLatest(t *testing.T) {
+	body, err := buildOpenAIRequestBody("gpt-5.3-chat-latest", 1200, "sys", "user")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	jsonBody := string(encoded)
+	if !strings.Contains(jsonBody, `"max_completion_tokens":1200`) {
+		t.Fatalf("expected max_completion_tokens in request body: %s", jsonBody)
+	}
+	if strings.Contains(jsonBody, `"max_tokens"`) {
+		t.Fatalf("did not expect max_tokens in request body: %s", jsonBody)
+	}
+}
+
+func TestBuildOpenAIRequestBodyUsesMaxCompletionTokensForGPT54(t *testing.T) {
+	body, err := buildOpenAIRequestBody("gpt-5.4", 1200, "sys", "user")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	jsonBody := string(encoded)
+	if !strings.Contains(jsonBody, `"max_completion_tokens":1200`) {
+		t.Fatalf("expected max_completion_tokens in request body: %s", jsonBody)
+	}
+	if strings.Contains(jsonBody, `"max_tokens"`) {
+		t.Fatalf("did not expect max_tokens in request body: %s", jsonBody)
+	}
+}
+
+func TestRunOpenAIReviewWithGPT41UsesMaxTokens(t *testing.T) {
+	oldKey := os.Getenv("OPENAI_API_KEY")
+	oldBaseURL := os.Getenv("OPENAI_BASE_URL")
+	oldModel := os.Getenv("OPENAI_MODEL")
+	defer func() {
+		if oldKey == "" {
+			_ = os.Unsetenv("OPENAI_API_KEY")
+		} else {
+			_ = os.Setenv("OPENAI_API_KEY", oldKey)
+		}
+		if oldBaseURL == "" {
+			_ = os.Unsetenv("OPENAI_BASE_URL")
+		} else {
+			_ = os.Setenv("OPENAI_BASE_URL", oldBaseURL)
+		}
+		if oldModel == "" {
+			_ = os.Unsetenv("OPENAI_MODEL")
+		} else {
+			_ = os.Setenv("OPENAI_MODEL", oldModel)
+		}
+	}()
+	_ = os.Setenv("OPENAI_API_KEY", "configured-openai")
+	_ = os.Setenv("OPENAI_MODEL", "gpt-4.1")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		jsonBody := string(body)
+		if !strings.Contains(jsonBody, `"model":"gpt-4.1"`) || !strings.Contains(jsonBody, `"max_tokens":1200`) || strings.Contains(jsonBody, `"max_completion_tokens"`) {
+			t.Fatalf("unexpected request body: %s", jsonBody)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Concise\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"good\"}"}}]}`)
+	}))
+	defer server.Close()
+	_ = os.Setenv("OPENAI_BASE_URL", server.URL)
+	app := &application{httpClient: server.Client()}
+	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if analysis.Model != "gpt-4.1" {
+		t.Fatalf("unexpected model: %+v", analysis)
+	}
+}
+
+func TestRunOpenAIReviewWithGPT53ChatLatestUsesMaxCompletionTokens(t *testing.T) {
+	oldKey := os.Getenv("OPENAI_API_KEY")
+	oldBaseURL := os.Getenv("OPENAI_BASE_URL")
+	oldModel := os.Getenv("OPENAI_MODEL")
+	defer func() {
+		if oldKey == "" {
+			_ = os.Unsetenv("OPENAI_API_KEY")
+		} else {
+			_ = os.Setenv("OPENAI_API_KEY", oldKey)
+		}
+		if oldBaseURL == "" {
+			_ = os.Unsetenv("OPENAI_BASE_URL")
+		} else {
+			_ = os.Setenv("OPENAI_BASE_URL", oldBaseURL)
+		}
+		if oldModel == "" {
+			_ = os.Unsetenv("OPENAI_MODEL")
+		} else {
+			_ = os.Setenv("OPENAI_MODEL", oldModel)
+		}
+	}()
+	_ = os.Setenv("OPENAI_API_KEY", "configured-openai")
+	_ = os.Setenv("OPENAI_MODEL", "gpt-5.3-chat-latest")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		jsonBody := string(body)
+		if !strings.Contains(jsonBody, `"model":"gpt-5.3-chat-latest"`) || !strings.Contains(jsonBody, `"max_completion_tokens":1200`) || strings.Contains(jsonBody, `"max_tokens"`) {
+			t.Fatalf("unexpected request body: %s", jsonBody)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Concise\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"good\"}"}}]}`)
+	}))
+	defer server.Close()
+	_ = os.Setenv("OPENAI_BASE_URL", server.URL)
+	app := &application{httpClient: server.Client()}
+	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if analysis.Model != "gpt-5.3-chat-latest" {
+		t.Fatalf("unexpected model: %+v", analysis)
+	}
+}
+
+func TestRunOpenAIReviewWithGPT54UsesMaxCompletionTokens(t *testing.T) {
+	oldKey := os.Getenv("OPENAI_API_KEY")
+	oldBaseURL := os.Getenv("OPENAI_BASE_URL")
+	oldModel := os.Getenv("OPENAI_MODEL")
+	defer func() {
+		if oldKey == "" {
+			_ = os.Unsetenv("OPENAI_API_KEY")
+		} else {
+			_ = os.Setenv("OPENAI_API_KEY", oldKey)
+		}
+		if oldBaseURL == "" {
+			_ = os.Unsetenv("OPENAI_BASE_URL")
+		} else {
+			_ = os.Setenv("OPENAI_BASE_URL", oldBaseURL)
+		}
+		if oldModel == "" {
+			_ = os.Unsetenv("OPENAI_MODEL")
+		} else {
+			_ = os.Setenv("OPENAI_MODEL", oldModel)
+		}
+	}()
+	_ = os.Setenv("OPENAI_API_KEY", "configured-openai")
+	_ = os.Setenv("OPENAI_MODEL", "gpt-5.4")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		jsonBody := string(body)
+		if !strings.Contains(jsonBody, `"model":"gpt-5.4"`) || !strings.Contains(jsonBody, `"max_completion_tokens":1200`) || strings.Contains(jsonBody, `"max_tokens"`) {
+			t.Fatalf("unexpected request body: %s", jsonBody)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Concise\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"good\"}"}}]}`)
+	}))
+	defer server.Close()
+	_ = os.Setenv("OPENAI_BASE_URL", server.URL)
+	app := &application{httpClient: server.Client()}
+	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if analysis.Model != "gpt-5.4" {
+		t.Fatalf("unexpected model: %+v", analysis)
+	}
+}
+
+func TestRunAnthropicReviewSupportsCurrentSonnetAndHaikuModels(t *testing.T) {
+	oldKey := os.Getenv("ANTHROPIC_API_KEY")
+	oldBaseURL := os.Getenv("ANTHROPIC_BASE_URL")
+	oldModel := os.Getenv("ANTHROPIC_MODEL")
+	defer func() {
+		if oldKey == "" {
+			_ = os.Unsetenv("ANTHROPIC_API_KEY")
+		} else {
+			_ = os.Setenv("ANTHROPIC_API_KEY", oldKey)
+		}
+		if oldBaseURL == "" {
+			_ = os.Unsetenv("ANTHROPIC_BASE_URL")
+		} else {
+			_ = os.Setenv("ANTHROPIC_BASE_URL", oldBaseURL)
+		}
+		if oldModel == "" {
+			_ = os.Unsetenv("ANTHROPIC_MODEL")
+		} else {
+			_ = os.Setenv("ANTHROPIC_MODEL", oldModel)
+		}
+	}()
+	for _, model := range []string{"claude-sonnet-4-6", "claude-haiku-4-5"} {
+		_ = os.Setenv("ANTHROPIC_API_KEY", "configured-anthropic")
+		_ = os.Setenv("ANTHROPIC_MODEL", model)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read body: %v", err)
+			}
+			if !strings.Contains(string(body), `"model":"`+model+`"`) {
+				t.Fatalf("expected anthropic model %q in request body: %s", model, string(body))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"content":[{"type":"text","text":"{\"strengths\":[\"Clear scope\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"good\"}"}]}`)
+		}))
+		_ = os.Setenv("ANTHROPIC_BASE_URL", server.URL)
+		app := &application{httpClient: server.Client()}
+		analysis, err := app.runLLMReview(context.Background(), "anthropic", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
+		server.Close()
+		if err != nil {
+			t.Fatalf("unexpected error for model %q: %v", model, err)
+		}
+		if analysis.Model != model {
+			t.Fatalf("unexpected analysis for model %q: %+v", model, analysis)
+		}
 	}
 }
 
@@ -887,49 +1162,29 @@ func TestRunLLMReviewWithOpenAI(t *testing.T) {
 	}
 }
 
-func TestRunLLMReviewWithMistral(t *testing.T) {
-	oldKey := os.Getenv("MISTRAL_API_KEY")
-	oldBaseURL := os.Getenv("MISTRAL_BASE_URL")
-	defer func() {
-		if oldKey == "" {
-			_ = os.Unsetenv("MISTRAL_API_KEY")
-		} else {
-			_ = os.Setenv("MISTRAL_API_KEY", oldKey)
-		}
-		if oldBaseURL == "" {
-			_ = os.Unsetenv("MISTRAL_BASE_URL")
-		} else {
-			_ = os.Setenv("MISTRAL_BASE_URL", oldBaseURL)
-		}
-	}()
-	_ = os.Setenv("MISTRAL_API_KEY", "configured-mistral")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "Bearer configured-mistral" {
-			t.Fatalf("unexpected auth header: %q", got)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Broad\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"excellent\"}"}}]}`)
-	}))
-	defer server.Close()
-	_ = os.Setenv("MISTRAL_BASE_URL", server.URL)
-	app := &application{httpClient: server.Client()}
-	analysis, err := app.runLLMReview(context.Background(), "mistral", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if analysis.Provider != "mistral" || analysis.Model != "mistral-large-latest" || analysis.QualityTier != "excellent" {
-		t.Fatalf("unexpected analysis: %+v", analysis)
-	}
-}
-
 func TestSupportedLLMProvider(t *testing.T) {
-	for _, provider := range []string{"anthropic", "openai", "mistral"} {
+	for _, provider := range []string{"anthropic", "openai"} {
 		if !isSupportedLLMProvider(provider) {
 			t.Fatalf("expected provider %q to be supported", provider)
 		}
 	}
 	if isSupportedLLMProvider("unknown") {
 		t.Fatal("expected unknown provider to be rejected")
+	}
+}
+
+func TestHandleVersion(t *testing.T) {
+	buildVersion = "test-version"
+	buildCommit = "abcdef123456"
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/version", nil)
+	app := &application{}
+	app.handleVersion(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "test-version") || !strings.Contains(rr.Body.String(), "abcdef123456") {
+		t.Fatalf("unexpected body: %s", rr.Body.String())
 	}
 }
 

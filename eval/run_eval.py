@@ -11,7 +11,7 @@ except Exception:  # pragma: no cover - defensive import fallback
     PdfReader = None
 
 
-INPUT_DIR = Path("/input")
+INPUT_DIR = Path(os.environ.get("INPUT_DIR", "/input"))
 MAX_SUPPORTING_CONTEXT_CHARS = 12000
 MAX_FILE_EXCERPT_CHARS = 1500
 ALLOWED_TEXT_EXTENSIONS = {

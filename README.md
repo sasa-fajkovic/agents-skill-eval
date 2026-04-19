@@ -19,13 +19,13 @@ The app has three main parts:
    Simple static UI for uploads, GitHub URLs, polling, and result display.
 
 2. `backend/main.go`
-   Go HTTP server, Redis-backed queue, worker, upload validation, GitHub fetch logic, container orchestration, secret redaction, deterministic scoring, and privacy-safe infrastructure telemetry.
+   Go HTTP server, embedded worker, Redis-backed queue, upload validation, GitHub fetch logic, secret redaction, deterministic scoring, build metadata, and privacy-safe infrastructure telemetry.
 
 3. `eval/run_eval.py`
    Deterministic-only evaluator that runs inside the isolated container and returns structured JSON.
 
 4. Host-side optional review
-   If the user explicitly opts in and the selected provider is configured, the backend sends the uploaded skill content and supporting context to that provider for an extra review step after deterministic evaluation.
+    If the user explicitly opts in and the selected provider is configured, the backend sends the uploaded skill content and supporting context to that provider for an extra review step after deterministic evaluation.
 
 There is also a local skill package under `.claude/skills/skill-evaluation/` used to evaluate `SKILL.md` files against the agentskills.io standard.
 
@@ -34,9 +34,9 @@ There is also a local skill package under `.claude/skills/skill-evaluation/` use
 1. User uploads files or submits a GitHub URL.
 2. Backend validates file names, MIME types, and content before queueing.
 3. Files are written into a temporary input directory.
-4. Worker launches a Docker container with a read-only input mount and no network.
+4. Worker launches the bundled deterministic evaluator process inside the app container.
 5. `eval/run_eval.py` discovers files, reads the primary `SKILL.md`, gathers supporting context, and returns deterministic results as JSON.
-6. Go parses that JSON, computes the final summary/score, optionally calls the single selected LLM provider for opt-in review output, stores the final payload in Redis, and exposes it via `/result/{jobId}`.
+6. Go parses that JSON, computes the final summary/score, optionally calls the selected LLM provider for opt-in review output, stores the final payload in Redis, and exposes it via `/result/{jobId}`.
 
 ## Security Model
 
@@ -51,18 +51,16 @@ The main hardening goal is to treat uploaded skills and supporting files as untr
 - Restricts GitHub fetches to `github.com` and `raw.githubusercontent.com`.
 - Restricts GitHub directory imports to a small allowlist of file types relevant to skills.
 
-### Container Isolation
+### Runtime Isolation
 
-The evaluator container runs with these restrictions:
+The production deployment runs as a single application container that bundles:
 
-- `--network none`
-- `--read-only`
-- `--tmpfs /tmp:size=50m`
-- memory, CPU, and PID limits
-- `--security-opt no-new-privileges`
-- `--cap-drop ALL`
-- non-root user
-- read-only bind mount for `/input`
+- the Go backend
+- the static frontend
+- the deterministic evaluator Python runtime
+- a local Redis instance for queue and progress state
+
+This removes GitHub-to-DigitalOcean secret propagation. Runtime API keys now live only on the droplet.
 
 ### Secret Handling
 
@@ -87,6 +85,9 @@ An optional provider-backed review path can be enabled explicitly per run. If it
 
 - `GET /health`
   Returns app and Redis health.
+
+- `GET /version`
+  Returns deployed version and commit metadata.
 
 - `POST /upload`
   Accepts multipart file uploads and/or a `githubUrl` form field.
@@ -125,13 +126,11 @@ Set only the provider API keys you want to make available for optional review:
 
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
-- `MISTRAL_API_KEY`
 
 Optional per-provider model overrides:
 
 - `ANTHROPIC_MODEL`
 - `OPENAI_MODEL`
-- `MISTRAL_MODEL`
 
 If no provider is selected for a run, or the selected provider is not configured on the server, the evaluation falls back to deterministic-only output.
 
@@ -207,35 +206,26 @@ This keeps evaluated skills portable, lower-cost, and easier to audit.
 
 ## GitHub Actions
 
-There are two workflows:
+There is one workflow:
 
-### `deploy-app.yml`
+### `publish-app.yml`
 
-- builds the Go app
-- copies backend, frontend, Docker, eval files, and `Caddyfile` to the droplet
-- writes `app.env`
-- builds the local evaluator image on the droplet
-- restarts the app under the `deploy` user
-- validates health locally on the server
-- restarts Caddy
-
-### `deploy-image.yml`
-
-- builds the evaluator image
-- pushes it to GHCR
-- pulls the latest image on the droplet
+- builds the single runtime app image
+- embeds the commit SHA as build metadata
+- pushes `ghcr.io/sasa-fajkovic/agents-skill-eval-app:latest`
+- pushes an immutable commit tag alongside `latest`
 
 The actions in these workflows were updated to newer major versions, including:
 
 - `actions/checkout@v6`
 - `actions/setup-go@v6`
 - `docker/build-push-action@v7`
-- `appleboy/ssh-action@v1.2.5`
-- `appleboy/scp-action@v1.0.0`
 
 ## Deployment Notes
 
 - App is deployed on a DigitalOcean droplet.
+- The droplet should poll GHCR locally for the latest app image and restart itself after a successful health check.
+- Runtime API keys should be stored only on the droplet, not in GitHub Actions secrets.
 - Caddy handles HTTP serving and domain routing.
 - `agents-skill-eval.com` is live.
 - `www` redirect behavior was fixed separately and is expected to keep pointing at the root domain.
@@ -246,7 +236,6 @@ Backend/runtime variables used by the app include:
 
 - `PORT`
 - `REDIS_ADDR`
-- `EVAL_DOCKER_IMAGE`
 - `SENTRY_DSN`
 - `SENTRY_ENVIRONMENT`
 - `DISABLE_ABUSE_PROTECTION`

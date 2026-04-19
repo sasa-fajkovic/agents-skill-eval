@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -20,6 +21,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,13 +33,17 @@ const (
 	maxUploadSize    = 5 << 20
 	queueKey         = "eval:queue"
 	redisResultTTL   = time.Hour
+	cacheResultTTL   = 24 * time.Hour
 	redisDialTimeout = 5 * time.Second
 	workerPopTimeout = 5 * time.Second
-	dockerTimeout    = 2 * time.Minute
+	evalTimeout      = 2 * time.Minute
 	maxMemoryBytes   = 256
 	maxQueueDepth    = 50
 	rateLimitMax     = 5
 	rateLimitTTL     = time.Hour
+	llmRateLimitMax  = 3
+	llmRateLimitTTL  = 24 * time.Hour
+	maxActiveJobsPerIP = 2
 	githubFetchLimit = 5 << 20
 	maxProgressLines = 200
 )
@@ -95,9 +101,11 @@ var (
 		{pattern: regexp.MustCompile(`(?is)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`), replacement: "[REDACTED_PRIVATE_KEY]"},
 		{pattern: regexp.MustCompile(`(?i)\b(sk-ant-[A-Za-z0-9_-]{10,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16})\b`), replacement: "[REDACTED_TOKEN]"},
 		{pattern: regexp.MustCompile(`(?i)\b(Bearer\s+)[A-Za-z0-9._~-]+`), replacement: `${1}[REDACTED]`},
-		{pattern: regexp.MustCompile(`(?i)\b((?:ANTHROPIC|OPENAI|MISTRAL)_API_KEY|API[_-]?KEY|TOKEN|SECRET|PASSWORD)\b\s*[:=]\s*['"]?[^'"\s,]+`), replacement: `${1}=[REDACTED]`},
+		{pattern: regexp.MustCompile(`(?i)\b((?:ANTHROPIC|OPENAI)_API_KEY|API[_-]?KEY|TOKEN|SECRET|PASSWORD)\b\s*[:=]\s*['"]?[^'"\s,]+`), replacement: `${1}=[REDACTED]`},
 	}
 	errResultPending = errors.New("result pending")
+	buildVersion     = "dev"
+	buildCommit      = "dev"
 )
 
 type securityPattern struct {
@@ -133,6 +141,8 @@ type evalJob struct {
 	EnableLLM    bool   `json:"enableLlm"`
 	LLMRequested bool   `json:"llmRequested,omitempty"`
 	LLMProvider  string `json:"llmProvider,omitempty"`
+	ClientIP     string `json:"clientIp,omitempty"`
+	RequestHash  string `json:"requestHash,omitempty"`
 }
 
 type llmAnalysis struct {
@@ -175,27 +185,18 @@ type openAIChatRequest struct {
 	Messages  []openAIChatMessage `json:"messages"`
 }
 
+type openAIReasoningChatRequest struct {
+	Model               string              `json:"model"`
+	MaxCompletionTokens int                 `json:"max_completion_tokens,omitempty"`
+	Messages            []openAIChatMessage `json:"messages"`
+}
+
 type openAIChatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
 type openAIChatResponse struct {
-	Choices []struct {
-		Message openAIChatMessage `json:"message"`
-	} `json:"choices"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error,omitempty"`
-}
-
-type mistralChatRequest struct {
-	Model     string              `json:"model"`
-	MaxTokens int                 `json:"max_tokens,omitempty"`
-	Messages  []openAIChatMessage `json:"messages"`
-}
-
-type mistralChatResponse struct {
 	Choices []struct {
 		Message openAIChatMessage `json:"message"`
 	} `json:"choices"`
@@ -302,6 +303,7 @@ func main() {
 func (app *application) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", app.handleHealth)
+	mux.HandleFunc("GET /version", app.handleVersion)
 	mux.HandleFunc("POST /upload", app.handleUpload)
 	mux.HandleFunc("GET /result/", app.handleResult)
 	mux.HandleFunc("GET /faq", app.handleFAQ)
@@ -315,7 +317,7 @@ func (app *application) routes() http.Handler {
 
 func (app *application) handleHealth(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusOK
-	payload := map[string]any{"status": "ok", "redis": "ok"}
+	payload := map[string]any{"status": "ok", "redis": "ok", "version": buildVersion, "commit": buildCommit}
 	if err := app.rdb.Ping(r.Context()).Err(); err != nil {
 		status = http.StatusServiceUnavailable
 		payload["status"] = "degraded"
@@ -324,6 +326,10 @@ func (app *application) handleHealth(w http.ResponseWriter, r *http.Request) {
 		captureInfraEvent("redis_healthcheck_failed", err, map[string]string{"component": "redis", "stage": "healthcheck"})
 	}
 	writeJSON(w, status, payload)
+}
+
+func (app *application) handleVersion(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"version": buildVersion, "commit": buildCommit})
 }
 
 func (app *application) handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -394,7 +400,24 @@ func (app *application) handleUpload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	jobBytes, err := json.Marshal(evalJob{JobID: jobID, InputDir: inputDir, EnableLLM: enableLLM, LLMRequested: enableLLM, LLMProvider: llmProvider})
+	requestHash, err := hashEvaluationRequest(inputDir, enableLLM, effectiveLLMProvider(llmProvider))
+	if err != nil {
+		sentry.CaptureException(err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to fingerprint upload"})
+		return
+	}
+	if cachedJobID, err := app.rdb.Get(r.Context(), redisRequestCacheKey(requestHash)).Result(); err == nil && strings.TrimSpace(cachedJobID) != "" {
+		cleanup = false
+		_ = os.RemoveAll(inputDir)
+		writeJSON(w, http.StatusAccepted, map[string]string{"jobId": strings.TrimSpace(cachedJobID), "cached": "true"})
+		return
+	} else if err != nil && err != redis.Nil {
+		sentry.CaptureException(err)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "failed to check cached evaluation"})
+		return
+	}
+
+	jobBytes, err := json.Marshal(evalJob{JobID: jobID, InputDir: inputDir, EnableLLM: enableLLM, LLMRequested: enableLLM, LLMProvider: llmProvider, ClientIP: clientIP(r), RequestHash: requestHash})
 	if err != nil {
 		sentry.CaptureException(err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to serialize job"})
@@ -543,6 +566,38 @@ func (app *application) uploadAbuseProtection(next http.Handler) http.Handler {
 			return
 		}
 
+		enableLLM := parseBool(r.FormValue("enableLlm"))
+		if enableLLM {
+			llmKey := "ratelimit:llm:" + ip
+			llmCount, err := app.rdb.Incr(r.Context(), llmKey).Result()
+			if err != nil {
+				captureInfraEvent("llm_rate_limit_check_failed", err, map[string]string{"component": "redis", "stage": "llm_rate_limit"})
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "llm rate limit check failed"})
+				return
+			}
+			if llmCount == 1 {
+				if err := app.rdb.Expire(r.Context(), llmKey, llmRateLimitTTL).Err(); err != nil {
+					captureInfraEvent("llm_rate_limit_expire_failed", err, map[string]string{"component": "redis", "stage": "llm_rate_limit_expire"})
+				}
+			}
+			if llmCount > llmRateLimitMax {
+				writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "optional AI review rate limit exceeded"})
+				return
+			}
+		}
+
+		activeKey := redisActiveJobsKey(ip)
+		activeCount, err := app.rdb.Get(r.Context(), activeKey).Int64()
+		if err != nil && err != redis.Nil {
+			captureInfraEvent("active_job_check_failed", err, map[string]string{"component": "redis", "stage": "active_job_check"})
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "active job check failed"})
+			return
+		}
+		if activeCount >= maxActiveJobsPerIP {
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many active evaluations from this IP"})
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -577,32 +632,17 @@ func (app *application) workerLoop(parent context.Context) {
 func (app *application) processJob(parent context.Context, job evalJob) {
 	defer func() {
 		_ = os.RemoveAll(job.InputDir)
+		app.decrementActiveJob(parent, job.ClientIP)
 	}()
+	app.incrementActiveJob(parent, job.ClientIP)
 	_ = app.appendProgress(parent, job.JobID, "Worker picked up job.")
 
-	ctx, cancel := context.WithTimeout(parent, dockerTimeout)
+	ctx, cancel := context.WithTimeout(parent, evalTimeout)
 	defer cancel()
-	dockerImage := getenvDefault("EVAL_DOCKER_IMAGE", "agents-skill-eval-test")
-	_ = app.appendProgress(parent, job.JobID, "Starting isolated evaluator container...")
-
-	args := []string{
-		"run",
-		"--rm",
-		"--stop-timeout", "5",
-		"--network", "none",
-		"--read-only",
-		"--tmpfs", "/tmp:size=50m",
-		"--memory", fmt.Sprintf("%dm", maxMemoryBytes),
-		"--cpus", "0.5",
-		"--pids-limit", "50",
-		"--security-opt", "no-new-privileges",
-		"--cap-drop", "ALL",
-		"--user", "1000:1000",
-		"-v", job.InputDir + ":/input:ro",
-		dockerImage,
-	}
-
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	_ = app.appendProgress(parent, job.JobID, "Starting evaluator...")
+	cmd := exec.CommandContext(ctx, "python3", "/app/eval/run_eval.py")
+	cmd.Dir = "/app"
+	cmd.Env = append(os.Environ(), "INPUT_DIR="+job.InputDir)
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		sentry.CaptureException(err)
@@ -658,7 +698,7 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 		if exitErr := new(exec.ExitError); errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 && !preserveOutput {
 			message = strings.TrimSpace(string(exitErr.Stderr))
 		}
-		captureInfraEvent("docker_eval_failed", err, map[string]string{"component": "worker", "stage": "docker_wait"})
+		captureInfraEvent("eval_failed", err, map[string]string{"component": "worker", "stage": "eval_wait"})
 		_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(message), redisResultTTL).Err()
 		return
 	}
@@ -677,6 +717,12 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 	if err := app.rdb.Set(parent, redisResultKey(job.JobID), redactSecrets(finalResult), redisResultTTL).Err(); err != nil {
 		captureInfraEvent("result_store_failed", err, map[string]string{"component": "redis", "stage": "result_store"})
 		_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(err.Error()), redisResultTTL).Err()
+		return
+	}
+	if job.RequestHash != "" {
+		if err := app.rdb.Set(parent, redisRequestCacheKey(job.RequestHash), job.JobID, cacheResultTTL).Err(); err != nil {
+			captureInfraEvent("request_cache_store_failed", err, map[string]string{"component": "redis", "stage": "request_cache_store"})
+		}
 	}
 }
 
@@ -953,8 +999,6 @@ func llmProviderConfigured(provider string) bool {
 		return strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) != ""
 	case "openai":
 		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != ""
-	case "mistral":
-		return strings.TrimSpace(os.Getenv("MISTRAL_API_KEY")) != ""
 	default:
 		return false
 	}
@@ -977,7 +1021,7 @@ func normalizeLLMProvider(provider string) string {
 
 func isSupportedLLMProvider(provider string) bool {
 	switch normalizeLLMProvider(provider) {
-	case "anthropic", "openai", "mistral":
+	case "anthropic", "openai":
 		return true
 	default:
 		return false
@@ -988,10 +1032,8 @@ func llmModelForProvider(provider string) string {
 	switch effectiveLLMProvider(provider) {
 	case "openai":
 		return getenvDefault("OPENAI_MODEL", "gpt-4.1")
-	case "mistral":
-		return getenvDefault("MISTRAL_MODEL", "mistral-large-latest")
 	default:
-		return getenvDefault("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+		return getenvDefault("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 	}
 }
 
@@ -999,8 +1041,6 @@ func llmMaxTokensForProvider(provider string) int {
 	switch effectiveLLMProvider(provider) {
 	case "openai":
 		return parseIntDefault(os.Getenv("OPENAI_MAX_TOKENS"), 1200)
-	case "mistral":
-		return parseIntDefault(os.Getenv("MISTRAL_MAX_TOKENS"), 1200)
 	default:
 		return parseIntDefault(os.Getenv("ANTHROPIC_MAX_TOKENS"), 1200)
 	}
@@ -1018,8 +1058,6 @@ func (app *application) runLLMReview(ctx context.Context, provider string, conta
 	switch provider {
 	case "openai":
 		analysis, err = app.runOpenAIReview(ctx, systemPrompt, userPrompt)
-	case "mistral":
-		analysis, err = app.runMistralReview(ctx, systemPrompt, userPrompt)
 	default:
 		analysis, err = app.runAnthropicReview(ctx, systemPrompt, userPrompt)
 	}
@@ -1067,10 +1105,9 @@ func (app *application) runAnthropicReview(ctx context.Context, systemPrompt, us
 }
 
 func (app *application) runOpenAIReview(ctx context.Context, systemPrompt, userPrompt string) (llmAnalysis, error) {
-	reqBody := openAIChatRequest{
-		Model:     llmModelForProvider("openai"),
-		MaxTokens: llmMaxTokensForProvider("openai"),
-		Messages: []openAIChatMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
+	reqBody, err := buildOpenAIRequestBody(llmModelForProvider("openai"), llmMaxTokensForProvider("openai"), systemPrompt, userPrompt)
+	if err != nil {
+		return llmAnalysis{}, err
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
@@ -1090,28 +1127,36 @@ func (app *application) runOpenAIReview(ctx context.Context, systemPrompt, userP
 	return parseOpenAIAnalysis(respBody)
 }
 
-func (app *application) runMistralReview(ctx context.Context, systemPrompt, userPrompt string) (llmAnalysis, error) {
-	reqBody := mistralChatRequest{
-		Model:     llmModelForProvider("mistral"),
-		MaxTokens: llmMaxTokensForProvider("mistral"),
-		Messages: []openAIChatMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
+func buildOpenAIRequestBody(model string, maxTokens int, systemPrompt, userPrompt string) (any, error) {
+	messages := []openAIChatMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}}
+	switch openAIRequestMode(model) {
+	case "chat_max_completion_tokens":
+		return openAIReasoningChatRequest{
+			Model:               model,
+			MaxCompletionTokens: maxTokens,
+			Messages:            messages,
+		}, nil
+	case "chat_max_tokens":
+		return openAIChatRequest{
+			Model:     model,
+			MaxTokens: maxTokens,
+			Messages:  messages,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported openai model: %s", model)
 	}
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return llmAnalysis{}, errors.New("failed to encode mistral request")
+}
+
+func openAIRequestMode(model string) string {
+	model = strings.TrimSpace(strings.ToLower(model))
+	switch {
+	case strings.HasPrefix(model, "gpt-5.4"), strings.HasPrefix(model, "gpt-5.3-chat-latest"):
+		return "chat_max_completion_tokens"
+	case strings.HasPrefix(model, "gpt-4.1"):
+		return "chat_max_tokens"
+	default:
+		return "chat_max_tokens"
 	}
-	endpoint := getenvDefault("MISTRAL_BASE_URL", "https://api.mistral.ai/v1/chat/completions")
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
-	if err != nil {
-		return llmAnalysis{}, errors.New("failed to create mistral request")
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(os.Getenv("MISTRAL_API_KEY")))
-	respBody, err := app.doLLMRequest("mistral", req)
-	if err != nil {
-		return llmAnalysis{}, wrapProviderError("mistral", err)
-	}
-	return parseMistralAnalysis(respBody)
 }
 
 func (app *application) doLLMRequest(provider string, req *http.Request) ([]byte, error) {
@@ -1135,8 +1180,6 @@ func (app *application) doLLMRequest(provider string, req *http.Request) ([]byte
 			return nil, statusError{status: resp.StatusCode, message: parseAnthropicError(respBody, resp.Status)}
 		case "openai":
 			return nil, statusError{status: resp.StatusCode, message: parseOpenAIError(respBody, resp.Status)}
-		case "mistral":
-			return nil, statusError{status: resp.StatusCode, message: parseMistralError(respBody, resp.Status)}
 		default:
 			return nil, statusError{status: resp.StatusCode, message: redactSecrets(strings.TrimSpace(string(respBody)))}
 		}
@@ -1208,20 +1251,6 @@ func parseOpenAIAnalysis(body []byte) (llmAnalysis, error) {
 	return parseLLMJSONPayload(strings.TrimSpace(response.Choices[0].Message.Content), "openai")
 }
 
-func parseMistralAnalysis(body []byte) (llmAnalysis, error) {
-	var response mistralChatResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		return llmAnalysis{}, errors.New("failed to decode mistral response")
-	}
-	if response.Error != nil && strings.TrimSpace(response.Error.Message) != "" {
-		return llmAnalysis{}, errors.New("mistral request failed: " + redactSecrets(response.Error.Message))
-	}
-	if len(response.Choices) == 0 || strings.TrimSpace(response.Choices[0].Message.Content) == "" {
-		return llmAnalysis{}, errors.New("mistral response did not contain text")
-	}
-	return parseLLMJSONPayload(strings.TrimSpace(response.Choices[0].Message.Content), "mistral")
-}
-
 func parseLLMJSONPayload(text, provider string) (llmAnalysis, error) {
 	text = strings.TrimSpace(strings.TrimPrefix(strings.TrimSuffix(strings.TrimSpace(text), "```"), "```json"))
 	var analysis llmAnalysis
@@ -1266,18 +1295,6 @@ func parseOpenAIError(body []byte, fallback string) string {
 		return "openai request failed: " + fallback
 	}
 	return "openai request failed: " + redactSecrets(trimmed)
-}
-
-func parseMistralError(body []byte, fallback string) string {
-	var response mistralChatResponse
-	if json.Unmarshal(body, &response) == nil && response.Error != nil && strings.TrimSpace(response.Error.Message) != "" {
-		return "mistral request failed: " + redactSecrets(response.Error.Message)
-	}
-	trimmed := strings.TrimSpace(string(body))
-	if trimmed == "" {
-		return "mistral request failed: " + fallback
-	}
-	return "mistral request failed: " + redactSecrets(trimmed)
 }
 
 func truncateForLLM(text string, maxChars int) string {
@@ -1883,6 +1900,14 @@ func redisProgressKey(jobID string) string {
 	return "progress:" + jobID
 }
 
+func redisRequestCacheKey(requestHash string) string {
+	return "requestcache:" + requestHash
+}
+
+func redisActiveJobsKey(ip string) string {
+	return "activejobs:" + strings.TrimSpace(ip)
+}
+
 func (app *application) releaseJobState(ctx context.Context, jobID string) {
 	if app == nil || app.rdb == nil {
 		return
@@ -1893,18 +1918,91 @@ func (app *application) releaseJobState(ctx context.Context, jobID string) {
 }
 
 func clientIP(r *http.Request) string {
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		parts := strings.Split(forwarded, ",")
-		return strings.TrimSpace(parts[0])
-	}
-	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
-		return realIP
+	trustedProxy := isTrustedProxy(r.RemoteAddr)
+	if trustedProxy {
+		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+			parts := strings.Split(forwarded, ",")
+			return strings.TrimSpace(parts[0])
+		}
+		if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
+			return realIP
+		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err == nil {
 		return host
 	}
 	return r.RemoteAddr
+}
+
+func isTrustedProxy(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	parsed := net.ParseIP(strings.TrimSpace(host))
+	if parsed == nil {
+		return false
+	}
+	return parsed.IsLoopback()
+}
+
+func hashEvaluationRequest(rootDir string, enableLLM bool, provider string) (string, error) {
+	providerValue := "none"
+	if enableLLM {
+		providerValue = effectiveLLMProvider(provider)
+	}
+	entries := []string{fmt.Sprintf("llm=%t", enableLLM), "provider=" + providerValue}
+	err := filepath.WalkDir(rootDir, func(current string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(rootDir, current)
+		if err != nil {
+			return err
+		}
+		content, err := os.ReadFile(current)
+		if err != nil {
+			return err
+		}
+		fileHash := sha256.Sum256(content)
+		entries = append(entries, filepath.ToSlash(rel)+":"+hex.EncodeToString(fileHash[:]))
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(entries)
+	digest := sha256.Sum256([]byte(strings.Join(entries, "\n")))
+	return hex.EncodeToString(digest[:]), nil
+}
+
+func (app *application) incrementActiveJob(ctx context.Context, ip string) {
+	if strings.TrimSpace(ip) == "" || app == nil || app.rdb == nil {
+		return
+	}
+	key := redisActiveJobsKey(ip)
+	if err := app.rdb.Incr(ctx, key).Err(); err == nil {
+		_ = app.rdb.Expire(ctx, key, redisResultTTL).Err()
+	}
+}
+
+func (app *application) decrementActiveJob(ctx context.Context, ip string) {
+	if strings.TrimSpace(ip) == "" || app == nil || app.rdb == nil {
+		return
+	}
+	key := redisActiveJobsKey(ip)
+	count, err := app.rdb.Decr(ctx, key).Result()
+	if err != nil {
+		return
+	}
+	if count <= 0 {
+		_ = app.rdb.Del(ctx, key).Err()
+	}
+	return
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
