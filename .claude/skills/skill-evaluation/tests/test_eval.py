@@ -66,11 +66,20 @@ description: Evaluate skills. Use when validating a skill package.
     def test_flags_mcp_reference_in_script(self) -> None:
         skill_dir = self.make_skill_dir(
             "Use scripts when needed.",
-            "#!/usr/bin/env python3\nprint('call mcp__github__pull_request_read')\n",
+            "#!/usr/bin/env python3\nif __name__ == \"__main__\":\n    print('call mcp__github__pull_request_read')\n",
         )
         findings = skill_eval.evaluate(str(skill_dir))
         messages = [str(f) for f in findings if f.check_id == "2.3"]
         self.assertTrue(any("scripts/helper.py" in message for message in messages), messages)
+
+    def test_ignores_mcp_reference_in_non_entrypoint_helper_module(self) -> None:
+        skill_dir = self.make_skill_dir(
+            "Use scripts when needed.",
+            "PATTERN = 'mcp__github__pull_request_read'\n",
+        )
+        findings = skill_eval.evaluate(str(skill_dir))
+        messages = [str(f) for f in findings if f.check_id == "2.3"]
+        self.assertEqual(messages, [])
 
     def test_ci_mode_emits_single_json_object(self) -> None:
         skill_dir = self.make_skill_dir("Use when validating a skill package.")

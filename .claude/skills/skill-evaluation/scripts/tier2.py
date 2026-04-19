@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 from common import DESTRUCTIVE_OPS, MCP_NEGATION, MCP_REFERENCE, SAFEGUARD, UNSCOPED_TOOL, Finding
-from extract import read_text_file, scripts_under
+from extract import entrypoint_scripts, read_text_file
 
 
 def check_2_1(body: str) -> list[Finding]:
@@ -65,7 +65,7 @@ def _find_mcp_findings(text: str, display: str) -> list[Finding]:
 
 def check_2_3(body: str, skill_dir: str) -> list[Finding]:
     findings = _find_mcp_findings(body, "line ")
-    for script_path, display in scripts_under(skill_dir):
+    for script_path, display in entrypoint_scripts(skill_dir):
         try:
             content = read_text_file(script_path)
         except (OSError, UnicodeDecodeError):

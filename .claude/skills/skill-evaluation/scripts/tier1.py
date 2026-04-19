@@ -18,7 +18,7 @@ from common import (
     WHEN_PHRASES,
     INTERACTIVE_PROMPT,
 )
-from extract import read_text_file, scripts_under
+from extract import entrypoint_scripts, read_text_file, scripts_under
 
 METADATA_REDUNDANT_KEYS = {
     "author", "maintainer", "email", "version", "semver",
@@ -134,7 +134,7 @@ def check_1_7(skill_dir: str) -> list[Finding]:
 
 def check_1_8(skill_dir: str) -> list[Finding]:
     findings = []
-    for script_path, display in scripts_under(skill_dir):
+    for script_path, display in entrypoint_scripts(skill_dir):
         try:
             content = read_text_file(script_path)
         except (OSError, UnicodeDecodeError):
@@ -147,7 +147,7 @@ def check_1_8(skill_dir: str) -> list[Finding]:
 
 def check_1_9(skill_dir: str) -> list[Finding]:
     findings = []
-    for script_path, display in scripts_under(skill_dir):
+    for script_path, display in entrypoint_scripts(skill_dir):
         try:
             content = read_text_file(script_path)
         except (OSError, UnicodeDecodeError):
@@ -161,7 +161,7 @@ def check_1_9(skill_dir: str) -> list[Finding]:
 
 def check_1_10(skill_dir: str) -> list[Finding]:
     findings = []
-    for script_path, display in scripts_under(skill_dir):
+    for script_path, display in entrypoint_scripts(skill_dir):
         try:
             content = read_text_file(script_path)
         except (OSError, UnicodeDecodeError):

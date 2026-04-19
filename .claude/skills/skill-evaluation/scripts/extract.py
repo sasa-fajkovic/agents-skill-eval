@@ -254,6 +254,21 @@ def scripts_under(skill_dir: str) -> list[tuple[Path, str]]:
     return results
 
 
+def entrypoint_scripts(skill_dir: str) -> list[tuple[Path, str]]:
+    entrypoints = []
+    for file_path, display in scripts_under(skill_dir):
+        try:
+            content = read_text_file(file_path)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if file_path.suffix == ".sh":
+            entrypoints.append((file_path, display))
+            continue
+        if file_path.suffix == ".py" and ("if __name__ == \"__main__\"" in content or "if __name__ == '__main__'" in content):
+            entrypoints.append((file_path, display))
+    return entrypoints
+
+
 def collect_metadata(skill_path: Path) -> dict:
     skill_dir = skill_path.parent
     files = [path for path in skill_dir.rglob("*") if path.is_file()]
@@ -266,3 +281,20 @@ def collect_metadata(skill_path: Path) -> dict:
         "script_types": script_types,
         "unsupported_script_types": unsupported_script_types,
     }
+
+
+def main() -> None:
+    import sys
+
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print("Usage: extract.py --help")
+        print()
+        print("Internal extraction helpers for the skill evaluator.")
+        sys.exit(0)
+
+    print("extract.py is an internal helper module. Use eval.py instead.", file=sys.stderr)
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

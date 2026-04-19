@@ -13,7 +13,7 @@ from common import (
     SUCCESS_CRITERIA,
     Finding,
 )
-from extract import extract_output_section, has_nearby_example, read_text_file, scripts_under
+from extract import entrypoint_scripts, extract_output_section, has_nearby_example, read_text_file
 
 
 def check_4_1(body: str) -> list[Finding]:
@@ -82,7 +82,7 @@ def check_4_6(body: str) -> list[Finding]:
 
 def check_4_7(skill_dir: str) -> list[Finding]:
     findings = []
-    for script_path, display in scripts_under(skill_dir):
+    for script_path, display in entrypoint_scripts(skill_dir):
         try:
             content = read_text_file(script_path)
         except (OSError, UnicodeDecodeError):
