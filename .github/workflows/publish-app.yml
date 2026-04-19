@@ -11,7 +11,7 @@ on:
     paths:
       - 'backend/**'
       - 'frontend/**'
-      - 'eval/**'
+      - '.claude/skills/skill-evaluation/**'
       - 'docker/**'
       - '.github/workflows/publish-app.yml'
 

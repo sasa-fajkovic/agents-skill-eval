@@ -3063,7 +3063,17 @@
         return '<div class="result-empty">None</div>';
       }
       const className = variant ? `result-list ${variant}` : 'result-list';
-      return `<ul class="${className}">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+      return `<ul class="${className}">${items.map((item) => {
+        if (item && typeof item === 'object') {
+          const message = String(item.message || item.finding || item.rule_id || '').trim();
+          const reason = String(item.reason || '').trim();
+          const severity = String(item.severity || '').trim();
+          const prefix = severity ? `${severity.toUpperCase()}: ` : '';
+          const detail = reason ? ` <span class="result-item-reason">${escapeHtml(reason)}</span>` : '';
+          return `<li>${escapeHtml(prefix + message)}${detail}</li>`;
+        }
+        return `<li>${escapeHtml(item)}</li>`;
+      }).join('')}</ul>`;
     }
 
     function providerLabel(value) {
@@ -3094,22 +3104,20 @@
 
     function renderChecklist(deterministic) {
       const checks = [
-        ['Description', deterministic.has_description],
-        ['Trigger section', deterministic.has_trigger_section],
-        ['Examples', deterministic.has_examples],
-        ['Error handling', deterministic.has_error_handling],
+        ['Checks passed', deterministic.passed],
+        ['Checks failed', deterministic.failed],
+        ['Files discovered', deterministic.file_count],
+        ['Line count', deterministic.line_count],
       ];
 
       return `
         <ul class="checklist">
-          ${checks.map(([label, passed]) => `
+          ${checks.map(([label, value]) => `
             <li>
               <span>${escapeHtml(label)}</span>
-              <span>${passed ? 'Present' : 'Missing'}</span>
+              <span>${escapeHtml(value ?? '0')}</span>
             </li>
           `).join('')}
-          <li><span>Files discovered</span><span>${escapeHtml(deterministic.file_count)}</span></li>
-          <li><span>Line count</span><span>${escapeHtml(deterministic.line_count)}</span></li>
         </ul>
       `;
     }

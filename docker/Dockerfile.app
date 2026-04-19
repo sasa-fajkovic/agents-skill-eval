@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir anthropic openai PyPDF2 python-docx
 WORKDIR /app
 COPY --from=backend-build /out/app /app/bin/app
 COPY frontend /app/frontend
-COPY eval /app/eval
+COPY .claude/skills/skill-evaluation /app/skill-evaluation
 
 COPY docker/app-entrypoint.sh /app/app-entrypoint.sh
 RUN chmod +x /app/app-entrypoint.sh /app/bin/app

@@ -37,7 +37,7 @@ build:
 	@docker build -f docker/Dockerfile.app -t $(APP_DOCKER_IMAGE) .
 
 test:
-	@python3 -m py_compile eval/run_eval.py
+	@python3 -m py_compile .claude/skills/skill-evaluation/scripts/eval.py
 	@python3 -m unittest discover -s .claude/skills/skill-evaluation/tests -p 'test_*.py'
 	@cd backend && go test ./...
 

@@ -125,6 +125,10 @@ type evalContainerResult struct {
 	SkillCompatibility string        `json:"skill_compatibility"`
 	SkillContent      string         `json:"skill_content"`
 	SupportingContext string         `json:"supporting_context"`
+	OverallScore      int            `json:"overall_score"`
+	OverallTier       string         `json:"overall_tier"`
+	QualityTier       string         `json:"quality_tier"`
+	Summary           string         `json:"summary"`
 	Deterministic     map[string]any `json:"deterministic"`
 	Message           string         `json:"message"`
 }
@@ -645,9 +649,9 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 	ctx, cancel := context.WithTimeout(parent, evalTimeout)
 	defer cancel()
 	_ = app.appendProgress(parent, job.JobID, "Starting evaluator...")
-	cmd := exec.CommandContext(ctx, "python3", "/app/eval/run_eval.py")
+	cmd := exec.CommandContext(ctx, "python3", "/app/skill-evaluation/scripts/eval.py", job.InputDir, "--ci")
 	cmd.Dir = "/app"
-	cmd.Env = append(os.Environ(), "INPUT_DIR="+job.InputDir)
+	cmd.Env = append(os.Environ(), "EVAL_PROGRESS_STDERR=1")
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		sentry.CaptureException(err)
@@ -917,14 +921,39 @@ func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw
 		}
 	}
 
+	baseScore := container.OverallScore
+	if baseScore == 0 && container.OverallTier == "" && strings.TrimSpace(container.Summary) == "" {
+		baseScore = computeOverallScore(container.Deterministic, nil)
+	}
+	baseTier := strings.TrimSpace(container.OverallTier)
+	if baseTier == "" {
+		baseTier = strings.TrimSpace(container.QualityTier)
+	}
+	if baseTier == "" {
+		baseTier = computeOverallTier(container.Deterministic, nil)
+	}
+	baseSummary := strings.TrimSpace(container.Summary)
+	if baseSummary == "" {
+		baseSummary = summarizeIssues(container.Deterministic, nil)
+	}
+
+	finalScore := baseScore
+	finalTier := baseTier
+	finalSummary := baseSummary
+	if analysis != nil {
+		finalScore = computeOverallScore(container.Deterministic, analysis)
+		finalTier = computeOverallTier(container.Deterministic, analysis)
+		finalSummary = summarizeIssues(container.Deterministic, analysis)
+	}
+
 	result := map[string]any{
 		"status":              "ok",
 		"skill_name":          container.SkillName,
 		"skill_description":   container.SkillDescription,
 		"skill_compatibility": container.SkillCompatibility,
-		"overall_score":       computeOverallScore(container.Deterministic, analysis),
-		"overall_tier":        computeOverallTier(container.Deterministic, analysis),
-		"summary":             summarizeIssues(container.Deterministic, analysis),
+		"overall_score":       finalScore,
+		"overall_tier":        finalTier,
+		"summary":             finalSummary,
 		"deterministic":       container.Deterministic,
 		"llm_enabled":         job.EnableLLM,
 		"llm_requested":       job.LLMRequested,
@@ -947,9 +976,22 @@ func deterministicIssues(value any) []string {
 	}
 	result := make([]string, 0, len(raw))
 	for _, item := range raw {
-		text := strings.TrimSpace(fmt.Sprint(item))
-		if text != "" {
-			result = append(result, text)
+		switch typed := item.(type) {
+		case string:
+			text := strings.TrimSpace(typed)
+			if text != "" {
+				result = append(result, text)
+			}
+		case map[string]any:
+			message := strings.TrimSpace(fmt.Sprint(typed["message"]))
+			if message != "" {
+				result = append(result, message)
+			}
+		default:
+			text := strings.TrimSpace(fmt.Sprint(item))
+			if text != "" {
+				result = append(result, text)
+			}
 		}
 	}
 	return result

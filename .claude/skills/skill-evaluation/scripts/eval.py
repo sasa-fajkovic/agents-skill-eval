@@ -15,6 +15,11 @@ import sys
 from pathlib import Path
 
 try:
+    from PyPDF2 import PdfReader
+except Exception:  # pragma: no cover - defensive import fallback
+    PdfReader = None
+
+try:
     import yaml
 except ModuleNotFoundError:  # pragma: no cover - exercised via subprocess tests
     class _FallbackYAMLModule:
@@ -45,6 +50,29 @@ BOLD = "\033[1m" if _use_color else ""
 RESET = "\033[0m" if _use_color else ""
 
 BOX_WIDTH = 60
+MAX_SUPPORTING_CONTEXT_CHARS = 12000
+MAX_FILE_EXCERPT_CHARS = 1500
+ALLOWED_TEXT_EXTENSIONS = {
+    ".md",
+    ".markdown",
+    ".txt",
+    ".json",
+    ".py",
+    ".sh",
+    ".js",
+    ".html",
+    ".xml",
+    ".xsd",
+    ".yaml",
+    ".yml",
+}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+PDF_EXTENSIONS = {".pdf"}
+
+
+def emit_progress(message: str) -> None:
+    if os.environ.get("EVAL_PROGRESS_STDERR") == "1":
+        print(message, file=sys.stderr, flush=True)
 
 
 def print_separator(label: str) -> None:
@@ -247,6 +275,142 @@ def parse_frontmatter(text: str) -> tuple[dict | None, str]:
         return fm if isinstance(fm, dict) else None, body
     except yaml.YAMLError:
         return None, body
+
+
+def read_text_file(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def read_pdf_file(path: Path) -> str:
+    if PdfReader is None:
+        return ""
+    reader = PdfReader(str(path))
+    pages = []
+    for page in reader.pages:
+        try:
+            pages.append(page.extract_text() or "")
+        except Exception:
+            pages.append("")
+    return "\n".join(pages)
+
+
+def collect_supporting_context(skill_path: Path) -> str:
+    root = skill_path.parent
+    paths = [path for path in root.rglob("*") if path.is_file() and path != skill_path]
+    inventory = []
+    parts = []
+    used_chars = 0
+
+    def sort_key(path: Path) -> tuple[int, str]:
+        relative = str(path.relative_to(root)).lower()
+        priority = 3
+        if "/references/" in f"/{relative}" or relative.startswith("references/"):
+            priority = 0
+        elif relative.endswith("license.txt") or relative.endswith("readme.md") or relative.endswith("readme.txt"):
+            priority = 1
+        elif "/scripts/" in f"/{relative}" or relative.startswith("scripts/"):
+            priority = 2
+        return (priority, relative)
+
+    for path in sorted(paths, key=sort_key):
+        suffix = path.suffix.lower()
+        relative = path.relative_to(root)
+        inventory.append(str(relative))
+        if suffix in ALLOWED_TEXT_EXTENSIONS:
+            content = read_text_file(path)
+        elif suffix in PDF_EXTENSIONS:
+            content = read_pdf_file(path)
+        elif suffix in IMAGE_EXTENSIONS:
+            content = "[image file omitted from text analysis]"
+        else:
+            continue
+
+        stripped = content.strip()
+        if not stripped:
+            continue
+
+        remaining = MAX_SUPPORTING_CONTEXT_CHARS - used_chars
+        if remaining <= 0:
+            break
+
+        excerpt = stripped[: min(MAX_FILE_EXCERPT_CHARS, remaining)]
+        if len(stripped) > len(excerpt):
+            excerpt += "\n[truncated]"
+        block = f"--- FILE: {relative} ---\n{excerpt}"
+        parts.append(block)
+        used_chars += len(block) + 2
+
+    summary = ["Supporting file inventory:"]
+    summary.extend(f"- {item}" for item in inventory)
+    if parts:
+        summary.append("")
+        summary.append("Supporting file excerpts:")
+        summary.append("")
+        summary.append("\n\n".join(parts))
+    return "\n".join(summary)
+
+
+def extract_frontmatter_string_field(fm: dict | None, field_name: str) -> str:
+    if not isinstance(fm, dict):
+        return ""
+    value = fm.get(field_name)
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def extract_skill_name(skill_path: Path, fm: dict | None) -> str:
+    name = extract_frontmatter_string_field(fm, "name")
+    if name:
+        return name
+    return skill_path.parent.name if skill_path.name == "SKILL.md" else skill_path.stem
+
+
+def extract_skill_description(skill_text: str, fm: dict | None) -> str:
+    description = extract_frontmatter_string_field(fm, "description")
+    if description:
+        return description
+
+    lines = skill_text.splitlines()
+    for index, line in enumerate(lines):
+        if line.strip().lower() in {"## description", "# description"}:
+            collected = []
+            for candidate in lines[index + 1:]:
+                stripped = candidate.strip()
+                if not stripped:
+                    collected.append("")
+                    continue
+                if stripped.startswith("#"):
+                    break
+                collected.append(stripped)
+            while collected and not collected[0]:
+                collected.pop(0)
+            while collected and not collected[-1]:
+                collected.pop()
+            if collected:
+                paragraphs = []
+                current = []
+                for item in collected:
+                    if item:
+                        current.append(item)
+                        continue
+                    if current:
+                        paragraphs.append(" ".join(current))
+                        current = []
+                if current:
+                    paragraphs.append(" ".join(current))
+                if paragraphs:
+                    return "\n\n".join(paragraphs)
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            return stripped
+    return ""
+
+
+def extract_skill_compatibility(fm: dict | None) -> str:
+    return extract_frontmatter_string_field(fm, "compatibility")
 
 
 def check_1_1(fm: dict, skill_dir: str) -> list[Finding]:
@@ -495,7 +659,7 @@ def collect_metadata(skill_path: Path) -> dict:
     unsupported_script_types = sorted({p.suffix for p in files if p.suffix in DISCOURAGED_SCRIPT_EXTENSIONS})
     return {
         "file_count": len(files),
-        "line_count": len(skill_path.read_text().splitlines()) if skill_path.exists() else 0,
+        "line_count": len(read_text_file(skill_path).splitlines()) if skill_path.exists() else 0,
         "has_scripts": any(p.suffix in ALLOWED_SCRIPT_EXTENSIONS or p.suffix in DISCOURAGED_SCRIPT_EXTENSIONS for p in files),
         "script_types": script_types,
         "unsupported_script_types": unsupported_script_types,
@@ -541,10 +705,15 @@ def issue_payload(finding: Finding) -> dict:
 
 
 def build_json_result(skill_path: Path, findings: list[Finding]) -> dict:
-    skill_name = skill_path.parent.name if skill_path.name == "SKILL.md" else skill_path.stem
+    skill_text = read_text_file(skill_path)
+    fm, _body = parse_frontmatter(skill_text)
+    skill_name = extract_skill_name(skill_path, fm)
     metadata = collect_metadata(skill_path)
     errors = [f for f in findings if f.severity == "ERROR"]
     warnings = [f for f in findings if f.severity == "WARN"]
+    overall_tier = quality_tier_for(findings)
+    overall_score = overall_score_for(findings)
+    summary = summary_for(skill_name, findings)
     strengths = []
     if not findings:
         strengths.append({
@@ -575,12 +744,19 @@ def build_json_result(skill_path: Path, findings: list[Finding]) -> dict:
         "schema_version": "1.0",
         "status": status,
         "skill_name": skill_name,
-        "overall_score": overall_score_for(findings),
-        "quality_tier": quality_tier_for(findings),
-        "summary": summary_for(skill_name, findings),
+        "skill_description": extract_skill_description(skill_text, fm),
+        "skill_compatibility": extract_skill_compatibility(fm),
+        "skill_content": skill_text,
+        "supporting_context": collect_supporting_context(skill_path),
+        "overall_score": overall_score,
+        "overall_tier": overall_tier,
+        "quality_tier": overall_tier,
+        "summary": summary,
         "deterministic": {
             "passed": max(0, 14 - len(findings)),
             "failed": len(findings),
+            "file_count": metadata["file_count"],
+            "line_count": metadata["line_count"],
             "issues": [issue_payload(f) for f in findings],
         },
         "llm_analysis": {
@@ -695,11 +871,14 @@ def evaluate(path: str) -> list[Finding]:
     if not skill_path.exists():
         return [Finding("--", "ERROR", f"file not found: {skill_path}")]
 
-    text = skill_path.read_text()
+    emit_progress("Locating primary skill file...")
+    emit_progress("Reading skill content...")
+    text = read_text_file(skill_path)
     lines = text.splitlines()
     skill_dir = str(skill_path.parent)
     fm, body = parse_frontmatter(text)
 
+    emit_progress("Running deterministic checks...")
     findings = []
     if fm is None:
         findings.append(Finding("1.1", "ERROR", "no valid YAML frontmatter found"))
@@ -722,6 +901,8 @@ def evaluate(path: str) -> list[Finding]:
     findings.extend(check_2_1(body))
     findings.extend(check_2_2(body))
     findings.extend(check_2_3(body, skill_dir))
+    emit_progress("Collecting supporting context...")
+    _ = collect_supporting_context(skill_path)
     return findings
 
 

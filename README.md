@@ -21,8 +21,8 @@ The app has three main parts:
 2. `backend/main.go`
    Go HTTP server, embedded worker, Redis-backed queue, upload validation, GitHub fetch logic, secret redaction, deterministic scoring, build metadata, and privacy-safe infrastructure telemetry.
 
-3. `eval/run_eval.py`
-   Deterministic-only evaluator that runs inside the isolated container and returns structured JSON.
+3. `.claude/skills/skill-evaluation/scripts/eval.py`
+   Deterministic evaluator that runs inside the isolated container and is also the skill-owned script used by the LLM workflow.
 
 4. Host-side optional review
     If the user explicitly opts in and the selected provider is configured, the backend sends the uploaded skill content and supporting context to that provider for an extra review step after deterministic evaluation.
@@ -35,7 +35,7 @@ There is also a local skill package under `.claude/skills/skill-evaluation/` use
 2. Backend validates file names, MIME types, and content before queueing.
 3. Files are written into a temporary input directory.
 4. Worker launches the bundled deterministic evaluator process inside the app container.
-5. `eval/run_eval.py` discovers files, reads the primary `SKILL.md`, gathers supporting context, and returns deterministic results as JSON.
+5. `.claude/skills/skill-evaluation/scripts/eval.py` reads the uploaded skill package, runs deterministic checks, gathers supporting context, and returns deterministic results as JSON.
 6. Go parses that JSON, computes the final summary/score, optionally calls the selected LLM provider for opt-in review output, stores the final payload in Redis, and exposes it via `/result/{jobId}`.
 
 ## Security Model
@@ -170,7 +170,7 @@ Current test coverage focus is security-heavy:
 
 The `Makefile` test target currently runs:
 
-- `python3 -m py_compile eval/run_eval.py`
+- `python3 -m py_compile .claude/skills/skill-evaluation/scripts/eval.py`
 - Python unit tests for `.claude/skills/skill-evaluation/tests`
 - `go test ./...` in `backend/`
 

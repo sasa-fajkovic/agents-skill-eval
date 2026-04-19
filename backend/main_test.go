@@ -696,7 +696,7 @@ func TestValidateFileType(t *testing.T) {
 
 func TestFinalizeEvaluation(t *testing.T) {
 	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
-	raw := `{"status":"ok","skill_name":"demo","skill_description":"Use when validating skill packages.\n\nKeeps output portable.","skill_compatibility":"Claude Code\nCodex CLI","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":["missing tests"]}}`
+	raw := `{"status":"ok","skill_name":"demo","skill_description":"Use when validating skill packages.\n\nKeeps output portable.","skill_compatibility":"Claude Code\nCodex CLI","skill_content":"skill body","supporting_context":"extra context","overall_score":90,"overall_tier":"excellent","summary":"demo is mostly portable.","deterministic":{"issues":[{"rule_id":"missing_tests","severity":"warning","message":"missing tests","reason":"scripts need tests"}]}}`
 
 	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1"}, raw)
 	if err != nil {
@@ -746,7 +746,7 @@ func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
 	_ = os.Setenv("ANTHROPIC_BASE_URL", server.URL+"/v1/messages")
 
 	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), httpClient: server.Client()}
-	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":[]}}`
+	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","overall_score":100,"overall_tier":"excellent","summary":"demo passes deterministic evaluation.","deterministic":{"issues":[]}}`
 
 	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true, LLMProvider: "anthropic"}, raw)
 	if err != nil {

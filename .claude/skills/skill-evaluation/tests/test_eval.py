@@ -83,12 +83,32 @@ description: Evaluate skills. Use when validating a skill package.
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["schema_version"], "1.0")
         self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["skill_name"], "skill-eval")
         self.assertIn("deterministic", payload)
         self.assertIn("llm_analysis", payload)
         self.assertIn("metadata", payload)
+        self.assertIn("skill_content", payload)
+        self.assertIn("supporting_context", payload)
+        self.assertIn("overall_tier", payload)
         self.assertIsInstance(payload["deterministic"]["issues"], list)
         self.assertIsInstance(payload["llm_analysis"]["strengths"], list)
         self.assertIsInstance(payload["metadata"]["script_types"], list)
+
+    def test_ci_mode_includes_app_compatibility_fields(self) -> None:
+        skill_dir = self.make_skill_dir("Use when validating a skill package.")
+        completed = subprocess.run(
+            [sys.executable, str(MODULE_PATH), str(skill_dir), "--ci"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        payload = json.loads(completed.stdout)
+        self.assertIn("skill_description", payload)
+        self.assertIn("skill_compatibility", payload)
+        self.assertIn("overall_score", payload)
+        self.assertIn("summary", payload)
+        self.assertIn("file_count", payload["deterministic"])
+        self.assertIn("line_count", payload["deterministic"])
 
     def test_discouraged_runtime_is_soft_warning(self) -> None:
         skill_dir = self.make_skill_dir(
