@@ -2857,6 +2857,23 @@
       return { state: 'pending', label: 'Pending', summary: 'Optional AI review has not started yet.' };
     }
 
+    function humanizeUploadError(message) {
+      const text = String(message || 'Upload failed.').trim();
+      if (/optional AI review rate limit exceeded/i.test(text)) {
+        return 'Optional AI review is temporarily rate limited for your IP. Wait a bit before starting another AI-backed evaluation.';
+      }
+      if (/rate limit exceeded/i.test(text)) {
+        return 'Too many evaluation requests were sent from your IP in a short window. Wait a bit, then try again.';
+      }
+      if (/too many active evaluations from this IP/i.test(text)) {
+        return 'An evaluation from your IP is already running. Wait for it to finish before starting another one.';
+      }
+      if (/service busy/i.test(text)) {
+        return 'The evaluator queue is currently full. Wait a bit, then try again.';
+      }
+      return text;
+    }
+
     function getObservedPhaseKeys(progressLines, trailer = '', resultData = null) {
       const lines = Array.isArray(progressLines) ? progressLines : [];
       const combined = [...lines, trailer].join(' ');
@@ -2866,7 +2883,7 @@
       if (/Worker picked up job/.test(combined)) observed.add('worker');
       if (/Starting evaluator/.test(combined)) observed.add('sandbox');
       if (/Preparing deterministic result/.test(combined)) observed.add('deterministic');
-      if (/LLM evaluation|Optional LLM review/.test(combined) || resultData?.llm_analysis) observed.add('llm');
+      if (/LLM evaluation|Optional LLM review completed/.test(combined) || resultData?.llm_analysis) observed.add('llm');
       if (/Preparing final evaluation result/.test(combined)) observed.add('finalizing');
       if (/Evaluation completed\./.test(combined)) observed.add('complete');
 
@@ -3346,14 +3363,14 @@
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || 'Upload failed.');
+          throw new Error(humanizeUploadError(data.error || 'Upload failed.'));
         }
 
         await pollForResult(data.jobId);
       } catch (error) {
         setJobRunning(false);
         resetResultsState();
-        setStatus(error.message || 'Upload failed.', true);
+        setStatus(humanizeUploadError(error.message || 'Upload failed.'), true);
       }
     }
 
