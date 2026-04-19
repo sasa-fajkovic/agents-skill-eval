@@ -17,6 +17,7 @@
   <meta name="twitter:title" content="FAQ | agents-skill-eval">
   <meta name="twitter:description" content="Why agents-skill-eval focuses on portable skills, structured IO contracts, and runtime-neutral evaluation.">
   <meta name="theme-color" content="#0a0a0a">
+  <link rel="stylesheet" href="/static/shared.css">
   <script>
     try {
       const storedTheme = localStorage.getItem('agents-skill-eval-theme');
@@ -162,158 +163,6 @@
       font-weight: inherit;
     }
 
-    :where(a, button, input, .brand-lockup):focus-visible {
-      outline: 2px solid #38bdf8;
-      outline-offset: 3px;
-    }
-
-    .shell {
-      width: var(--shell);
-      margin: 0 auto;
-    }
-
-    .site-header {
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
-      padding: 14px 0 10px;
-    }
-
-    .brand-lockup {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 16px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(8, 11, 16, 0.74);
-      backdrop-filter: blur(14px);
-      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
-      text-decoration: none;
-      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
-    }
-
-    .brand-lockup:hover {
-      transform: translateY(-1px);
-      border-color: var(--line-strong);
-      background: rgba(15, 23, 34, 0.88);
-    }
-
-    .brand-lockup:hover .brand-mark {
-      transform: scale(1.18);
-      box-shadow: 0 0 24px rgba(239, 68, 68, 0.65);
-    }
-
-    .brand-lockup:hover .brand-name {
-      color: #f87171;
-    }
-
-    .brand-mark {
-      width: 12px;
-      height: 12px;
-      border-radius: 999px;
-      background: linear-gradient(135deg, #fb7185, #ef4444 55%, #7f1d1d);
-      box-shadow: 0 0 18px rgba(239, 68, 68, 0.5);
-      transition: transform 180ms ease, box-shadow 180ms ease;
-    }
-
-    .brand-name {
-      color: var(--brand);
-      font-family: var(--mono);
-      font-size: 13px;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      white-space: nowrap;
-      transition: color 180ms ease;
-    }
-
-    .header-nav {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      min-width: 0;
-      padding: 6px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(8, 11, 16, 0.74);
-      backdrop-filter: blur(14px);
-      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
-    }
-
-    .theme-toggle {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(15, 23, 34, 0.82);
-    }
-
-    .theme-option {
-      min-height: 32px;
-      padding: 7px 12px;
-      border-radius: 999px;
-      border: 1px solid transparent;
-      background: transparent;
-      color: var(--subtle);
-      font-family: var(--mono);
-      font-size: 12px;
-      white-space: nowrap;
-      cursor: pointer;
-      transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
-    }
-
-    .theme-option:hover {
-      background: rgba(15, 23, 34, 0.92);
-      color: var(--text);
-    }
-
-    .theme-option[aria-pressed="true"] {
-      border-color: var(--line);
-      background: rgba(248, 250, 252, 0.08);
-      color: var(--text);
-    }
-
-    .nav-link {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 40px;
-      padding: 10px 14px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(15, 23, 34, 0.84);
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 12px;
-      white-space: nowrap;
-      text-decoration: none;
-      transition: border-color 140ms ease, color 140ms ease, transform 140ms ease, background 140ms ease;
-    }
-
-    .nav-link:hover {
-      color: var(--text);
-      border-color: var(--line-strong);
-      transform: translateY(-1px);
-    }
-
-    .nav-link {
-      border-color: transparent;
-      background: transparent;
-    }
-
-    .nav-link:hover {
-      background: rgba(15, 23, 34, 0.92);
-    }
-
     .page {
       display: grid;
       gap: 22px;
@@ -347,27 +196,6 @@
       opacity: 0.1;
     }
 
-    html[data-theme="light"] .brand-lockup,
-    html[data-theme="light"] .header-nav,
-    html[data-theme="light"] .theme-toggle {
-      background: rgba(255, 255, 255, 0.96);
-      box-shadow: none;
-    }
-
-    html[data-theme="light"] .brand-lockup:hover {
-      background: #ffffff;
-    }
-
-    html[data-theme="light"] .brand-lockup:hover .brand-name {
-      color: #dc2626;
-    }
-
-    html[data-theme="light"] .nav-link:hover,
-    html[data-theme="light"] .theme-option:hover,
-    html[data-theme="light"] .theme-option[aria-pressed="true"] {
-      background: rgba(15, 23, 42, 0.06);
-    }
-
     html[data-theme="light"] code {
       background: #f1f5f9;
     }
@@ -376,10 +204,6 @@
     html[data-theme="light"] h2 code,
     html[data-theme="light"] h3 code {
       background: transparent;
-    }
-
-    html[data-theme="light"] :where(a, button, input, .brand-lockup):focus-visible {
-      outline-color: #0284c7;
     }
 
     html[data-theme="light"] .eyebrow {
@@ -408,11 +232,6 @@
     html[data-theme="light"] .faq-card a,
     html[data-theme="light"] .callout a {
       color: #334155;
-    }
-
-    html[data-theme="light"] .footer-links a,
-    html[data-theme="light"] .footer-version {
-      color: #475569;
     }
 
     .hero,
@@ -593,63 +412,6 @@
       color: var(--text);
     }
 
-    .site-footer {
-      padding: 10px 0 42px;
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-
-    .footer-links {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 14px;
-      align-items: center;
-    }
-
-    .footer-links a,
-    .footer-version {
-      color: var(--subtle);
-      text-decoration: none;
-      font-family: var(--mono);
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .footer-links a:hover {
-      color: var(--text);
-    }
-
-    @media (max-width: 980px) {
-      .site-header {
-        align-items: stretch;
-        flex-direction: column;
-      }
-
-      .header-nav {
-        width: 100%;
-        flex-wrap: wrap;
-        justify-content: flex-start;
-        gap: 8px;
-        border-radius: 24px;
-      }
-
-      .header-nav .theme-toggle {
-        flex: 0 0 100%;
-        width: fit-content;
-      }
-
-      .header-nav .nav-link,
-      .header-nav button {
-        min-height: 36px;
-        padding: 8px 12px;
-        font-size: 11px;
-      }
-    }
-
     @media (max-width: 860px) {
       .faq-grid {
         grid-template-columns: 1fr;
@@ -657,11 +419,6 @@
     }
 
     @media (max-width: 640px) {
-      .site-header {
-        padding-top: 12px;
-        align-items: flex-start;
-      }
-
       .page {
         padding-top: 16px;
       }
@@ -684,7 +441,7 @@
   </style>
 </head>
 <body>
-  <header class="site-header shell">
+  <header class="site-header site-shell">
     <a class="brand-lockup" href="/" aria-label="Go to homepage">
       <span class="brand-mark" aria-hidden="true"></span>
       <span class="brand-name">agents-skill-eval</span>
@@ -701,7 +458,7 @@
     </nav>
   </header>
 
-  <main class="shell page">
+  <main class="site-shell page">
     <section class="hero">
       <div class="hero-copy">
         <span class="eyebrow">FAQ</span>
@@ -789,7 +546,7 @@
       <p>High-quality skills reduce wasted context, tighten trigger boundaries, make helper scripts more portable, and surface safety issues before a skill gets reused across teams or runtimes.</p>
     </section>
   </main>
-  <footer class="site-footer shell">
+  <footer class="site-footer">
     <div class="footer-links">
       <a href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
       <a href="https://linkedin.com/in/sasa-fajkovic" target="_blank" rel="noreferrer">LinkedIn</a>
@@ -797,53 +554,6 @@
     </div>
     <div class="footer-version" id="footer-version">Deployed version: loading</div>
   </footer>
-  <script>
-    const themeButtons = Array.from(document.querySelectorAll('.theme-option'));
-    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-    const footerVersion = document.getElementById('footer-version');
-    const THEME_KEY = 'agents-skill-eval-theme';
-
-    function applyTheme(theme, persist = true) {
-      const resolvedTheme = theme === 'light' ? 'light' : 'dark';
-      document.documentElement.dataset.theme = resolvedTheme;
-      if (themeColorMeta) {
-        themeColorMeta.setAttribute('content', resolvedTheme === 'light' ? '#f3f4f6' : '#0a0a0a');
-      }
-      themeButtons.forEach((button) => {
-        const isActive = button.dataset.themeValue === resolvedTheme;
-        button.setAttribute('aria-pressed', String(isActive));
-      });
-      if (!persist) return;
-      try {
-        localStorage.setItem(THEME_KEY, resolvedTheme);
-      } catch (error) {
-        // Ignore storage access errors.
-      }
-    }
-
-    themeButtons.forEach((button) => {
-      button.addEventListener('click', () => applyTheme(button.dataset.themeValue));
-    });
-
-    async function loadVersion() {
-      if (!footerVersion) {
-        return;
-      }
-      try {
-        const response = await fetch('/version', { cache: 'no-store' });
-        if (!response.ok) {
-          throw new Error('version unavailable');
-        }
-        const payload = await response.json();
-        const commit = String(payload.commit || payload.version || '').trim();
-        footerVersion.textContent = commit ? `Deployed version: ${commit.slice(0, 7)}` : 'Deployed version: unavailable';
-      } catch (error) {
-        footerVersion.textContent = 'Deployed version: unavailable';
-      }
-    }
-
-    applyTheme(document.documentElement.dataset.theme, false);
-    loadVersion();
-  </script>
+  <script src="/static/shared.js"></script>
 </body>
 </html>

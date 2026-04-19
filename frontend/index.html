@@ -17,6 +17,7 @@
   <meta name="twitter:title" content="agents-skill-eval">
   <meta name="twitter:description" content="Evaluate agent skills for trigger quality, token efficiency, cost control, reliability, and security.">
   <meta name="theme-color" content="#0a0a0a">
+  <link rel="stylesheet" href="/static/shared.css">
   <script>
     try {
       const storedTheme = localStorage.getItem('agents-skill-eval-theme');
@@ -137,126 +138,12 @@
       vertical-align: baseline;
     }
 
-    :where(a, button, input, .dropzone, .brand-lockup):focus-visible {
-      outline: 2px solid #38bdf8;
-      outline-offset: 3px;
-    }
-
-    .site-shell {
-      width: var(--shell);
-      margin: 0 auto;
-    }
-
-    .site-header {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 14px 10px 10px;
-    }
-
-    .brand-lockup {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 16px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(8, 11, 16, 0.74);
-      backdrop-filter: blur(14px);
-      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
-      text-decoration: none;
-      min-width: 0;
-      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
-    }
-
-    .brand-lockup:hover {
-      transform: translateY(-1px);
-      border-color: var(--line-strong);
-      background: rgba(15, 23, 34, 0.88);
-    }
-
-    .brand-lockup:hover .brand-mark {
-      transform: scale(1.18);
-      box-shadow: 0 0 24px rgba(239, 68, 68, 0.65);
-    }
-
-    .brand-lockup:hover .brand-name {
-      color: #f87171;
-    }
-
-    .brand-mark {
-      width: 12px;
-      height: 12px;
-      border-radius: 999px;
-      background: linear-gradient(135deg, #fb7185, #ef4444 55%, #7f1d1d);
-      box-shadow: 0 0 18px rgba(239, 68, 68, 0.5);
-      flex: 0 0 auto;
-      transition: transform 180ms ease, box-shadow 180ms ease;
-    }
-
-    .brand-name {
-      color: var(--brand);
-      font-family: var(--mono);
-      font-size: 13px;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      white-space: nowrap;
-      transition: color 180ms ease;
-    }
-
-    .header-nav {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      min-width: 0;
-      padding: 6px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(8, 11, 16, 0.74);
-      backdrop-filter: blur(14px);
-      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
-    }
-
-    .theme-toggle {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: rgba(15, 23, 34, 0.82);
-    }
-
-    .theme-option {
-      min-height: 32px;
-      padding: 7px 12px;
-      border-color: transparent;
-      background: transparent;
-      color: var(--subtle);
-      box-shadow: none;
-    }
-
-    .theme-option:hover {
-      background: rgba(15, 23, 34, 0.92);
-      color: var(--text);
-    }
-
-    .theme-option[aria-pressed="true"] {
-      border-color: var(--line);
-      background: rgba(248, 250, 252, 0.08);
-      color: var(--text);
-      transform: none;
-    }
-
-    .nav-link,
     .button,
-    button {
+    .provider-chip,
+    #pick-folder-button,
+    #upload-button,
+    #clear-button,
+    #download-json-button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -274,21 +161,15 @@
       transition: border-color 140ms ease, color 140ms ease, transform 140ms ease, background 140ms ease;
     }
 
-    .nav-link:hover,
     .button:hover,
-    button:hover {
+    .provider-chip:hover,
+    #pick-folder-button:hover,
+    #upload-button:hover,
+    #clear-button:hover,
+    #download-json-button:hover {
       color: var(--text);
       border-color: var(--line-strong);
       transform: translateY(-1px);
-    }
-
-    .nav-link {
-      border-color: transparent;
-      background: transparent;
-    }
-
-    .nav-link:hover {
-      background: rgba(15, 23, 34, 0.92);
     }
 
     .button-primary,
@@ -430,8 +311,7 @@
     .signal-grid,
     .action-row,
     .drop-meta,
-    .upload-actions,
-    .footer-links {
+    .upload-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
@@ -2034,17 +1914,6 @@
       color: var(--text);
     }
 
-    .site-footer {
-      width: var(--shell);
-      margin: 0 auto;
-      padding: 10px 0 42px;
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-
     html[data-theme="light"] {
       color-scheme: light;
       --bg: #f3f4f6;
@@ -2076,27 +1945,6 @@
       opacity: 0.1;
     }
 
-    html[data-theme="light"] .brand-lockup,
-    html[data-theme="light"] .header-nav,
-    html[data-theme="light"] .theme-toggle {
-      background: rgba(255, 255, 255, 0.96);
-      box-shadow: none;
-    }
-
-    html[data-theme="light"] .brand-lockup:hover {
-      background: #ffffff;
-    }
-
-    html[data-theme="light"] .brand-lockup:hover .brand-name {
-      color: #dc2626;
-    }
-
-    html[data-theme="light"] .nav-link:hover,
-    html[data-theme="light"] .theme-option:hover,
-    html[data-theme="light"] .theme-option[aria-pressed="true"] {
-      background: rgba(15, 23, 42, 0.06);
-    }
-
     html[data-theme="light"] code {
       background: #f1f5f9;
     }
@@ -2105,10 +1953,6 @@
     html[data-theme="light"] h2 code,
     html[data-theme="light"] h3 code {
       background: transparent;
-    }
-
-    html[data-theme="light"] :where(a, button, input, .dropzone, .brand-lockup):focus-visible {
-      outline-color: #0284c7;
     }
 
     html[data-theme="light"] .eyebrow,
@@ -2133,9 +1977,12 @@
       background: #ffffff;
     }
 
-    html[data-theme="light"] .nav-link,
     html[data-theme="light"] .button,
-    html[data-theme="light"] button {
+    html[data-theme="light"] .provider-chip,
+    html[data-theme="light"] #pick-folder-button,
+    html[data-theme="light"] #upload-button,
+    html[data-theme="light"] #clear-button,
+    html[data-theme="light"] #download-json-button {
       background: #ffffff;
       color: var(--text);
       border-color: rgba(15, 23, 42, 0.16);
@@ -2160,7 +2007,11 @@
       color: var(--text);
     }
 
-    html[data-theme="light"] button:disabled {
+    html[data-theme="light"] .provider-chip:disabled,
+    html[data-theme="light"] #pick-folder-button:disabled,
+    html[data-theme="light"] #upload-button:disabled,
+    html[data-theme="light"] #clear-button:disabled,
+    html[data-theme="light"] #download-json-button:disabled {
       color: var(--muted);
       opacity: 1;
     }
@@ -2292,10 +2143,6 @@
       border-color: rgba(15, 23, 42, 0.14);
     }
 
-    html[data-theme="light"] .theme-option {
-      color: var(--muted);
-    }
-
     html[data-theme="light"] .support-chip::before,
     html[data-theme="light"] .preview-badge::before,
     html[data-theme="light"] .tier-badge::before {
@@ -2334,32 +2181,6 @@
       color: #334155;
     }
 
-    .footer-copy {
-      max-width: 56ch;
-    }
-
-    .footer-links a {
-      color: var(--muted);
-      text-decoration: none;
-      font-family: var(--mono);
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .footer-links a:hover {
-      color: var(--text);
-    }
-
-    .footer-version {
-      color: var(--subtle);
-      font-family: var(--mono);
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      text-align: center;
-    }
-
     .js [data-observe] {
       opacity: 0;
       transform: translateY(18px);
@@ -2392,33 +2213,6 @@
       }
       50% {
         opacity: 1;
-      }
-    }
-
-    @media (max-width: 980px) {
-      .site-header {
-        align-items: stretch;
-        flex-direction: column;
-      }
-
-      .header-nav {
-        width: 100%;
-        flex-wrap: wrap;
-        justify-content: flex-start;
-        gap: 8px;
-        border-radius: 24px;
-      }
-
-      .header-nav .theme-toggle {
-        flex: 0 0 100%;
-        width: fit-content;
-      }
-
-      .header-nav .nav-link,
-      .header-nav button {
-        min-height: 36px;
-        padding: 8px 12px;
-        font-size: 11px;
       }
     }
 
@@ -2479,11 +2273,6 @@
         overflow-x: hidden;
       }
 
-      .site-header {
-        padding-top: 12px;
-        align-items: flex-start;
-      }
-
       .page {
         gap: 22px;
         padding-bottom: 36px;
@@ -2508,10 +2297,6 @@
         font-size: 42px;
         max-width: 100%;
         word-break: normal;
-      }
-
-      .site-shell {
-        width: min(100%, calc(100% - 28px));
       }
 
       .evaluator-head h1,
@@ -2583,9 +2368,6 @@
         font-size: 56px;
       }
 
-      .site-footer {
-        padding-bottom: 34px;
-      }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -2624,7 +2406,7 @@
         <button type="button" class="theme-option" data-theme-value="light" aria-pressed="false">Light</button>
         <button type="button" class="theme-option" data-theme-value="dark" aria-pressed="true">Dark</button>
       </div>
-      <a class="nav-link" href="#evaluate">Evaluate</a>
+      <a class="nav-link" href="/">Evaluate</a>
       <a class="nav-link" href="/about">About</a>
       <a class="nav-link" href="/faq">FAQ</a>
       <a class="nav-link" href="https://github.com/sasa-fajkovic/agents-skill-eval" target="_blank" rel="noreferrer">GitHub</a>
@@ -2735,9 +2517,9 @@
     <div class="footer-version" id="footer-version">Deployed version: loading</div>
   </footer>
 
+  <script src="/static/shared.js"></script>
   <script>
     const dropzone = document.getElementById('dropzone');
-    const themeButtons = Array.from(document.querySelectorAll('.theme-option'));
     const folderInput = document.getElementById('folder-input');
     const uploadButton = document.getElementById('upload-button');
     const clearButton = document.getElementById('clear-button');
@@ -2752,9 +2534,6 @@
     const llmProviderSelect = document.getElementById('llm-provider');
     const llmProviderToggle = document.querySelector('.provider-toggle');
     const llmProviderButtons = Array.from(document.querySelectorAll('.provider-chip'));
-    const footerVersion = document.getElementById('footer-version');
-    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-    const THEME_KEY = 'agents-skill-eval-theme';
     const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
     let selectedFiles = [];
@@ -2764,6 +2543,7 @@
     let lastProgressLines = [];
     let lastProgressTrailer = '';
     let activePhaseSince = 0;
+    let activePhaseKey = 'idle';
     let jobInFlight = false;
     let latestResult = null;
     const phaseDefinitions = [
@@ -2776,29 +2556,6 @@
       { key: 'complete', step: '07', label: 'Complete' },
     ];
 
-    function applyTheme(theme, persist = true) {
-      const resolvedTheme = theme === 'light' ? 'light' : 'dark';
-      document.documentElement.dataset.theme = resolvedTheme;
-      if (themeColorMeta) {
-        themeColorMeta.setAttribute('content', resolvedTheme === 'light' ? '#f3f4f6' : '#0a0a0a');
-      }
-      themeButtons.forEach((button) => {
-        const isActive = button.dataset.themeValue === resolvedTheme;
-        button.setAttribute('aria-pressed', String(isActive));
-      });
-      if (!persist) return;
-      try {
-        localStorage.setItem(THEME_KEY, resolvedTheme);
-      } catch (error) {
-        // Ignore storage access errors.
-      }
-    }
-
-    themeButtons.forEach((button) => {
-      button.addEventListener('click', () => applyTheme(button.dataset.themeValue));
-    });
-
-    applyTheme(document.documentElement.dataset.theme, false);
     renderPhaseTracker('idle');
 
     function fileDisplayPath(file) {
@@ -2902,10 +2659,14 @@
       if (/Optional LLM review completed/i.test(combined)) {
         return { state: 'complete', label: 'Complete', summary: 'Optional AI review completed for this run.' };
       }
-      if (/LLM evaluation/i.test(combined)) {
+      if (/LLM evaluation|Optional LLM review/.test(combined)) {
         return { state: 'active', label: 'In progress', summary: 'Optional AI review is in progress.' };
       }
       return { state: 'pending', label: 'Pending', summary: 'Optional AI review has not started yet.' };
+    }
+
+    function phaseIndex(key) {
+      return phaseDefinitions.findIndex((phase) => phase.key === key);
     }
 
     function humanizeUploadError(message) {
@@ -2961,10 +2722,10 @@
 
       const llmEnabled = resultData?.llm_enabled ?? enableLlmCheckbox.checked;
       const targetDurationMs = activeKey === 'llm'
-        ? 2200
+        ? 1000
         : activeKey === 'finalizing' && !llmEnabled
-          ? 700
-          : 1400;
+          ? 1000
+          : 1000;
       const elapsed = Date.now() - activePhaseSince;
       return Math.max(8, Math.min(92, Math.round((elapsed / targetDurationMs) * 100)));
     }
@@ -2983,25 +2744,34 @@
     }
 
     function renderPhaseTracker(activeKey, trailer = '', progressLines = [], resultData = null) {
-      if (activeKey === 'idle' || activeKey === 'complete') {
-        activePhaseSince = 0;
-      } else if (phaseTracker.getAttribute('data-active-phase') !== activeKey) {
-        activePhaseSince = Date.now();
-      }
-
       const aiReviewOutcome = getAiReviewOutcome(progressLines, resultData);
       const observedPhases = getObservedPhaseKeys(progressLines, trailer, resultData);
+      const normalizedActiveKey = activeKey === 'llm' && aiReviewOutcome.state !== 'active'
+        ? 'finalizing'
+        : activeKey;
+      if (normalizedActiveKey === 'idle' || normalizedActiveKey === 'complete') {
+        activePhaseSince = 0;
+        activePhaseKey = normalizedActiveKey;
+      } else if (activePhaseKey !== normalizedActiveKey) {
+        activePhaseSince = Date.now();
+        activePhaseKey = normalizedActiveKey;
+      }
       const activeFillProgress = getPhaseFillProgress(activeKey, resultData);
+      const activeIndex = phaseIndex(normalizedActiveKey);
       phaseTracker.innerHTML = phaseDefinitions.map((phase, index) => {
-        let state = observedPhases.has(phase.key) ? 'complete' : activeKey === phase.key ? 'active' : 'pending';
+        let state = observedPhases.has(phase.key) ? 'complete' : normalizedActiveKey === phase.key ? 'active' : 'pending';
         let stateLabel = state === 'complete' ? 'Complete' : state === 'active' ? 'In progress' : state === 'skipped' ? 'Skipped' : 'Pending';
         if (phase.key === 'llm') {
           state = aiReviewOutcome.state;
           stateLabel = aiReviewOutcome.label;
-          if (activeKey !== 'llm' && state === 'active') {
+          if (normalizedActiveKey !== 'llm' && state === 'active') {
             state = 'pending';
             stateLabel = 'Pending';
           }
+        }
+        if (state === 'pending' && activeIndex > phaseIndex(phase.key)) {
+          state = 'complete';
+          stateLabel = 'Complete';
         }
         const extraClass = state === 'complete' ? ' is-complete' : state === 'active' ? ' is-active' : state === 'skipped' ? ' is-skipped' : state === 'filling' ? ' is-filling' : '';
         const fillProgress = state === 'complete' ? '100%' : state === 'active' ? `${activeFillProgress}%` : '0%';
@@ -3013,8 +2783,8 @@
           </article>
         `;
       }).join('');
-      phaseTracker.setAttribute('data-active-phase', activeKey);
-      phaseTracker.setAttribute('aria-label', trailer && activeKey === 'complete' ? `Evaluation phases. ${trailer}` : 'Evaluation phases');
+      phaseTracker.setAttribute('data-active-phase', normalizedActiveKey);
+      phaseTracker.setAttribute('aria-label', trailer && normalizedActiveKey === 'complete' ? `Evaluation phases. ${trailer}` : 'Evaluation phases');
     }
 
     function formatProgressLine(line) {
@@ -3049,7 +2819,10 @@
     }
 
     function refreshAnimatedProgress() {
-      return;
+      if (!jobInFlight) {
+        return;
+      }
+      renderPhaseTracker(inferPhaseKey(lastProgressLines, lastProgressTrailer), lastProgressTrailer, lastProgressLines, latestResult);
     }
 
     function escapeHtml(value) {
@@ -3133,23 +2906,6 @@
           return 'OpenAI';
         default:
           return 'Anthropic Claude';
-      }
-    }
-
-    async function loadVersion() {
-      if (!footerVersion) {
-        return;
-      }
-      try {
-        const response = await fetch('/version', { cache: 'no-store' });
-        if (!response.ok) {
-          throw new Error('version unavailable');
-        }
-        const payload = await response.json();
-        const commit = String(payload.commit || payload.version || '').trim();
-        footerVersion.textContent = commit ? `Deployed version: ${commit.slice(0, 7)}` : 'Deployed version: unavailable';
-      } catch (error) {
-        footerVersion.textContent = 'Deployed version: unavailable';
       }
     }
 
@@ -3334,12 +3090,50 @@
       results.classList.remove('hidden');
     }
 
+    function renderFailedResult(jobId, progressLines = [], message = 'Evaluation failed.') {
+      latestResult = null;
+      loadingResultsVisible = false;
+      results.classList.remove('loading');
+      results.innerHTML = `
+        <div class="results-top">
+          <article class="result-card metric-card score-card failed-result-card">
+            <span class="result-label">Overall result</span>
+            <div class="score-card-top">
+              <div class="score-tier-stack">
+                <div class="score-number poor">Fail</div>
+                <div class="tier-badge poor">Evaluation Failed</div>
+              </div>
+              <div class="score-card-skill">
+                <h3 class="score-card-name">Run did not complete</h3>
+                <p class="score-card-description">${escapeHtml(message)}</p>
+              </div>
+            </div>
+          </article>
+          <article class="result-card json-card">
+            <div class="json-card-head">
+              <div>
+                <span class="result-label">Failure details</span>
+                <div class="result-meta">Latest progress and terminal message for this failed run.</div>
+              </div>
+            </div>
+            <pre class="json-result-view">${syntaxHighlightJson({ job_id: jobId, status: 'error', message, progress: progressLines })}</pre>
+          </article>
+        </div>
+
+        <article class="summary-card failed-result-card">
+          <span class="result-label">Next step</span>
+          <p class="result-summary">Fix the reported issue and run the evaluation again. The progress log above shows the last completed step before failure.</p>
+        </article>
+      `;
+      results.classList.remove('hidden');
+    }
+
     async function pollForResult(jobId) {
       if (pollTimer) {
         clearInterval(pollTimer);
       }
 
-      renderProgress(jobId, ['Upload accepted.', 'Polling for progress every 2s...']);
+      renderProgress(jobId, ['Upload accepted.', 'Polling for progress every 1s...']);
 
       pollTimer = setInterval(async () => {
         try {
@@ -3357,9 +3151,8 @@
           setJobRunning(false);
 
           if (!response.ok || data.status === 'error') {
-            loadingResultsVisible = false;
-            results.classList.remove('loading');
             renderProgress(jobId, data.progress || [], data.message || data.error || 'Evaluation failed.');
+            renderFailedResult(jobId, data.progress || [], data.message || data.error || 'Evaluation failed.');
             statusBox.classList.add('error');
             void releaseJobState(jobId);
             return;
@@ -3377,7 +3170,7 @@
           renderProgress(jobId, lastProgressLines.length ? lastProgressLines : ['Upload accepted.'], error.message || 'Network error while checking the result.');
           statusBox.classList.add('error');
         }
-      }, 2000);
+      }, 1000);
     }
 
     async function uploadFiles() {
@@ -3564,7 +3357,6 @@
       });
     });
     enableLlmCheckbox.addEventListener('change', syncProviderControls);
-    loadVersion();
     syncProviderControls();
     uploadButton.addEventListener('click', uploadFiles);
     clearButton.addEventListener('click', () => {
@@ -3583,11 +3375,7 @@
       setJobRunning(false);
     });
 
-    window.setInterval(() => {
-      if (jobInFlight) {
-        renderPhaseTracker(inferPhaseKey(lastProgressLines, lastProgressTrailer), lastProgressTrailer, lastProgressLines, latestResult);
-      }
-    }, 250);
+    window.setInterval(refreshAnimatedProgress, 250);
   </script>
 </body>
 </html>

@@ -1,0 +1,12 @@
+#!/bin/sh
+
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+
+if command -v make >/dev/null 2>&1; then
+  printf '%s\n' '[post-commit] restarting local app to load latest commit...'
+  make -C "$repo_root" restart
+else
+  printf '%s\n' '[post-commit] make not found, skipping restart' >&2
+fi

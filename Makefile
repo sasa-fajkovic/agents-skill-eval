@@ -1,4 +1,4 @@
-.PHONY: start stop restart build test image image-app health
+.PHONY: start stop restart build test image image-app health install-hooks
 
 PORT ?= 18080
 REDIS_ADDR ?= 127.0.0.1:6379
@@ -49,3 +49,9 @@ image-app:
 
 health:
 	@curl -fsS http://127.0.0.1:$(PORT)/health
+
+install-hooks:
+	@mkdir -p .git/hooks
+	@cp .githooks/post-commit .git/hooks/post-commit
+	@chmod +x .git/hooks/post-commit
+	@echo "installed git post-commit hook"

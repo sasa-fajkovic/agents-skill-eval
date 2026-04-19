@@ -39,13 +39,16 @@ const (
 	evalTimeout      = 2 * time.Minute
 	maxMemoryBytes   = 256
 	maxQueueDepth    = 50
-	rateLimitMax     = 20
-	rateLimitTTL     = time.Hour
+	rateLimitHourlyMax = 100
+	rateLimitHourlyTTL = time.Hour
+	rateLimitDailyMax  = 500
+	rateLimitDailyTTL  = 24 * time.Hour
 	llmRateLimitMax  = 10
 	llmRateLimitTTL  = 24 * time.Hour
 	maxActiveJobsPerIP = 2
 	githubFetchLimit = 5 << 20
 	maxProgressLines = 200
+	deterministicEvalTimeout = 30 * time.Second
 )
 
 var (
@@ -558,20 +561,37 @@ func (app *application) uploadAbuseProtection(next http.Handler) http.Handler {
 		}
 
 		ip := clientIP(r)
-		key := "ratelimit:" + ip
-		count, err := app.rdb.Incr(r.Context(), key).Result()
+		hourlyKey := "ratelimit:hourly:" + ip
+		hourlyCount, err := app.rdb.Incr(r.Context(), hourlyKey).Result()
 		if err != nil {
-			captureInfraEvent("rate_limit_check_failed", err, map[string]string{"component": "redis", "stage": "rate_limit"})
+			captureInfraEvent("rate_limit_check_failed", err, map[string]string{"component": "redis", "stage": "rate_limit_hourly"})
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "rate limit check failed"})
 			return
 		}
-		if count == 1 {
-			if err := app.rdb.Expire(r.Context(), key, rateLimitTTL).Err(); err != nil {
-				captureInfraEvent("rate_limit_expire_failed", err, map[string]string{"component": "redis", "stage": "rate_limit_expire"})
+		if hourlyCount == 1 {
+			if err := app.rdb.Expire(r.Context(), hourlyKey, rateLimitHourlyTTL).Err(); err != nil {
+				captureInfraEvent("rate_limit_expire_failed", err, map[string]string{"component": "redis", "stage": "rate_limit_hourly_expire"})
 			}
 		}
-		if count > rateLimitMax {
-			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
+		if hourlyCount > rateLimitHourlyMax {
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "hourly evaluation rate limit exceeded"})
+			return
+		}
+
+		dailyKey := "ratelimit:daily:" + ip
+		dailyCount, err := app.rdb.Incr(r.Context(), dailyKey).Result()
+		if err != nil {
+			captureInfraEvent("rate_limit_check_failed", err, map[string]string{"component": "redis", "stage": "rate_limit_daily"})
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "rate limit check failed"})
+			return
+		}
+		if dailyCount == 1 {
+			if err := app.rdb.Expire(r.Context(), dailyKey, rateLimitDailyTTL).Err(); err != nil {
+				captureInfraEvent("rate_limit_expire_failed", err, map[string]string{"component": "redis", "stage": "rate_limit_daily_expire"})
+			}
+		}
+		if dailyCount > rateLimitDailyMax {
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "daily evaluation rate limit exceeded"})
 			return
 		}
 
@@ -646,7 +666,11 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 	app.incrementActiveJob(parent, job.ClientIP)
 	_ = app.appendProgress(parent, job.JobID, "Worker picked up job.")
 
-	ctx, cancel := context.WithTimeout(parent, evalTimeout)
+	timeout := evalTimeout
+	if !job.EnableLLM {
+		timeout = deterministicEvalTimeout
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	_ = app.appendProgress(parent, job.JobID, "Starting evaluator...")
 	cmd := exec.CommandContext(ctx, "python3", "/app/skill-evaluation/scripts/eval.py", job.InputDir, "--ci")

@@ -1401,3 +1401,90 @@ func TestHandleUploadSurfacesGitHubRateLimitAsServiceUnavailable(t *testing.T) {
 		t.Fatalf("unexpected body: %s", rr.Body.String())
 	}
 }
+
+func TestLimitMiddlewareRejectsHourlyEvaluationBurst(t *testing.T) {
+	ctx := context.Background()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	app := &application{rdb: rdb}
+
+    handler := app.uploadAbuseProtection(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	ip := "198.51.100.10"
+	if err := rdb.Set(ctx, "ratelimit:hourly:"+ip, rateLimitHourlyMax, time.Hour).Err(); err != nil {
+		t.Fatalf("seed hourly rate limit: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader("enableLlm=false"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = ip + ":1234"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "hourly evaluation rate limit exceeded") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestLimitMiddlewareRejectsDailyEvaluationBurst(t *testing.T) {
+	ctx := context.Background()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	app := &application{rdb: rdb}
+
+    handler := app.uploadAbuseProtection(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	ip := "198.51.100.20"
+	if err := rdb.Set(ctx, "ratelimit:daily:"+ip, rateLimitDailyMax, 24*time.Hour).Err(); err != nil {
+		t.Fatalf("seed daily rate limit: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader("enableLlm=false"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = ip + ":1234"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "daily evaluation rate limit exceeded") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestLimitMiddlewareKeepsStrictLLMLimit(t *testing.T) {
+	ctx := context.Background()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	app := &application{rdb: rdb}
+
+    handler := app.uploadAbuseProtection(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	ip := "198.51.100.30"
+	if err := rdb.Set(ctx, "ratelimit:llm:"+ip, llmRateLimitMax, 24*time.Hour).Err(); err != nil {
+		t.Fatalf("seed llm rate limit: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader("enableLlm=true"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.RemoteAddr = ip + ":1234"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "optional AI review rate limit exceeded") {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
