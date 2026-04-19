@@ -737,6 +737,58 @@
       min-width: 0;
     }
 
+    .skill-download-callout {
+      display: grid;
+      gap: 14px;
+      padding: 20px 22px;
+      border-radius: 22px;
+      border: 1px solid rgba(239, 68, 68, 0.22);
+      background: linear-gradient(180deg, rgba(36, 11, 16, 0.82), rgba(17, 10, 14, 0.76));
+    }
+
+    .skill-download-copy {
+      display: grid;
+      gap: 8px;
+    }
+
+    .skill-download-copy strong {
+      font-size: 20px;
+      letter-spacing: -0.03em;
+    }
+
+    .skill-download-copy p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 72ch;
+      line-height: 1.75;
+    }
+
+    .skill-download-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .skill-download-link {
+      border-color: rgba(239, 68, 68, 0.3);
+      background: linear-gradient(180deg, rgba(239, 68, 68, 0.18), rgba(127, 29, 29, 0.16));
+      color: #fee2e2;
+    }
+
+    .skill-download-link:hover {
+      border-color: rgba(248, 113, 113, 0.48);
+      background: linear-gradient(180deg, rgba(239, 68, 68, 0.24), rgba(127, 29, 29, 0.2));
+    }
+
+    .skill-download-meta {
+      color: var(--subtle);
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
     .entry-copy {
       margin: 0;
       color: var(--muted);
@@ -2111,6 +2163,21 @@
       box-shadow: none;
     }
 
+    html[data-theme="light"] .skill-download-callout {
+      border-color: rgba(239, 68, 68, 0.18);
+      background: linear-gradient(180deg, rgba(254, 242, 242, 0.98), rgba(255, 255, 255, 0.98));
+    }
+
+    html[data-theme="light"] .skill-download-link {
+      border-color: rgba(239, 68, 68, 0.2);
+      background: linear-gradient(180deg, rgba(254, 226, 226, 0.96), rgba(254, 242, 242, 0.94));
+      color: #991b1b;
+    }
+
+    html[data-theme="light"] .skill-download-meta {
+      color: #64748b;
+    }
+
     html[data-theme="light"] .button-secondary {
       background: #f8fafc;
       color: var(--text);
@@ -2628,6 +2695,18 @@
               </div>
             </article>
           </div>
+
+          <section class="skill-download-callout" aria-label="Download the evaluation skill">
+            <div class="skill-download-copy">
+              <span class="field-label">Download the skill</span>
+              <strong>Use the same evaluator locally in your own agent setup.</strong>
+              <p>This site is also backed by a reusable <code>skill-evaluation</code> package. Download the full folder from GitHub if you want to run the evaluator directly outside the hosted web app.</p>
+            </div>
+            <div class="skill-download-actions">
+              <a class="button skill-download-link" href="https://github.com/sasa-fajkovic/agents-skill-eval/tree/main/.claude/skills/skill-evaluation" target="_blank" rel="noreferrer">Open skill folder on GitHub</a>
+              <span class="skill-download-meta">Keep <code>SKILL.md</code>, <code>scripts/</code>, and <code>references/</code> together</span>
+            </div>
+          </section>
 
           <div class="llm-option">
             <label for="enable-llm">
