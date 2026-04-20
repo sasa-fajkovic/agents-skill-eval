@@ -2,14 +2,20 @@ from __future__ import annotations
 
 import re
 
-from common import DESTRUCTIVE_OPS, MCP_NEGATION, MCP_REFERENCE, SAFEGUARD, UNSCOPED_TOOL, Finding
+from common import DESTRUCTIVE_OPS, MCP_NEGATION, MCP_REFERENCE, SAFEGUARD, SCOPED_TOOL_CONTEXT, UNSCOPED_TOOL, Finding
 from extract import entrypoint_scripts, read_text_file
 
 
 def check_2_1(body: str) -> list[Finding]:
     findings = []
+    lines = body.split("\n")
     for match in UNSCOPED_TOOL.finditer(body):
         line_num = body[:match.start()].count("\n") + 1
+        context_start = max(0, line_num - 1)
+        context_end = min(len(lines), line_num + 3)
+        context = "\n".join(lines[context_start:context_end])
+        if SCOPED_TOOL_CONTEXT.search(context):
+            continue
         findings.append(Finding("2.1", "WARN", f'line {line_num}: unscoped tool instruction "{match.group().strip()}"'))
     return findings
 

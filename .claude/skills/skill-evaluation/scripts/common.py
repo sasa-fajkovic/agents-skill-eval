@@ -94,7 +94,7 @@ DESTRUCTIVE_OPS = re.compile(
     r"\brm\b|\brm -rf\b|--force\b|-f\b.*push|push --force|"
     r"reset --hard|checkout -- \.|restore \.|branch -D\b|"
     r"\bdelete\b|\bremove\b|\bdrop table\b|\btruncate\b|"
-    r"\boverwrite\b|\bkill\b|\bpkill\b",
+    r"\boverwrite\b|\breplace\b|\bkill\b|\bpkill\b",
     re.IGNORECASE,
 )
 SAFEGUARD = re.compile(
@@ -146,7 +146,13 @@ VERBOSE_PROSE = re.compile(
 STANDARD_TOOL_TUTORIAL = re.compile(
     r"(?i)(to check .* run `?git status`?|pipe the output to jq|"
     r"the `-[a-z]` flag|use `?\$\(.+?\)`? for command substitution|"
-    r"send a post request with content-type: application/json)"
+    r"send a post request with content-type: application/json|"
+    r"to clone .* run `?git clone`?|use `?grep`? to search|"
+    r"use `?curl`? to (?:fetch|download|make)|"
+    r"the `?--\w+`? (?:flag|option) (?:makes?|causes?|tells?|enables?)|"
+    r"redirect (?:stdout|stderr|output) (?:to|with|using)|"
+    r"use `?chmod`? to (?:change|set|make)|"
+    r"use `?mkdir`? to create (?:a )?director)"
 )
 PRELOAD_REFERENCE = re.compile(
     r"(?i)(read all files in references/|load references/ first|start by reading every file in references/|"
@@ -154,15 +160,45 @@ PRELOAD_REFERENCE = re.compile(
 )
 AMBIGUOUS_LANGUAGE = re.compile(
     r"(?i)\b(appropriately|as needed|relevant|suitable|proper|reasonable|"
-    r"when necessary|if applicable|the correct format|the standard approach|concise|clear|well-structured)\b"
+    r"when necessary|if applicable|the correct format|the standard approach|concise|clear|well-structured|"
+    r"handle errors|clean up|prepare the environment|set up the environment)\b"
+)
+CONTEXT_QUALIFICATION = re.compile(
+    r"\([^)]*\d[^)]*\)|\bexample\b|:\s*`|:\s*\"|\bsuch as\b|\bi\.e\.\b|\be\.g\.\b|\bspecifically\b"
 )
 NEGATIVE_ONLY = re.compile(r"(?i)\b(don't|do not|never|avoid|must not)\b")
 POSITIVE_ALTERNATIVE = re.compile(r"(?i)\b(use|write|prefer|instead|choose|return|format|do .* not)\b")
 DEFAULT_BEHAVIOR = re.compile(r"(?i)(defaults to|if omitted|if not provided|required|when omitted|must provide|optional)")
 IDEMPOTENT_GUARD = re.compile(r"(?i)(if not exists|if missing|already exists|mkdir -p|ensure|idempotent|skip if|update if)")
-NON_IDEMPOTENT_OP = re.compile(r"(?i)(>>|\bmkdir\s+(?!-p)\S|\bcurl\s+.*-x\s+post|\bgh pr create\b|\bacli\s+jira\s+workitem\s+create\b)")
+NON_IDEMPOTENT_OP = re.compile(r"(?i)(>>|\bmkdir\s+(?!-p)\S|\bcurl\s+.*-x\s+post|\bgh pr create\b|\bacli\s+jira\s+workitem\s+create\b|\binsert\s+into\b|\bPOST\s+/|\btouch\s+>|\becho\s+.*>>)")
 OUTPUT_OR_FORMAT = re.compile(r"(?i)(^#{1,3}\s+output\b|output format|format as|use the following format|template|tone guidance)")
 SUCCESS_CRITERIA = re.compile(r"(?i)(^#{1,3}\s+output\b|done when|complete when|completion condition|returns?\b|produces?\b)")
+SCOPED_TOOL_CONTEXT = re.compile(
+    r"(?i)(only (?:use |the following |these )|"
+    r"(?:allowed|permitted) (?:commands|tools|operations)|"
+    r":\s*`[^`]+`|"
+    r"(?:use|run)\s+`[^`]+`|"
+    r"limited to\b|restricted to\b|"
+    r"(?:do not|don't|never|must not) (?:use|run|execute)\b)"
+)
+TOOL_DELEGATION = re.compile(
+    r"(?i)(use `?(?:gh|git|curl|jq|acli|kubectl|docker|npm|yarn)\b|"
+    r"delegates? (?:to|formatting|output)|"
+    r"handled by|"
+    r"exit code|return code|exit status)"
+)
+SCRIPT_COMPLEXITY = re.compile(
+    r"(?m)(^\s*(?:if|elif|else|for|while|case|match)\b|"
+    r"\bdef\s+\w+|"
+    r"try:|except:|"
+    r"\bsed\b.*\bs/|"
+    r"\bawk\b|"
+    r"\beval\b|"
+    r"\$\{.*[#%/])"
+)
+SCRIPT_WORTHINESS = re.compile(
+    r"(\||&&|curl\s|wget\s|\bfor\b|\bwhile\b|\bif\b|\bawk\b|\bsed\b|\bjq\b|\byq\b)"
+)
 
 
 class Finding:

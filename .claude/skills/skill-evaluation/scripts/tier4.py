@@ -4,6 +4,7 @@ import re
 
 from common import (
     AMBIGUOUS_LANGUAGE,
+    CONTEXT_QUALIFICATION,
     DEFAULT_BEHAVIOR,
     IDEMPOTENT_GUARD,
     NEGATIVE_ONLY,
@@ -11,6 +12,7 @@ from common import (
     OUTPUT_OR_FORMAT,
     POSITIVE_ALTERNATIVE,
     SUCCESS_CRITERIA,
+    TOOL_DELEGATION,
     Finding,
 )
 from extract import entrypoint_scripts, extract_output_section, has_nearby_example, read_text_file
@@ -20,9 +22,11 @@ def check_4_1(body: str) -> list[Finding]:
     findings = []
     for line_num, line in enumerate(body.splitlines(), start=1):
         stripped = line.strip()
-        if not stripped or stripped.startswith(("#", "```")):
+        if not stripped or stripped.startswith(("#", "```", "|", "-")):
             continue
         if AMBIGUOUS_LANGUAGE.search(stripped):
+            if CONTEXT_QUALIFICATION.search(stripped):
+                continue
             findings.append(Finding("4.1", "WARN", f"line {line_num}: instruction may be ambiguous or underspecified"))
     return findings
 
@@ -32,9 +36,13 @@ def check_4_2(body: str) -> list[Finding]:
     lines = body.splitlines()
     output_line, output_section = extract_output_section(body)
     if output_section and not re.search(r"(?i)\bexample\b|```", output_section):
-        findings.append(Finding("4.2", "WARN", f"line {output_line}: output requirements are present without a concrete example"))
+        if not TOOL_DELEGATION.search(output_section):
+            findings.append(Finding("4.2", "WARN", f"line {output_line}: output requirements are present without a concrete example"))
     for index, line in enumerate(lines):
         if OUTPUT_OR_FORMAT.search(line) and not has_nearby_example(lines, index):
+            context = "\n".join(lines[max(0, index - 2):min(len(lines), index + 3)])
+            if TOOL_DELEGATION.search(context):
+                continue
             findings.append(Finding("4.2", "WARN", f"line {index + 1}: output or formatting guidance lacks a nearby concrete example"))
     return findings
 
@@ -54,7 +62,14 @@ def check_4_3(body: str) -> list[Finding]:
 def check_4_4(body: str) -> list[Finding]:
     findings = []
     lines = body.splitlines()
+    in_fence = False
     for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
         if "$ARGUMENTS" in line or re.search(r"\$[0-9]+", line) or re.search(r"--[a-z0-9-]+", line, re.IGNORECASE):
             context = "\n".join(lines[max(0, index - 2): min(len(lines), index + 3)])
             if not DEFAULT_BEHAVIOR.search(context):
@@ -82,16 +97,22 @@ def check_4_6(body: str) -> list[Finding]:
 
 def check_4_7(skill_dir: str) -> list[Finding]:
     findings = []
+    exit_code_doc = re.compile(r"(?i)(exit code|return code|exit status|exits? with)")
     for script_path, display in entrypoint_scripts(skill_dir):
         try:
             content = read_text_file(script_path)
         except (OSError, UnicodeDecodeError):
             continue
+        has_exit_doc = bool(exit_code_doc.search(content))
         if script_path.suffix == ".py":
             if "sys.exit(" in content and not re.search(r"sys\.exit\((2|3|4|5|6|7|8|9)", content):
+                if has_exit_doc:
+                    continue
                 findings.append(Finding("4.7", "WARN", f"{display} appears to use only basic exit codes; document and use more specific exit codes where meaningful"))
         elif script_path.suffix == ".sh":
             if "exit " in content and not re.search(r"\bexit\s+(2|3|4|5|6|7|8|9)\b", content):
+                if has_exit_doc:
+                    continue
                 findings.append(Finding("4.7", "WARN", f"{display} appears to use only basic exit codes; document and use more specific exit codes where meaningful"))
     return findings
 

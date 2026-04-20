@@ -13,6 +13,7 @@ from common import (
     MAX_LINES,
     MAX_NAME_LEN,
     NAME_RE,
+    SCRIPT_COMPLEXITY,
     STABLE_FIELDS,
     STRUCTURED_OUTPUT,
     WHEN_PHRASES,
@@ -78,11 +79,16 @@ def check_1_3(fm: dict) -> list[Finding]:
 
 def check_1_4(fm: dict) -> list[Finding]:
     findings = []
-    if "license" in fm and not isinstance(fm["license"], str):
-        findings.append(Finding("1.4", "ERROR", f"license must be a string, got {type(fm['license']).__name__}"))
+    if "license" in fm:
+        if not isinstance(fm["license"], str):
+            findings.append(Finding("1.4", "ERROR", f"license must be a string, got {type(fm['license']).__name__}"))
+        elif not fm["license"].strip():
+            findings.append(Finding("1.4", "ERROR", "license is present but empty"))
     if "compatibility" in fm:
         if not isinstance(fm["compatibility"], str):
             findings.append(Finding("1.4", "ERROR", f"compatibility must be a string, got {type(fm['compatibility']).__name__}"))
+        elif not fm["compatibility"].strip():
+            findings.append(Finding("1.4", "ERROR", "compatibility is present but empty"))
         elif len(fm["compatibility"]) > MAX_COMPAT_LEN:
             findings.append(Finding("1.4", "ERROR", f"compatibility is {len(fm['compatibility'])} chars (max {MAX_COMPAT_LEN})"))
     if "metadata" in fm:
@@ -128,7 +134,16 @@ def check_1_7(skill_dir: str) -> list[Finding]:
         stem = script_path.stem
         expected = tests_dir / (f"{stem}.bats" if script_path.suffix == ".sh" else f"test_{stem}.py")
         if not expected.exists():
-            findings.append(Finding("1.7", "WARN", f"{display} has no matching test file (expected {expected.relative_to(Path(skill_dir))})"))
+            try:
+                content = read_text_file(script_path)
+            except (OSError, UnicodeDecodeError):
+                content = ""
+            line_count = len(content.splitlines())
+            has_complexity = bool(SCRIPT_COMPLEXITY.search(content))
+            if line_count > 30 or (has_complexity and line_count > 20):
+                findings.append(Finding("1.7", "ERROR", f"{display} has no matching test file (expected {expected.relative_to(Path(skill_dir))}); script is {line_count} lines with conditional/loop logic — tests are required"))
+            else:
+                findings.append(Finding("1.7", "WARN", f"{display} has no matching test file (expected {expected.relative_to(Path(skill_dir))})"))
     return findings
 
 

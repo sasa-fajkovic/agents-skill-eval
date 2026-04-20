@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import difflib
 
-from common import MCP_NEGATION, MCP_REFERENCE, PRELOAD_REFERENCE, STANDARD_TOOL_TUTORIAL, VERBOSE_PROSE, Finding
+from common import MCP_NEGATION, MCP_REFERENCE, PRELOAD_REFERENCE, SCRIPT_WORTHINESS, STANDARD_TOOL_TUTORIAL, VERBOSE_PROSE, Finding
 from extract import body_paragraphs, fenced_code_blocks, normalize_text_block
 
 
 def check_3_1(body: str) -> list[Finding]:
+    executable_langs = {"bash", "sh", "shell", "python", "py", "zsh", "fish", ""}
     findings = []
     for start, end, lang, content in fenced_code_blocks(body):
         lines = [line for line in content.splitlines() if line.strip()]
         if len(lines) <= 5:
             continue
-        if lang in {"json", "yaml", "yml", "text", "output"}:
+        if lang in {"json", "yaml", "yml", "text", "output", "markdown", "md"}:
+            continue
+        if lang not in executable_langs and not SCRIPT_WORTHINESS.search(content):
             continue
         findings.append(Finding("3.1", "WARN", f"code block at lines {start}-{end} is {len(lines)} lines; move long executable logic into scripts/"))
     return findings
@@ -69,6 +72,20 @@ def check_3_4(body: str) -> list[Finding]:
             similarity = difflib.SequenceMatcher(None, "\n".join(block_a), "\n".join(block_b)).ratio()
             if similarity >= 0.8:
                 findings.append(Finding("3.4", "WARN", f"code blocks at lines {start_a}-{end_a} and {start_b}-{end_b} are duplicated or near-duplicated"))
+
+    paragraphs = body_paragraphs(body)
+    long_paras = [(line_num, text) for line_num, text in paragraphs if len(text.split()) >= 10]
+    seen_prose = set()
+    for index, (line_a, text_a) in enumerate(long_paras):
+        for line_b, text_b in long_paras[index + 1:]:
+            key = (line_a, line_b)
+            if key in seen_prose:
+                continue
+            seen_prose.add(key)
+            similarity = difflib.SequenceMatcher(None, text_a.lower(), text_b.lower()).ratio()
+            if similarity >= 0.8:
+                findings.append(Finding("3.4", "WARN", f"prose near line {line_a} and line {line_b} are near-duplicated"))
+
     return findings
 
 
