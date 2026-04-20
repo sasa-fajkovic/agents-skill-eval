@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir anthropic openai PyPDF2 python-docx
 
 WORKDIR /app
 COPY --from=backend-build /out/app /app/bin/app
+COPY backend/config.json /app/config.json
 COPY frontend /app/frontend
 COPY .claude/skills/skill-evaluation /app/skill-evaluation
 
