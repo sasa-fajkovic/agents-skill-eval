@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -56,7 +57,11 @@ def quality_tier_for(findings: list[Finding]) -> str:
 def overall_score_for(findings: list[Finding]) -> int:
     errors = sum(1 for finding in findings if finding.severity == "ERROR")
     warnings = sum(1 for finding in findings if finding.severity == "WARN")
-    score = 100 - min(errors * 14, 70) - min(warnings * 3, 24)
+    error_penalty = int(os.environ.get("EVAL_ERROR_PENALTY", "5"))
+    error_cap = int(os.environ.get("EVAL_ERROR_CAP", "70"))
+    warning_penalty = int(os.environ.get("EVAL_WARNING_PENALTY", "2"))
+    warning_cap = int(os.environ.get("EVAL_WARNING_CAP", "24"))
+    score = 100 - min(errors * error_penalty, error_cap) - min(warnings * warning_penalty, warning_cap)
     return max(0, min(100, score))
 
 

@@ -160,7 +160,15 @@ type pricingEntry struct {
 	OutputPerM float64 `json:"output_per_m"`
 }
 
+type scoringConfig struct {
+	ErrorPenalty   int `json:"error_penalty"`
+	ErrorCap       int `json:"error_cap"`
+	WarningPenalty int `json:"warning_penalty"`
+	WarningCap     int `json:"warning_cap"`
+}
+
 type appConfig struct {
+	Scoring   scoringConfig             `json:"scoring"`
 	Providers map[string]providerConfig `json:"providers"`
 	Pricing   map[string]pricingEntry   `json:"pricing"`
 }
@@ -800,7 +808,13 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 	_ = app.appendProgress(parent, job.JobID, "Starting evaluator...")
 	cmd := exec.CommandContext(ctx, "python3", app.evalScript, job.InputDir, "--ci")
 	cmd.Dir = app.evalWorkDir
-	cmd.Env = append(os.Environ(), "EVAL_PROGRESS_STDERR=1")
+	cmd.Env = append(os.Environ(),
+		"EVAL_PROGRESS_STDERR=1",
+		fmt.Sprintf("EVAL_ERROR_PENALTY=%d", app.cfg.Scoring.ErrorPenalty),
+		fmt.Sprintf("EVAL_ERROR_CAP=%d", app.cfg.Scoring.ErrorCap),
+		fmt.Sprintf("EVAL_WARNING_PENALTY=%d", app.cfg.Scoring.WarningPenalty),
+		fmt.Sprintf("EVAL_WARNING_CAP=%d", app.cfg.Scoring.WarningCap),
+	)
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		sentry.CaptureException(err)

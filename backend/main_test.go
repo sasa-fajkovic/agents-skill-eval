@@ -22,6 +22,7 @@ import (
 
 func testConfig() appConfig {
 	return appConfig{
+		Scoring: scoringConfig{ErrorPenalty: 5, ErrorCap: 70, WarningPenalty: 2, WarningCap: 24},
 		Providers: map[string]providerConfig{
 			"anthropic": {Model: "claude-haiku-4-5", MaxTokens: 1200, BaseURL: "https://api.anthropic.com/v1/messages"},
 			"openai":    {Model: "gpt-4.1-nano", MaxTokens: 1200, BaseURL: "https://api.openai.com/v1/chat/completions"},

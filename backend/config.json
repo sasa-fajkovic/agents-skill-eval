@@ -1,4 +1,10 @@
 {
+  "scoring": {
+    "error_penalty": 5,
+    "error_cap": 70,
+    "warning_penalty": 2,
+    "warning_cap": 24
+  },
   "providers": {
     "anthropic": {
       "model": "claude-haiku-4-5",
