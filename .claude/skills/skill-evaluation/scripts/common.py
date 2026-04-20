@@ -255,6 +255,20 @@ class Finding:
             "2.1": "Broad tool instructions make execution behavior ambiguous and harder to bound safely.",
             "2.2": "Destructive operations need explicit safeguards to avoid irreversible damage.",
             "2.3": "MCP-specific instructions reduce portability and tie the skill to one runtime integration surface.",
+            "3.1": "Long inline code blocks bloat the skill with tokens the agent must read on every call; moving them to scripts saves tokens and enables caching.",
+            "3.2": "Large lookup tables and reference data inflate the context window; moving them to reference files allows lazy on-demand loading.",
+            "3.3": "Explaining standard tool usage wastes tokens on knowledge the agent already has, adding noise without value.",
+            "3.4": "Duplicated content doubles the token cost for the same information and risks inconsistency when one copy is updated.",
+            "3.5": "Verbose prose that could be a single sentence wastes tokens and buries the actual instruction.",
+            "3.6": "Preloading all reference files defeats lazy loading, consuming tokens for data that may never be needed in a given invocation.",
+            "3.7": "MCP tool definitions add thousands of overhead tokens per API call; CLI alternatives cost a fraction and keep the skill portable.",
+            "4.1": "Ambiguous instructions force the agent to guess intent, leading to inconsistent or wrong behavior across runs.",
+            "4.2": "Without concrete input/output examples the agent must infer the expected format, increasing the chance of malformed output.",
+            "4.3": "Negative-only instructions tell the agent what to avoid but not what to do, leaving correct behavior undefined.",
+            "4.4": "Missing default behavior for optional flags means the agent has no defined action when the flag is omitted.",
+            "4.5": "Non-idempotent operations fail or produce duplicates when retried, and agents commonly retry on transient errors.",
+            "4.6": "Without success criteria the agent cannot determine when the task is complete, risking premature exit or infinite loops.",
+            "4.7": "Uniform exit codes (0/1 only) prevent the agent from distinguishing failure types and choosing the right recovery strategy.",
         }
         return reason_map.get(self.check_id, "This issue reduces portability, clarity, or reliability of the skill definition.")
 
