@@ -50,92 +50,10 @@
     }
   </script>
   <style>
-    :root {
-      color-scheme: dark;
-      --bg: #06070a;
-      --panel: rgba(11, 15, 20, 0.92);
-      --panel-strong: rgba(14, 19, 26, 0.98);
-      --panel-soft: rgba(16, 23, 34, 0.88);
-      --line: rgba(148, 163, 184, 0.16);
-      --line-strong: rgba(148, 163, 184, 0.28);
-      --text: #f8fafc;
-      --muted: #94a3b8;
-      --subtle: #64748b;
-      --brand: #ef4444;
-      --brand-soft: rgba(239, 68, 68, 0.14);
-      --good: #22c55e;
-      --good-soft: rgba(34, 197, 94, 0.16);
-      --poor: #f97316;
-      --poor-soft: rgba(249, 115, 22, 0.16);
-      --cyan: #38bdf8;
-      --shadow: 0 28px 60px rgba(0, 0, 0, 0.45);
-      --radius-lg: 26px;
-      --radius-md: 18px;
-      --radius-sm: 14px;
-      --mono: "SFMono-Regular", Menlo, Consolas, monospace;
-      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --shell: min(1360px, calc(100% - 28px));
-    }
-
-    * {
-      box-sizing: border-box;
-    }
+    /* Index-specific styles — base, cards, layout, and theme from shared.css */
 
     html {
       scroll-behavior: smooth;
-    }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: var(--sans);
-      color: var(--text);
-      background:
-        radial-gradient(circle at top left, rgba(239, 68, 68, 0.12), transparent 28%),
-        radial-gradient(circle at top right, rgba(34, 197, 94, 0.08), transparent 24%),
-        linear-gradient(180deg, #050608 0%, #06070a 52%, #070a0f 100%);
-    }
-
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background-image:
-        linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
-      background-size: 32px 32px;
-      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.35), transparent 82%);
-      opacity: 0.32;
-    }
-
-    a {
-      color: inherit;
-    }
-
-    code {
-      display: inline;
-      padding: 0.12em 0.44em;
-      border-radius: 12px;
-      border: 1px solid var(--line);
-      background: rgba(15, 23, 34, 0.68);
-      font-family: var(--mono);
-      font-size: 0.88em;
-      line-height: 1;
-      vertical-align: 0.02em;
-      white-space: nowrap;
-    }
-
-    h1 code,
-    h2 code,
-    h3 code {
-      padding: 0 0.14em;
-      border-radius: 0;
-      border-width: 0;
-      background: transparent;
-      font-size: 0.72em;
-      line-height: 1;
-      vertical-align: baseline;
     }
 
     .button,
@@ -184,12 +102,6 @@
       background: rgba(15, 23, 34, 0.92);
     }
 
-    .page {
-      display: grid;
-      gap: 28px;
-      padding: 16px 0 44px;
-    }
-
     .hero {
       display: grid;
       grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
@@ -199,7 +111,6 @@
 
     .hero-copy,
     .hero-visual,
-    .panel,
     .status-panel,
     .results .result-card,
     .results .summary-card {
@@ -220,7 +131,6 @@
 
     .hero-copy::before,
     .hero-visual::before,
-    .panel::before,
     .status-panel::before,
     .results .result-card::before,
     .results .summary-card::before {
@@ -231,50 +141,10 @@
       background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), transparent 45%);
     }
 
-    .eyebrow,
-    .section-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      width: fit-content;
-      padding: 7px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(239, 68, 68, 0.22);
-      background: rgba(239, 68, 68, 0.08);
-      color: #fca5a5;
-      font-family: var(--mono);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-
-    .eyebrow::before,
-    .section-label::before {
-      content: "";
-      width: 7px;
-      height: 7px;
-      border-radius: 999px;
-      background: currentColor;
-      box-shadow: 0 0 12px currentColor;
-    }
-
-    h1,
-    h2,
-    h3 {
-      margin: 0;
-      letter-spacing: -0.05em;
-    }
-
     h1 {
       max-width: 11ch;
       font-size: clamp(46px, 8vw, 84px);
       line-height: 0.94;
-    }
-
-    h2 {
-      font-size: clamp(28px, 5vw, 42px);
-      line-height: 0.98;
     }
 
     h3 {
@@ -552,24 +422,6 @@
       background: rgba(56, 189, 248, 0.06);
     }
 
-    .section {
-      display: grid;
-      gap: 18px;
-    }
-
-    .section-head {
-      display: grid;
-      gap: 12px;
-      max-width: 76ch;
-    }
-
-    .section-head p {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.8;
-      font-size: 16px;
-    }
-
     .workspace-grid,
     .steps-grid,
     .impact-grid,
@@ -692,9 +544,7 @@
     .workspace-panel,
     .upload-side,
     .step-card,
-    .impact-card,
     .preview-panel,
-    .faq-card,
     .results .result-card,
     .results .summary-card {
       padding: 24px;
@@ -1053,9 +903,13 @@
       inset: 0;
       width: var(--phase-fill-progress);
       pointer-events: none;
-      background: linear-gradient(90deg, rgba(56, 189, 248, 0.14), rgba(34, 197, 94, 0.16));
-      transition: width 180ms linear;
+      background: linear-gradient(90deg, rgba(34, 197, 94, 0.12), rgba(34, 197, 94, 0.18));
+      transition: width 280ms linear;
       z-index: 0;
+    }
+
+    .phase-chip.is-filling::before {
+      background: linear-gradient(90deg, rgba(34, 197, 94, 0.18), rgba(34, 197, 94, 0.28));
     }
 
     .phase-chip > * {
@@ -1534,7 +1388,6 @@
     }
 
     .step-card,
-    .impact-card,
     .faq-card {
       display: grid;
       gap: 14px;
@@ -1556,34 +1409,6 @@
       box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.22);
     }
 
-    .impact-grid {
-      grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(320px, 1fr));
-      align-items: stretch;
-    }
-
-    .chart-card {
-      gap: 18px;
-    }
-
-    .stat-strip {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-
-    .stat-token {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(15, 23, 34, 0.7);
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 12px;
-    }
-
     .impact-card > .section-label {
       padding: 0;
       border: 0;
@@ -1593,172 +1418,6 @@
 
     .impact-card > .section-label::before {
       box-shadow: none;
-    }
-
-    .chart-compare {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 16px;
-    }
-
-    .chart-group {
-      padding: 18px;
-      border-radius: 18px;
-      border: 1px solid var(--line);
-      background: rgba(15, 23, 34, 0.72);
-      display: grid;
-      gap: 16px;
-    }
-
-    .chart-group.poor {
-      border-color: rgba(249, 115, 22, 0.22);
-    }
-
-    .chart-group.good {
-      border-color: rgba(34, 197, 94, 0.22);
-    }
-
-    .chart-group strong {
-      font-size: 18px;
-    }
-
-    .chart-metrics {
-      display: grid;
-      gap: 16px;
-    }
-
-    .metric-row {
-      display: grid;
-      gap: 9px;
-    }
-
-    .metric-meta {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .metric-name {
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .metric-value {
-      font-family: var(--mono);
-      color: var(--text);
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      white-space: nowrap;
-    }
-
-    .metric-track {
-      position: relative;
-      height: 10px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(6, 10, 16, 0.78);
-      overflow: hidden;
-    }
-
-    .metric-fill {
-      height: 100%;
-      width: var(--fill-width, 50%);
-      border-radius: inherit;
-      transition: width 800ms cubic-bezier(.2, .9, .2, 1);
-    }
-
-    .metric-fill.poor {
-      background: #f97316;
-    }
-
-    .metric-fill.good {
-      background: #22c55e;
-    }
-
-    .js .chart-card:not(.is-visible) .metric-fill {
-      width: 0;
-    }
-
-    .gauge-shell {
-      display: grid;
-      gap: 16px;
-    }
-
-    .gauge-frame {
-      position: relative;
-      padding: 10px 8px 0;
-    }
-
-    .gauge-svg {
-      display: block;
-      width: 100%;
-      height: auto;
-      overflow: visible;
-    }
-
-    .gauge-track {
-      fill: none;
-      stroke: rgba(148, 163, 184, 0.14);
-      stroke-width: 18;
-      stroke-linecap: round;
-    }
-
-    .gauge-progress {
-      fill: none;
-      stroke: url(#gaugeGradient);
-      stroke-width: 18;
-      stroke-linecap: round;
-      stroke-dasharray: 314.159;
-      stroke-dashoffset: 18.85;
-      transition: stroke-dashoffset 1100ms cubic-bezier(.2, .9, .2, 1);
-    }
-
-    .gauge-value-wrap {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 14px;
-      display: grid;
-      justify-items: center;
-      gap: 4px;
-      text-align: center;
-    }
-
-    .gauge-value {
-      font-family: var(--mono);
-      font-size: 38px;
-      line-height: 1;
-      letter-spacing: -0.06em;
-      color: var(--text);
-    }
-
-    .gauge-range {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--subtle);
-    }
-
-    .stat-number {
-      font-family: var(--mono);
-      font-size: clamp(34px, 5vw, 54px);
-      line-height: 0.92;
-      letter-spacing: -0.08em;
-    }
-
-    .stat-number.warning {
-      color: #fdba74;
-    }
-
-    .stat-number.critical {
-      color: #fb923c;
     }
 
     .preview-grid {
@@ -1835,47 +1494,9 @@
       text-transform: uppercase;
     }
 
-    .terminal {
-      padding: 0;
-      overflow: hidden;
-      background: linear-gradient(180deg, rgba(7, 10, 14, 0.98), rgba(6, 8, 12, 1));
-    }
-
-    .terminal-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 14px 18px;
-      border-bottom: 1px solid var(--line);
-      background: rgba(15, 23, 34, 0.86);
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 12px;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-
-    .terminal-dots {
-      display: inline-flex;
-      gap: 6px;
-      align-items: center;
-    }
-
-    .terminal-dots span {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: rgba(148, 163, 184, 0.24);
-    }
-
     .terminal-body {
-      padding: 18px;
       display: grid;
       gap: 8px;
-      font-family: var(--mono);
-      font-size: 13px;
-      line-height: 1.8;
       color: #dbeafe;
     }
 
@@ -1897,83 +1518,15 @@
     .json-number { color: #f9a8d4; }
     .json-boolean { color: #fdba74; }
 
-    .faq-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .faq-card a {
-      color: #cbd5e1;
-      text-decoration: none;
-      font-family: var(--mono);
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .faq-card a:hover {
-      color: var(--text);
-    }
-
-    html[data-theme="light"] {
-      color-scheme: light;
-      --bg: #f3f4f6;
-      --panel: #ffffff;
-      --panel-strong: #ffffff;
-      --panel-soft: #f8fafc;
-      --line: rgba(15, 23, 42, 0.16);
-      --line-strong: rgba(15, 23, 42, 0.28);
-      --text: #111827;
-      --muted: #334155;
-      --subtle: #475569;
-      --brand: #dc2626;
-      --brand-soft: rgba(220, 38, 38, 0.1);
-      --good-soft: rgba(34, 197, 94, 0.12);
-      --poor-soft: rgba(249, 115, 22, 0.12);
-      --shadow: none;
-    }
-
-    html[data-theme="light"] body {
-      background:
-        radial-gradient(circle at top left, rgba(239, 68, 68, 0.05), transparent 22%),
-        linear-gradient(180deg, #f3f4f6 0%, #eef2f7 100%);
-    }
-
-    html[data-theme="light"] body::before {
-      background-image:
-        linear-gradient(rgba(15, 23, 42, 0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
-      opacity: 0.1;
-    }
-
-    html[data-theme="light"] code {
-      background: #f1f5f9;
-    }
-
-    html[data-theme="light"] h1 code,
-    html[data-theme="light"] h2 code,
-    html[data-theme="light"] h3 code {
-      background: transparent;
-    }
-
-    html[data-theme="light"] .eyebrow,
-    html[data-theme="light"] .section-label {
-      border-color: rgba(220, 38, 38, 0.2);
-      background: rgba(220, 38, 38, 0.07);
-      color: #dc2626;
-    }
-
     html[data-theme="light"] .hero-copy,
     html[data-theme="light"] .hero-visual,
-    html[data-theme="light"] .panel,
     html[data-theme="light"] .entry-card,
     html[data-theme="light"] .status-panel,
     html[data-theme="light"] .run-surface,
     html[data-theme="light"] .results .result-card,
     html[data-theme="light"] .results .summary-card,
     html[data-theme="light"] .step-card,
-    html[data-theme="light"] .impact-card,
-    html[data-theme="light"] .preview-panel,
-    html[data-theme="light"] .faq-card {
+    html[data-theme="light"] .preview-panel {
       background: #ffffff;
     }
 
@@ -2024,10 +1577,7 @@
     html[data-theme="light"] .checklist li,
     html[data-theme="light"] .phase-chip,
     html[data-theme="light"] .preview-checklist li,
-    html[data-theme="light"] .chart-group,
-    html[data-theme="light"] .metric-track,
-    html[data-theme="light"] .support-chip,
-    html[data-theme="light"] .stat-token {
+    html[data-theme="light"] .support-chip {
       background: #f8fafc;
     }
 
@@ -2084,7 +1634,11 @@
     }
 
     html[data-theme="light"] .phase-chip::before {
-      background: linear-gradient(90deg, rgba(56, 189, 248, 0.1), rgba(34, 197, 94, 0.14));
+      background: linear-gradient(90deg, rgba(34, 197, 94, 0.08), rgba(34, 197, 94, 0.14));
+    }
+
+    html[data-theme="light"] .phase-chip.is-filling::before {
+      background: linear-gradient(90deg, rgba(34, 197, 94, 0.14), rgba(34, 197, 94, 0.22));
     }
 
     html[data-theme="light"] .phase-chip.is-filling {
@@ -2155,42 +1709,10 @@
         linear-gradient(180deg, #ffffff, #f8fafc);
     }
 
-    html[data-theme="light"] .terminal {
-      background: #f8fafc;
-    }
-
-    html[data-theme="light"] .terminal-bar {
-      background: #e2e8f0;
-      color: #475569;
-    }
-
-    html[data-theme="light"] .terminal-dots span {
-      background: rgba(71, 85, 105, 0.28);
-    }
-
-    html[data-theme="light"] .terminal-body {
-      color: #0f172a;
-    }
-
     html[data-theme="light"] .json-key { color: #0f766e; }
     html[data-theme="light"] .json-string { color: #166534; }
     html[data-theme="light"] .json-number { color: #9d174d; }
     html[data-theme="light"] .json-boolean { color: #b45309; }
-
-    html[data-theme="light"] .faq-card a {
-      color: #334155;
-    }
-
-    .js [data-observe] {
-      opacity: 0;
-      transform: translateY(18px);
-      transition: opacity 540ms ease, transform 540ms ease;
-    }
-
-    .js [data-observe].is-visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
 
     .js [data-observe].terminal {
       opacity: 1;
@@ -2219,7 +1741,6 @@
     @media (max-width: 1080px) {
       .hero,
       .workspace-grid,
-      .impact-grid,
       .preview-grid {
         grid-template-columns: 1fr;
       }
@@ -2236,9 +1757,7 @@
       .run-phase-grid,
       .results-top,
       .results-grid,
-      .boundary-grid,
-      .faq-grid,
-      .chart-compare {
+      .boundary-grid {
         grid-template-columns: 1fr;
       }
 
@@ -2254,11 +1773,6 @@
         justify-items: center;
       }
 
-      .metric-meta {
-        align-items: flex-start;
-        flex-direction: column;
-      }
-
       .score-card-top {
         grid-template-columns: 1fr;
       }
@@ -2271,11 +1785,6 @@
     @media (max-width: 640px) {
       body {
         overflow-x: hidden;
-      }
-
-      .page {
-        gap: 22px;
-        padding-bottom: 36px;
       }
 
       .hero-copy,
@@ -2382,10 +1891,10 @@
         transition: none !important;
       }
 
-      .js [data-observe] {
-        opacity: 1;
-        transform: none;
-      }
+    .js [data-observe].terminal {
+      opacity: 1;
+      transform: none;
+    }
 
       .js .chart-card .bar-fill,
       .js .terminal .json-line {
@@ -2431,13 +1940,12 @@
               <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload a skill folder">
                 <div>
                   <strong>Drop a skill folder here.</strong>
-                  <p>Add one local folder with <code>SKILL.md</code> plus supporting files, or use the GitHub field above. Local uploads must be folders, not individual files.</p>
+                  <p>Add one local folder with <code>SKILL.md</code> plus supporting files, or use the GitHub URL field instead. Local uploads must be folders, not individual files.</p>
                 </div>
                 <div class="drop-meta" aria-label="Evaluation requirements">
                   <span class="support-chip">Single skill folder</span>
                   <span class="support-chip">Nested files preserved</span>
                   <span class="support-chip">5 MB max upload</span>
-                  <span class="support-chip">GitHub file or directory URLs</span>
                 </div>
               </div>
             </article>
@@ -2514,7 +2022,7 @@
       <a href="https://linkedin.com/in/sasa-fajkovic" target="_blank" rel="noreferrer">LinkedIn</a>
       <a href="https://sasa-fajkovic.com/" target="_blank" rel="noreferrer">sasa-fajkovic.com</a>
     </div>
-    <div class="footer-version" id="footer-version">Deployed version: loading</div>
+    <div class="footer-version" id="footer-version"></div>
   </footer>
 
   <script src="/static/shared.js"></script>
@@ -2542,13 +2050,18 @@
     let lastProgressJobId = '';
     let lastProgressLines = [];
     let lastProgressTrailer = '';
-    let activePhaseSince = 0;
-    let activePhaseKey = 'idle';
+    let phaseTargetIndex = -1;
+    let phaseFillIndex = -1;
+    let phaseFillStart = 0;
+    let phaseVisualDone = -1;
+    let evalDone = false;
+    let evalFailed = false;
+    const PHASE_FILL_MS = 1000;
     let jobInFlight = false;
     let latestResult = null;
     const phaseDefinitions = [
       { key: 'queued', step: '01', label: 'Queued' },
-      { key: 'worker', step: '02', label: 'Worker ready' },
+      { key: 'worker', step: '02', label: 'Evaluator assigned' },
       { key: 'sandbox', step: '03', label: 'Evaluator start' },
       { key: 'deterministic', step: '04', label: 'Deterministic checks' },
       { key: 'llm', step: '05', label: 'Optional AI review' },
@@ -2556,7 +2069,8 @@
       { key: 'complete', step: '07', label: 'Complete' },
     ];
 
-    renderPhaseTracker('idle');
+    resetPhaseState();
+    renderPhaseTracker();
 
     function fileDisplayPath(file) {
       return file.relativePath || file.webkitRelativePath || file.name;
@@ -2691,12 +2205,15 @@
       const combined = [...lines, trailer].join(' ');
       const observed = new Set();
 
-      if (/Upload accepted|Upload received|Job queued|Polling for progress|Waiting for worker/.test(combined)) observed.add('queued');
-      if (/Worker picked up job/.test(combined)) observed.add('worker');
+      if (/Upload accepted|Upload received|Run queued|Checking evaluation status|Waiting for evaluator/.test(combined)) observed.add('queued');
+      if (/Evaluator assigned/.test(combined)) observed.add('worker');
       if (/Starting evaluator/.test(combined)) observed.add('sandbox');
       if (/Preparing deterministic result/.test(combined)) observed.add('deterministic');
       if (/LLM evaluation|Optional LLM review completed/.test(combined) || resultData?.llm_analysis) observed.add('llm');
-      if (/Preparing final evaluation result/.test(combined)) observed.add('finalizing');
+      const llmActive = (resultData?.llm_enabled ?? enableLlmCheckbox.checked) &&
+        !/Optional LLM review completed|Optional LLM review failed|selected provider is not configured/i.test(combined) &&
+        !resultData;
+      if (/Preparing final evaluation result/.test(combined) && !llmActive) observed.add('finalizing');
       if (/Evaluation completed\./.test(combined)) observed.add('complete');
 
       if (resultData) {
@@ -2711,23 +2228,51 @@
       return observed;
     }
 
-    function getPhaseFillProgress(activeKey, resultData = null) {
-      if (!activeKey || activeKey === 'idle' || activeKey === 'complete') {
-        return 0;
-      }
-      if (!activePhaseSince) {
-        activePhaseSince = Date.now();
-        return 8;
-      }
+    function resetPhaseState() {
+      phaseTargetIndex = -1;
+      phaseFillIndex = -1;
+      phaseFillStart = 0;
+      phaseVisualDone = -1;
+      evalDone = false;
+      evalFailed = false;
+    }
 
-      const llmEnabled = resultData?.llm_enabled ?? enableLlmCheckbox.checked;
-      const targetDurationMs = activeKey === 'llm'
-        ? 1000
-        : activeKey === 'finalizing' && !llmEnabled
-          ? 1000
-          : 1000;
-      const elapsed = Date.now() - activePhaseSince;
-      return Math.max(8, Math.min(92, Math.round((elapsed / targetDurationMs) * 100)));
+    function updatePhaseTarget(progressLines, trailer, resultData) {
+      const observed = getObservedPhaseKeys(progressLines || [], trailer, resultData);
+      let highest = -1;
+      for (let i = 0; i < phaseDefinitions.length; i++) {
+        if (observed.has(phaseDefinitions[i].key)) highest = i;
+      }
+      if (resultData) {
+        highest = phaseDefinitions.length - 1;
+        evalDone = true;
+      }
+      phaseTargetIndex = Math.max(phaseTargetIndex, highest);
+    }
+
+    function nextFillablePhaseIndex() {
+      let next = Math.max(phaseFillIndex, phaseVisualDone) + 1;
+      if (next >= phaseDefinitions.length) return -1;
+      const llmEnabled = latestResult?.llm_enabled ?? enableLlmCheckbox.checked;
+      if (phaseDefinitions[next].key === 'llm' && !llmEnabled) {
+        phaseVisualDone = Math.max(phaseVisualDone, next);
+        next++;
+      }
+      if (next >= phaseDefinitions.length) return -1;
+      if (phaseDefinitions[next].key === 'complete' && !evalDone) return -1;
+      if (next > phaseTargetIndex) return -1;
+      return next;
+    }
+
+    function canAdvancePast(index) {
+      let next = index + 1;
+      if (next >= phaseDefinitions.length) return true;
+      const llmEnabled = latestResult?.llm_enabled ?? enableLlmCheckbox.checked;
+      if (phaseDefinitions[next].key === 'llm' && !llmEnabled) next++;
+      if (next >= phaseDefinitions.length) return true;
+      if (phaseDefinitions[next].key === 'complete' && !evalDone) return false;
+      if (next > phaseTargetIndex) return false;
+      return true;
     }
 
     function inferPhaseKey(progressLines, trailer = '') {
@@ -2738,53 +2283,55 @@
       if (/LLM evaluation|Optional LLM review/.test(combined)) return 'llm';
       if (/Preparing deterministic result/.test(combined)) return 'deterministic';
       if (/Starting evaluator/.test(combined)) return 'sandbox';
-      if (/Worker picked up job/.test(combined)) return 'worker';
-      if (/Upload accepted|Upload received|Job queued|Polling for progress/.test(combined)) return 'queued';
+      if (/Evaluator assigned/.test(combined)) return 'worker';
+      if (/Upload accepted|Upload received|Run queued|Checking evaluation status/.test(combined)) return 'queued';
       return 'idle';
     }
 
-    function renderPhaseTracker(activeKey, trailer = '', progressLines = [], resultData = null) {
-      const aiReviewOutcome = getAiReviewOutcome(progressLines, resultData);
-      const observedPhases = getObservedPhaseKeys(progressLines, trailer, resultData);
-      const normalizedActiveKey = activeKey === 'llm' && aiReviewOutcome.state !== 'active'
-        ? 'finalizing'
-        : activeKey;
-      if (normalizedActiveKey === 'idle' || normalizedActiveKey === 'complete') {
-        activePhaseSince = 0;
-        activePhaseKey = normalizedActiveKey;
-      } else if (activePhaseKey !== normalizedActiveKey) {
-        activePhaseSince = Date.now();
-        activePhaseKey = normalizedActiveKey;
-      }
-      const activeFillProgress = getPhaseFillProgress(activeKey, resultData);
-      const activeIndex = phaseIndex(normalizedActiveKey);
+    function renderPhaseTracker() {
+      const now = Date.now();
+      const aiReviewOutcome = getAiReviewOutcome(lastProgressLines, latestResult);
+      const llmEnabled = latestResult?.llm_enabled ?? enableLlmCheckbox.checked;
+
       phaseTracker.innerHTML = phaseDefinitions.map((phase, index) => {
-        let state = observedPhases.has(phase.key) ? 'complete' : normalizedActiveKey === phase.key ? 'active' : 'pending';
-        let stateLabel = state === 'complete' ? 'Complete' : state === 'active' ? 'In progress' : state === 'skipped' ? 'Skipped' : 'Pending';
-        if (phase.key === 'llm') {
-          state = aiReviewOutcome.state;
-          stateLabel = aiReviewOutcome.label;
-          if (normalizedActiveKey !== 'llm' && state === 'active') {
-            state = 'pending';
-            stateLabel = 'Pending';
-          }
-        }
-        if (state === 'pending' && activeIndex > phaseIndex(phase.key)) {
+        let state, stateLabel, fillPct;
+
+        if (phase.key === 'llm' && !llmEnabled) {
+          state = 'skipped';
+          stateLabel = aiReviewOutcome.label || 'Not enabled';
+          fillPct = 0;
+        } else if (index <= phaseVisualDone) {
           state = 'complete';
           stateLabel = 'Complete';
+          fillPct = 100;
+        } else if (index === phaseFillIndex) {
+          state = 'filling';
+          stateLabel = 'In progress';
+          fillPct = Math.min(92, Math.round(((now - phaseFillStart) / PHASE_FILL_MS) * 100));
+        } else {
+          state = 'pending';
+          stateLabel = 'Pending';
+          fillPct = 0;
         }
-        const extraClass = state === 'complete' ? ' is-complete' : state === 'active' ? ' is-active' : state === 'skipped' ? ' is-skipped' : state === 'filling' ? ' is-filling' : '';
-        const fillProgress = state === 'complete' ? '100%' : state === 'active' ? `${activeFillProgress}%` : '0%';
+
+        const extraClass = state === 'complete' ? ' is-complete'
+          : state === 'filling' ? ' is-filling'
+          : state === 'skipped' ? ' is-skipped'
+          : '';
+
         return `
-          <article class="phase-chip${extraClass}" style="--phase-fill-progress:${fillProgress};">
+          <article class="phase-chip${extraClass}" style="--phase-fill-progress:${fillPct}%;">
             <span class="phase-step">${escapeHtml(phase.step)}</span>
             <strong>${escapeHtml(phase.label)}</strong>
             <span class="phase-state">${escapeHtml(stateLabel)}</span>
           </article>
         `;
       }).join('');
-      phaseTracker.setAttribute('data-active-phase', normalizedActiveKey);
-      phaseTracker.setAttribute('aria-label', trailer && normalizedActiveKey === 'complete' ? `Evaluation phases. ${trailer}` : 'Evaluation phases');
+
+      const activeKey = phaseFillIndex >= 0 ? phaseDefinitions[phaseFillIndex].key
+        : phaseVisualDone >= phaseDefinitions.length - 1 ? 'complete'
+        : 'idle';
+      phaseTracker.setAttribute('data-active-phase', activeKey);
     }
 
     function formatProgressLine(line) {
@@ -2796,20 +2343,21 @@
       lastProgressLines = Array.isArray(progressLines) ? [...progressLines] : [];
       lastProgressTrailer = trailer;
       const lines = Array.isArray(progressLines) ? progressLines : [];
-      renderPhaseTracker(inferPhaseKey(lines, trailer), trailer, lines);
+      updatePhaseTarget(lines, trailer, null);
+      renderPhaseTracker();
       const visibleLines = trailer ? lines.filter((line) => line !== trailer) : lines;
       const logBody = visibleLines.length
         ? visibleLines.map(formatProgressLine).join('')
-        : '<span class="line">Waiting for worker progress...</span>';
+        : '<span class="line">Waiting for evaluation progress...</span>';
       statusBox.innerHTML = `
         <div class="status-topline">
-          <span class="status-title">Job ID</span>
+          <span class="status-title">Run ID</span>
           <strong class="status-job-id">${escapeHtml(jobId)}</strong>
         </div>
         <details class="status-log"${trailer && /failed|error/i.test(trailer) ? ' open' : ''}>
           <summary>
             <span>Detailed run log</span>
-            <span class="status-log-copy">Collapsed by default</span>
+            <span class="status-log-copy">Toggle details</span>
           </summary>
           <div class="status-log-body">${logBody}</div>
         </details>
@@ -2819,10 +2367,30 @@
     }
 
     function refreshAnimatedProgress() {
-      if (!jobInFlight) {
-        return;
+      const animating = phaseFillIndex >= 0 || phaseVisualDone < phaseTargetIndex;
+      if (!jobInFlight && !animating) return;
+
+      const now = Date.now();
+
+      // Complete current fill if 1 second has elapsed AND next phase is ready
+      if (phaseFillIndex >= 0 && now - phaseFillStart >= PHASE_FILL_MS) {
+        if (canAdvancePast(phaseFillIndex)) {
+          phaseVisualDone = Math.max(phaseVisualDone, phaseFillIndex);
+          phaseFillIndex = -1;
+        }
+        // else: keep filling, capped at 92% (renderPhaseTracker handles the cap)
       }
-      renderPhaseTracker(inferPhaseKey(lastProgressLines, lastProgressTrailer), lastProgressTrailer, lastProgressLines, latestResult);
+
+      // Start next fill unless evaluation failed
+      if (!evalFailed && phaseFillIndex < 0) {
+        const next = nextFillablePhaseIndex();
+        if (next >= 0) {
+          phaseFillIndex = next;
+          phaseFillStart = now;
+        }
+      }
+
+      renderPhaseTracker();
     }
 
     function escapeHtml(value) {
@@ -2955,7 +2523,8 @@
       loadingResultsVisible = false;
       results.classList.remove('loading');
       if (!skipPhaseRender) {
-        renderPhaseTracker('complete', 'Evaluation completed.', data.progress || [], data);
+        updatePhaseTarget(data.progress || [], 'Evaluation completed.', data);
+        renderPhaseTracker();
       }
       const score = Number(data.overall_score ?? 0);
       const tier = data.overall_tier || data.llm_analysis?.quality_tier || (score >= 90 ? 'excellent' : score >= 75 ? 'good' : score >= 50 ? 'needs_work' : 'poor');
@@ -3133,7 +2702,7 @@
         clearInterval(pollTimer);
       }
 
-      renderProgress(jobId, ['Upload accepted.', 'Polling for progress every 1s...']);
+      renderProgress(jobId, ['Upload accepted.', 'Checking evaluation status...']);
 
       pollTimer = setInterval(async () => {
         try {
@@ -3150,7 +2719,16 @@
           pollTimer = null;
           setJobRunning(false);
 
+          if (data.status === 'expired') {
+            resetResultsState();
+            resetPhaseState();
+            renderPhaseTracker();
+            setStatus(data.message || 'This result has expired. Submit the skill again to re-evaluate.', true);
+            return;
+          }
+
           if (!response.ok || data.status === 'error') {
+            evalFailed = true;
             renderProgress(jobId, data.progress || [], data.message || data.error || 'Evaluation failed.');
             renderFailedResult(jobId, data.progress || [], data.message || data.error || 'Evaluation failed.');
             statusBox.classList.add('error');
@@ -3202,7 +2780,9 @@
 
       setJobRunning(true);
       resetResultsState();
-      renderPhaseTracker('queued');
+      resetPhaseState();
+      phaseTargetIndex = 0;
+      renderPhaseTracker();
       renderLoadingResults();
       setStatus('Preparing evaluation...');
       runSurface?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -3366,7 +2946,8 @@
       llmProviderSelect.value = 'anthropic';
       syncProviderControls();
       updateFiles([]);
-      renderPhaseTracker('idle');
+      resetPhaseState();
+      renderPhaseTracker();
       resetResultsState();
       if (pollTimer) {
         clearInterval(pollTimer);

@@ -22,149 +22,13 @@
     document.documentElement.classList.add('js');
   </script>
   <style>
-    :root {
-      color-scheme: dark;
-      --bg: #05080c;
-      --panel: rgba(11, 18, 28, 0.92);
-      --panel-strong: rgba(14, 23, 36, 0.96);
-      --line: rgba(148, 163, 184, 0.14);
-      --line-strong: rgba(148, 163, 184, 0.28);
-      --text: #f8fafc;
-      --muted: #a5b4c7;
-      --subtle: #7b8ca4;
-      --brand: #ef4444;
-      --good: #22c55e;
-      --poor: #f97316;
-      --radius: 24px;
-      --radius-sm: 18px;
-      --shadow: 0 24px 80px rgba(2, 6, 23, 0.45);
-      --mono: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      --sans: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background:
-        radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 24%),
-        radial-gradient(circle at top right, rgba(16, 185, 129, 0.08), transparent 18%),
-        linear-gradient(180deg, #05080c, #071018 40%, #04070b 100%);
-      color: var(--text);
-      font: 400 16px/1.7 var(--sans);
-    }
-
-    a { color: inherit; }
-
-    .page {
-      display: grid;
-      gap: 40px;
-      padding: 30px 0 64px;
-    }
-
-    .section-head {
-      display: grid;
-      gap: 14px;
-      margin-bottom: 22px;
-      max-width: 72ch;
-    }
+    /* About-specific styles — base, cards, layout, and theme from shared.css */
 
     .section-head h2,
     .callout h2 {
-      margin: 0;
       font-size: clamp(36px, 5vw, 58px);
       line-height: 1.04;
       letter-spacing: -0.04em;
-    }
-
-    .section-head p,
-    .panel p,
-    .callout p,
-    .chart-group p,
-    .terminal-body {
-      margin: 0;
-      color: var(--muted);
-    }
-
-    .section-label,
-    .eyebrow,
-    .mini-label,
-    .metric-name,
-    .gauge-note,
-    .stat-caption {
-      font-family: var(--mono);
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-
-    .section-label,
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      width: fit-content;
-      color: var(--subtle);
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .section-label::before,
-    .eyebrow::before {
-      content: "";
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: linear-gradient(135deg, var(--brand), var(--good));
-      box-shadow: 0 0 14px rgba(56, 189, 248, 0.5);
-    }
-
-    .grid,
-    .how-grid,
-    .chart-compare,
-    .impact-grid {
-      display: grid;
-      gap: 22px;
-    }
-
-    .grid,
-    .how-grid {
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    }
-
-    .impact-grid {
-      grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(260px, 1fr));
-      align-items: stretch;
-    }
-
-    .panel,
-    .callout,
-    .terminal,
-    .chart-card,
-    .impact-card {
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: var(--panel);
-      box-shadow: var(--shadow);
-    }
-
-    .panel,
-    .impact-card,
-    .chart-card {
-      padding: 24px;
-    }
-
-    .callout {
-      padding: 34px;
-      display: grid;
-      gap: 16px;
-    }
-
-    .panel,
-    .impact-card,
-    .chart-card {
-      display: grid;
-      gap: 14px;
     }
 
     .panel strong,
@@ -174,328 +38,11 @@
       line-height: 1.3;
     }
 
-    .chart-card {
-      gap: 18px;
-    }
-
-    .stat-strip {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-
-    .stat-token {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(15, 23, 34, 0.7);
-      color: var(--muted);
-      font-family: var(--mono);
-      font-size: 12px;
-    }
-
-    .chart-compare {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .chart-group {
-      padding: 18px;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--line);
-      background: rgba(15, 23, 34, 0.72);
+    .grid,
+    .how-grid {
       display: grid;
-      gap: 16px;
-    }
-
-    .chart-group.poor {
-      border-color: rgba(249, 115, 22, 0.24);
-    }
-
-    .chart-group.good {
-      border-color: rgba(34, 197, 94, 0.24);
-    }
-
-    .chart-metrics {
-      display: grid;
-      gap: 16px;
-    }
-
-    .metric-row {
-      display: grid;
-      gap: 9px;
-    }
-
-    .metric-meta {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .metric-name,
-    .gauge-note,
-    .stat-caption {
-      color: var(--subtle);
-      font-size: 12px;
-    }
-
-    .metric-value,
-    .stat-number,
-    .gauge-value {
-      font-family: var(--mono);
-      color: var(--text);
-      letter-spacing: -0.04em;
-    }
-
-    .metric-value {
-      font-size: 18px;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-
-    .metric-track {
-      position: relative;
-      height: 10px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: rgba(6, 10, 16, 0.78);
-      overflow: hidden;
-    }
-
-    .metric-fill {
-      height: 100%;
-      width: var(--fill-width, 50%);
-      border-radius: inherit;
-      transition: width 800ms cubic-bezier(.2, .9, .2, 1);
-    }
-
-    .metric-fill.poor {
-      background: var(--poor);
-    }
-
-    .metric-fill.good {
-      background: var(--good);
-    }
-
-    .js .chart-card:not(.is-visible) .metric-fill {
-      width: 0;
-    }
-
-    .gauge-card {
-      gap: 18px;
-    }
-
-    .gauge-shell {
-      display: grid;
-      gap: 16px;
-    }
-
-    .gauge-frame {
-      position: relative;
-      padding: 10px 8px 0;
-    }
-
-    .gauge-svg {
-      display: block;
-      width: 100%;
-      height: auto;
-      overflow: visible;
-    }
-
-    .gauge-track {
-      fill: none;
-      stroke: rgba(148, 163, 184, 0.14);
-      stroke-width: 18;
-      stroke-linecap: round;
-    }
-
-    .gauge-progress {
-      fill: none;
-      stroke: url(#gaugeGradient);
-      stroke-width: 18;
-      stroke-linecap: round;
-      stroke-dasharray: 314.159;
-      stroke-dashoffset: var(--gauge-offset, 115.92);
-      transition: stroke-dashoffset 1100ms cubic-bezier(.2, .9, .2, 1);
-    }
-
-    .js .gauge-card:not(.is-visible) .gauge-progress {
-      stroke-dashoffset: 314.159;
-    }
-
-    .gauge-value-wrap {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 14px;
-      display: grid;
-      justify-items: center;
-      gap: 4px;
-      text-align: center;
-    }
-
-    .gauge-value {
-      font-size: 38px;
-      line-height: 1;
-    }
-
-    .gauge-range {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--subtle);
-    }
-
-    .stat-number {
-      font-size: clamp(34px, 5vw, 54px);
-      line-height: 0.92;
-    }
-
-    .stat-number.warning {
-      color: #fdba74;
-    }
-
-    .stat-number.critical {
-      color: #fb923c;
-    }
-
-    .terminal {
-      overflow: hidden;
-      background: rgba(6, 9, 14, 0.9);
-    }
-
-    .terminal-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 14px 18px;
-      border-bottom: 1px solid var(--line);
-      color: var(--muted);
-      font: 600 12px/1 var(--mono);
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-    }
-
-    .terminal-dots {
-      display: inline-flex;
-      gap: 8px;
-    }
-
-    .terminal-dots span {
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: rgba(148, 163, 184, 0.36);
-    }
-
-    .terminal-body {
-      padding: 20px;
-      font: 400 12px/1.8 var(--mono);
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .js [data-observe] {
-      opacity: 0;
-      transform: translateY(18px);
-      transition: opacity 540ms ease, transform 540ms ease;
-    }
-
-    .js [data-observe].is-visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    html[data-theme="light"] {
-      color-scheme: light;
-      --bg: #f3f4f6;
-      --panel: #ffffff;
-      --panel-strong: #ffffff;
-      --line: rgba(15, 23, 42, 0.16);
-      --line-strong: rgba(15, 23, 42, 0.28);
-      --text: #111827;
-      --muted: #334155;
-      --subtle: #475569;
-      --brand: #dc2626;
-      --shadow: none;
-    }
-
-    html[data-theme="light"] body {
-      background:
-        radial-gradient(circle at top left, rgba(239, 68, 68, 0.05), transparent 22%),
-        linear-gradient(180deg, #f3f4f6 0%, #eef2f7 100%);
-    }
-
-    html[data-theme="light"] .panel,
-    html[data-theme="light"] .callout,
-    html[data-theme="light"] .terminal,
-    html[data-theme="light"] .chart-card,
-    html[data-theme="light"] .impact-card,
-    html[data-theme="light"] .chart-group,
-    html[data-theme="light"] .metric-track,
-    html[data-theme="light"] .stat-token {
-      background: #ffffff;
-      box-shadow: none;
-    }
-
-    html[data-theme="light"] .metric-track,
-    html[data-theme="light"] .stat-token {
-      background: #f8fafc;
-    }
-
-    html[data-theme="light"] .terminal {
-      background: #f8fafc;
-    }
-
-    html[data-theme="light"] .terminal-bar {
-      background: #e2e8f0;
-      color: #475569;
-    }
-
-    html[data-theme="light"] .terminal-body {
-      color: #0f172a;
-    }
-
-    html[data-theme="light"] .section-label,
-    html[data-theme="light"] .eyebrow {
-      color: #dc2626;
-    }
-
-    @media (max-width: 1080px) {
-      .impact-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 860px) {
-      .chart-compare {
-        grid-template-columns: 1fr;
-      }
-
-      .metric-meta {
-        align-items: flex-start;
-        flex-direction: column;
-      }
-    }
-
-    @media (max-width: 640px) {
-      .page {
-        gap: 28px;
-        padding-bottom: 40px;
-      }
-
-      .panel,
-      .chart-card,
-      .impact-card,
-      .callout {
-        padding: 20px;
-      }
+      gap: 22px;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     }
   </style>
 </head>
@@ -518,7 +65,7 @@
   </header>
 
   <main class="site-shell page">
-    <section>
+    <section class="section">
       <div class="section-head">
         <span class="section-label">Run boundary</span>
         <h2>What happens during an evaluation run.</h2>
@@ -527,7 +74,7 @@
       <div class="grid">
         <article class="panel" data-observe>
           <strong>Equal entry paths</strong>
-          <p>Local folder uploads and GitHub skill URLs feed the same evaluator and return the same report format.</p>
+        <p>Every evaluation follows the same pipeline regardless of how the skill package is submitted.</p>
         </article>
         <article class="panel" data-observe>
           <strong>Default path</strong>
@@ -544,7 +91,7 @@
       </div>
     </section>
 
-    <section>
+    <section class="section">
       <div class="section-head">
         <span class="section-label">Efficiency model</span>
         <h2>Token waste becomes visible fast.</h2>
@@ -582,7 +129,7 @@
                 <div class="metric-track"><div class="metric-fill poor" style="--fill-width:33%"></div></div>
               </div>
             </div>
-            <p>~12,400 tokens per run. Loose trigger text, vague instructions, and noisy context increase token drag per activation.</p>
+            <p>~12,400 tokens per run. Loose trigger text, vague instructions, and noisy context increase token overhead per activation.</p>
           </section>
           <section class="chart-group good">
             <strong>After optimization</strong>
@@ -615,7 +162,7 @@
       </article>
     </section>
 
-    <section>
+    <section class="section">
       <div class="section-head">
         <span class="section-label">How it works</span>
         <h2>Three steps from upload to structured feedback.</h2>
@@ -637,7 +184,7 @@
       </div>
     </section>
 
-    <section>
+    <section class="section">
       <div class="section-head">
         <span class="section-label">Why it matters</span>
         <h2>Skill quality affects cost, trigger behavior, and risk.</h2>
@@ -684,7 +231,7 @@
       </div>
     </section>
 
-    <section>
+    <section class="section">
       <div class="section-head">
         <span class="section-label">Evaluation preview</span>
         <h2>Preview the result format before running an evaluation.</h2>
@@ -732,7 +279,7 @@
       <a href="https://linkedin.com/in/sasa-fajkovic" target="_blank" rel="noreferrer">LinkedIn</a>
       <a href="https://sasa-fajkovic.com/" target="_blank" rel="noreferrer">sasa-fajkovic.com</a>
     </div>
-    <div class="footer-version" id="footer-version">Deployed version: loading</div>
+    <div class="footer-version" id="footer-version"></div>
   </footer>
 
   <script src="/static/shared.js"></script>

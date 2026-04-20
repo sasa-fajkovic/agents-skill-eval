@@ -7,39 +7,74 @@
 
 Live site: `https://agents-skill-eval.com`
 
-## What It Is
+## Use the Skill Directly in Your AI Agent
 
-### Web app
+The evaluator is itself a portable agent skill. You can download the full package and use it directly in any compatible agent runtime to evaluate other skills from your own workflow, no web app needed.
 
-The site accepts a skill package, runs deterministic checks by default, optionally adds provider-backed AI review, and returns a structured result with progress, findings, and score.
+Download the full folder:
 
-### Agent skill
+```
+.claude/skills/skill-evaluation/
+```
 
-The downloadable skill package lives at:
+Keep the whole package, not just `SKILL.md`, because the skill depends on `scripts/`, `references/`, and `tests/`.
 
-- `.claude/skills/skill-evaluation/`
+Browse and download on GitHub:
 
-Its single public evaluator entrypoint is:
+- [`.claude/skills/skill-evaluation/`](https://github.com/sasa-fajkovic/agents-skill-eval/tree/main/.claude/skills/skill-evaluation)
 
-- `.claude/skills/skill-evaluation/scripts/eval.py`
+The same Python evaluator (`scripts/eval.py`) is what the web app bundles and executes in production.
 
-That same Python evaluator is what the web app bundles and executes in production. There is no separate duplicate evaluator anymore.
+## Run with Docker
 
-## Download The Skill
+The easiest way to self-host is the prebuilt Docker image. It bundles the Go backend, frontend, Redis, and the deterministic evaluator into a single container.
 
-If you want to use the evaluator directly in an agent runtime, download the full folder:
+```bash
+docker run -p 8080:8080 ghcr.io/sasa-fajkovic/agents-skill-eval-app:latest
+```
 
-- `.claude/skills/skill-evaluation/`
+Open `http://localhost:8080` in your browser after the container starts.
 
-Keep the whole package, not just `SKILL.md`, because the skill depends on:
+### Environment Variables
 
-- `scripts/`
-- `references/`
-- `tests/`
+All environment variables are optional. The app runs deterministic-only evaluations by default.
 
-GitHub folder:
+**AI review providers** (enable optional LLM-backed review):
 
-- `https://github.com/sasa-fajkovic/agents-skill-eval/tree/main/.claude/skills/skill-evaluation`
+| Variable | Description |
+|---|---|
+| `ANTHROPIC_API_KEY` | Anthropic API key. Enables Anthropic as an AI review provider. |
+| `OPENAI_API_KEY` | OpenAI API key. Enables OpenAI as an AI review provider. |
+
+**Model and provider configuration:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-6` | Anthropic model to use for AI review. |
+| `OPENAI_MODEL` | `gpt-4.1` | OpenAI model to use for AI review. |
+| `LLM_PROVIDER` | `anthropic` | Default AI review provider when both keys are set. |
+| `ANTHROPIC_MAX_TOKENS` | `1200` | Max output tokens for Anthropic requests. |
+| `OPENAI_MAX_TOKENS` | `1200` | Max output tokens for OpenAI requests. |
+| `ANTHROPIC_BASE_URL` | Anthropic default | Override the Anthropic API endpoint. |
+| `OPENAI_BASE_URL` | OpenAI default | Override the OpenAI API endpoint. |
+
+**Infrastructure:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `8080` | HTTP listen port. |
+| `REDIS_ADDR` | `127.0.0.1:6379` | Redis address. Already running inside the Docker image. |
+| `GITHUB_TOKEN` | — | GitHub personal access token for higher API rate limits on GitHub URL fetches. |
+| `LOG_DIR` | `logs/` | Directory for structured job log files. |
+
+**Example with AI review enabled:**
+
+```bash
+docker run -p 8080:8080 \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  -e OPENAI_API_KEY=sk-... \
+  ghcr.io/sasa-fajkovic/agents-skill-eval-app:latest
+```
 
 ## How It Works
 
@@ -70,7 +105,6 @@ Default behavior is deterministic-only. Uploaded skill content is not sent to th
 Requirements:
 
 - Go
-- Docker
 - Redis
 - Python 3
 
@@ -92,16 +126,6 @@ Stop:
 ```bash
 make stop
 ```
-
-Optional AI review keys:
-
-- `ANTHROPIC_API_KEY`
-- `OPENAI_API_KEY`
-
-Optional model overrides:
-
-- `ANTHROPIC_MODEL`
-- `OPENAI_MODEL`
 
 ## Tests
 

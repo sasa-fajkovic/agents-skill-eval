@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -139,7 +140,10 @@ type evalContainerResult struct {
 type application struct {
 	rdb         *redis.Client
 	frontendDir string
+	evalScript  string
+	evalWorkDir string
 	httpClient  *http.Client
+	logger      *jobLogger
 }
 
 type evalJob struct {
@@ -161,6 +165,11 @@ type llmAnalysis struct {
 	SecurityFlags []string `json:"security_flags"`
 	QualityTier   string   `json:"quality_tier"`
 	Mode          string   `json:"mode,omitempty"`
+	// Internal fields for structured logging — never serialized to frontend.
+	InputTokens      int     `json:"-"`
+	OutputTokens     int     `json:"-"`
+	EstimatedCostUSD float64 `json:"-"`
+	DurationMs       int64   `json:"-"`
 }
 
 type anthropicMessageRequest struct {
@@ -180,6 +189,10 @@ type anthropicMessageResponse struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content"`
+	Usage *struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	} `json:"usage,omitempty"`
 	Error *struct {
 		Type    string `json:"type"`
 		Message string `json:"message"`
@@ -207,6 +220,11 @@ type openAIChatResponse struct {
 	Choices []struct {
 		Message openAIChatMessage `json:"message"`
 	} `json:"choices"`
+	Usage *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage,omitempty"`
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
@@ -286,10 +304,16 @@ func main() {
 		log.Printf("redis ping failed at startup: %v", err)
 	}
 
+	evalScript, evalWorkDir := detectEvalScript()
+	logger := newJobLogger(os.Getenv("LOG_DIR"))
+	logger.cleanOldLogs()
 	app := &application{
 		rdb:         rdb,
 		frontendDir: detectFrontendDir(),
+		evalScript:  evalScript,
+		evalWorkDir: evalWorkDir,
 		httpClient:  &http.Client{Timeout: 45 * time.Second},
+		logger:      logger,
 	}
 
 	go app.workerLoop(ctx)
@@ -318,7 +342,7 @@ func (app *application) routes() http.Handler {
 	mux.HandleFunc("GET /robots.txt", app.handleRobots)
 	mux.HandleFunc("GET /sitemap.xml", app.handleSitemap)
 	mux.HandleFunc("GET /", app.handleIndex)
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir(app.frontendDir))))
+	mux.Handle("GET /static/", noCacheMiddleware(http.StripPrefix("/static/", http.FileServer(http.Dir(app.frontendDir)))))
 
 	return app.recoverPanics(app.uploadAbuseProtection(mux))
 }
@@ -415,10 +439,19 @@ func (app *application) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cachedJobID, err := app.rdb.Get(r.Context(), redisRequestCacheKey(requestHash)).Result(); err == nil && strings.TrimSpace(cachedJobID) != "" {
-		cleanup = false
-		_ = os.RemoveAll(inputDir)
-		writeJSON(w, http.StatusAccepted, map[string]string{"jobId": strings.TrimSpace(cachedJobID), "cached": "true"})
-		return
+		trimmedCachedID := strings.TrimSpace(cachedJobID)
+		// Verify the cached result still exists (it may have been consumed).
+		resultExists := app.rdb.Exists(r.Context(), redisResultKey(trimmedCachedID)).Val() > 0
+		errorExists := app.rdb.Exists(r.Context(), redisErrorKey(trimmedCachedID)).Val() > 0
+		progressExists := app.rdb.Exists(r.Context(), redisProgressKey(trimmedCachedID)).Val() > 0
+		if resultExists || errorExists || progressExists {
+			cleanup = false
+			_ = os.RemoveAll(inputDir)
+			writeJSON(w, http.StatusAccepted, map[string]string{"jobId": trimmedCachedID, "cached": "true"})
+			return
+		}
+		// Stale cache entry — result was consumed. Delete it and re-evaluate.
+		_ = app.rdb.Del(r.Context(), redisRequestCacheKey(requestHash)).Err()
 	} else if err != nil && err != redis.Nil {
 		sentry.CaptureException(err)
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "failed to check cached evaluation"})
@@ -436,7 +469,7 @@ func (app *application) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to enqueue job"})
 		return
 	}
-	_ = app.setProgress(r.Context(), jobID, []string{"Upload received.", "Job queued."})
+	_ = app.setProgress(r.Context(), jobID, []string{"Upload received.", "Run queued."})
 
 	cleanup = false
 	writeJSON(w, http.StatusAccepted, map[string]string{"jobId": jobID})
@@ -476,7 +509,9 @@ func (app *application) handleResult(w http.ResponseWriter, r *http.Request) {
 	if err == redis.Nil {
 		progress := app.getProgress(r.Context(), jobID)
 		if len(progress) == 0 {
-			progress = []string{"Upload received.", "Waiting for worker..."}
+			// No result, no error, no progress — the job was consumed or never existed.
+			writeJSON(w, http.StatusGone, map[string]any{"status": "expired", "message": "This result has expired or was already viewed. Submit the skill again to re-evaluate."})
+			return
 		}
 		writeJSON(w, http.StatusAccepted, map[string]any{"status": "pending", "progress": progress})
 		return
@@ -506,14 +541,17 @@ func (app *application) handleResult(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *application) handleIndex(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeFile(w, r, filepath.Join(app.frontendDir, "index.html"))
 }
 
 func (app *application) handleFAQ(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeFile(w, r, filepath.Join(app.frontendDir, "faq.html"))
 }
 
 func (app *application) handleAbout(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeFile(w, r, filepath.Join(app.frontendDir, "about.html"))
 }
 
@@ -523,6 +561,13 @@ func (app *application) handleRobots(w http.ResponseWriter, r *http.Request) {
 
 func (app *application) handleSitemap(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(app.frontendDir, "sitemap.xml"))
+}
+
+func noCacheMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (app *application) recoverPanics(next http.Handler) http.Handler {
@@ -659,12 +704,47 @@ func (app *application) workerLoop(parent context.Context) {
 }
 
 func (app *application) processJob(parent context.Context, job evalJob) {
+	jobStart := time.Now()
+	steps := []string{"queued"}
+	stepDurations := map[string]int64{}
+	lastStep := jobStart
+	markStep := func(name string) {
+		now := time.Now()
+		stepDurations[name] = now.Sub(lastStep).Milliseconds()
+		steps = append(steps, name)
+		lastStep = now
+	}
+	logStatus := "error"
+	var llmResult *llmAnalysis
+
 	defer func() {
 		_ = os.RemoveAll(job.InputDir)
 		app.decrementActiveJob(parent, job.ClientIP)
+		// Write structured log entry (no PII, no skill content).
+		if app.logger != nil {
+			entry := jobLogEntry{
+				Timestamp:       jobStart.UTC().Format(time.RFC3339),
+				JobID:           job.JobID,
+				Status:          logStatus,
+				Steps:           steps,
+				DurationMs:      time.Since(jobStart).Milliseconds(),
+				StepDurationsMs: stepDurations,
+				LLMEnabled:      job.EnableLLM,
+			}
+			if llmResult != nil {
+				entry.LLMProvider = llmResult.Provider
+				entry.LLMModel = llmResult.Model
+				entry.LLMDurationMs = llmResult.DurationMs
+				entry.LLMInputTokens = llmResult.InputTokens
+				entry.LLMOutputTokens = llmResult.OutputTokens
+				entry.LLMEstCostUSD = llmResult.EstimatedCostUSD
+			}
+			app.logger.writeEntry(entry)
+		}
 	}()
 	app.incrementActiveJob(parent, job.ClientIP)
-	_ = app.appendProgress(parent, job.JobID, "Worker picked up job.")
+	_ = app.appendProgress(parent, job.JobID, "Evaluator assigned.")
+	markStep("evaluator_assigned")
 
 	timeout := evalTimeout
 	if !job.EnableLLM {
@@ -673,26 +753,30 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	_ = app.appendProgress(parent, job.JobID, "Starting evaluator...")
-	cmd := exec.CommandContext(ctx, "python3", "/app/skill-evaluation/scripts/eval.py", job.InputDir, "--ci")
-	cmd.Dir = "/app"
+	cmd := exec.CommandContext(ctx, "python3", app.evalScript, job.InputDir, "--ci")
+	cmd.Dir = app.evalWorkDir
 	cmd.Env = append(os.Environ(), "EVAL_PROGRESS_STDERR=1")
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		sentry.CaptureException(err)
 		_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(err.Error()), redisResultTTL).Err()
+		markStep("pipe_error")
 		return
 	}
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
 		sentry.CaptureException(err)
 		_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(err.Error()), redisResultTTL).Err()
+		markStep("pipe_error")
 		return
 	}
 	if err := cmd.Start(); err != nil {
 		captureInfraEvent("docker_start_failed", err, map[string]string{"component": "worker", "stage": "docker_start"})
 		_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(err.Error()), redisResultTTL).Err()
+		markStep("start_error")
 		return
 	}
+	markStep("eval_start")
 
 	stdoutCh := make(chan string, 1)
 	stderrCh := make(chan []string, 1)
@@ -707,41 +791,69 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 	err = cmd.Wait()
 	stdoutOutput := <-stdoutCh
 	stderrLines := <-stderrCh
+	markStep("eval_complete")
 
 	if err != nil {
-		message := err.Error()
-		trimmedOutput := stdoutOutput
-		if trimmedOutput == "" && len(stderrLines) > 0 {
-			trimmedOutput = strings.TrimSpace(strings.Join(stderrLines, "\n"))
-		}
-		preserveOutput := false
-		if ctx.Err() == context.DeadlineExceeded {
-			message = "evaluation timed out"
-			_ = app.appendProgress(parent, job.JobID, "Evaluation timed out.")
-		}
-		if trimmedOutput != "" {
-			var parsed map[string]any
-			if json.Unmarshal([]byte(trimmedOutput), &parsed) == nil {
-				message = trimmedOutput
-				preserveOutput = true
-			} else {
-				message = trimmedOutput
+		// eval.py uses exit codes to signal finding severity:
+		//   0 = no issues, 1 = errors present, 2 = warnings only.
+		// Exit codes 1 and 2 with valid JSON stdout are successful evaluations
+		// (the skill was evaluated, it just has findings). Only treat a non-zero
+		// exit as a real failure when the process timed out, crashed, or produced
+		// no parseable output.
+		if ctx.Err() != context.DeadlineExceeded {
+			if exitErr := new(exec.ExitError); errors.As(err, &exitErr) {
+				code := exitErr.ExitCode()
+				if (code == 1 || code == 2) && stdoutOutput != "" {
+					var parsed map[string]any
+					if json.Unmarshal([]byte(stdoutOutput), &parsed) == nil {
+						// Valid evaluation result — fall through to success path.
+						goto success
+					}
+				}
 			}
 		}
-		if exitErr := new(exec.ExitError); errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 && !preserveOutput {
-			message = strings.TrimSpace(string(exitErr.Stderr))
+		{
+			message := err.Error()
+			trimmedOutput := stdoutOutput
+			if trimmedOutput == "" && len(stderrLines) > 0 {
+				trimmedOutput = strings.TrimSpace(strings.Join(stderrLines, "\n"))
+			}
+			if ctx.Err() == context.DeadlineExceeded {
+				message = "evaluation timed out"
+				_ = app.appendProgress(parent, job.JobID, "Evaluation timed out.")
+				logStatus = "timeout"
+			}
+			preserveOutput := false
+			if trimmedOutput != "" {
+				var parsed map[string]any
+				if json.Unmarshal([]byte(trimmedOutput), &parsed) == nil {
+					message = trimmedOutput
+					preserveOutput = true
+				} else {
+					message = trimmedOutput
+				}
+			}
+			if exitErr := new(exec.ExitError); errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 && !preserveOutput {
+				message = strings.TrimSpace(string(exitErr.Stderr))
+			}
+			captureInfraEvent("eval_failed", err, map[string]string{"component": "worker", "stage": "eval_wait"})
+			_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(message), redisResultTTL).Err()
+			markStep("eval_failed")
+			return
 		}
-		captureInfraEvent("eval_failed", err, map[string]string{"component": "worker", "stage": "eval_wait"})
-		_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(message), redisResultTTL).Err()
-		return
 	}
+success:
 
 	_ = app.appendProgress(parent, job.JobID, "Preparing deterministic result...")
 	trimmed := stdoutOutput
 	if trimmed == "" {
 		trimmed = `{"status":"error","message":"empty evaluation output"}`
 	}
-	finalResult, err := app.finalizeEvaluation(parent, job, trimmed)
+	finalResult, analysis, err := app.finalizeEvaluation(parent, job, trimmed)
+	if analysis != nil {
+		llmResult = analysis
+	}
+	markStep("finalize")
 	if err != nil {
 		captureInfraEvent("finalize_evaluation_failed", err, map[string]string{"component": "worker", "stage": "finalize"})
 		_ = app.rdb.Set(parent, redisErrorKey(job.JobID), redactSecrets(err.Error()), redisResultTTL).Err()
@@ -757,6 +869,8 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 			captureInfraEvent("request_cache_store_failed", err, map[string]string{"component": "redis", "stage": "request_cache_store"})
 		}
 	}
+	logStatus = "ok"
+	markStep("complete")
 }
 
 func saveValidatedFile(rootDir string, header *multipart.FileHeader) error {
@@ -913,16 +1027,16 @@ func isScannableTextFile(name string) bool {
 	}
 }
 
-func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw string) (string, error) {
+func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw string) (string, *llmAnalysis, error) {
 	var container evalContainerResult
 	if err := json.Unmarshal([]byte(raw), &container); err != nil {
-		return "", errors.New("failed to parse evaluator output")
+		return "", nil, errors.New("failed to parse evaluator output")
 	}
 	if container.Status == "error" {
-		return "", errors.New(redactSecrets(container.Message))
+		return "", nil, errors.New(redactSecrets(container.Message))
 	}
 	if container.SkillContent == "" {
-		return "", errors.New("evaluator did not return skill content")
+		return "", nil, errors.New("evaluator did not return skill content")
 	}
 
 	_ = app.appendProgress(ctx, job.JobID, "Preparing final evaluation result...")
@@ -987,10 +1101,10 @@ func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil {
-		return "", errors.New("failed to serialize final evaluation result")
+		return "", nil, errors.New("failed to serialize final evaluation result")
 	}
 	_ = app.appendProgress(ctx, job.JobID, "Evaluation completed.")
-	return string(encoded), nil
+	return string(encoded), analysis, nil
 }
 
 func deterministicIssues(value any) []string {
@@ -1122,6 +1236,7 @@ func (app *application) runLLMReview(ctx context.Context, provider string, conta
 	systemPrompt := llmSystemPrompt()
 	userPrompt := buildLLMPrompt(container)
 
+	llmStart := time.Now()
 	var (
 		analysis llmAnalysis
 		err     error
@@ -1135,9 +1250,11 @@ func (app *application) runLLMReview(ctx context.Context, provider string, conta
 	if err != nil {
 		return llmAnalysis{}, err
 	}
+	analysis.DurationMs = time.Since(llmStart).Milliseconds()
 	analysis.Provider = provider
 	analysis.Model = llmModelForProvider(provider)
 	analysis.Mode = "opt_in"
+	analysis.EstimatedCostUSD = estimateLLMCost(analysis.Model, analysis.InputTokens, analysis.OutputTokens)
 	analysis.QualityTier = normalizeQualityTier(analysis.QualityTier)
 	analysis.Strengths = uniqueStrings(analysis.Strengths)
 	analysis.Weaknesses = uniqueStrings(analysis.Weaknesses)
@@ -1305,6 +1422,10 @@ func parseAnthropicAnalysis(body []byte) (llmAnalysis, error) {
 	if err := json.Unmarshal([]byte(text), &analysis); err != nil {
 		return llmAnalysis{}, errors.New("anthropic response did not return valid JSON")
 	}
+	if response.Usage != nil {
+		analysis.InputTokens = response.Usage.InputTokens
+		analysis.OutputTokens = response.Usage.OutputTokens
+	}
 	return analysis, nil
 }
 
@@ -1319,7 +1440,15 @@ func parseOpenAIAnalysis(body []byte) (llmAnalysis, error) {
 	if len(response.Choices) == 0 || strings.TrimSpace(response.Choices[0].Message.Content) == "" {
 		return llmAnalysis{}, errors.New("openai response did not contain text")
 	}
-	return parseLLMJSONPayload(strings.TrimSpace(response.Choices[0].Message.Content), "openai")
+	analysis, err := parseLLMJSONPayload(strings.TrimSpace(response.Choices[0].Message.Content), "openai")
+	if err != nil {
+		return llmAnalysis{}, err
+	}
+	if response.Usage != nil {
+		analysis.InputTokens = response.Usage.PromptTokens
+		analysis.OutputTokens = response.Usage.CompletionTokens
+	}
+	return analysis, nil
 }
 
 func parseLLMJSONPayload(text, provider string) (llmAnalysis, error) {
@@ -2107,6 +2236,28 @@ func detectFrontendDir() string {
 	return filepath.Join("..", "frontend")
 }
 
+func detectEvalScript() (scriptPath, workDir string) {
+	// Docker layout: /app/skill-evaluation/scripts/eval.py
+	docker := filepath.Join("/app", "skill-evaluation", "scripts", "eval.py")
+	if _, err := os.Stat(docker); err == nil {
+		return docker, "/app"
+	}
+	// Local layout (cwd = project root): .claude/skills/skill-evaluation/scripts/eval.py
+	local := filepath.Join(".claude", "skills", "skill-evaluation", "scripts", "eval.py")
+	if _, err := os.Stat(local); err == nil {
+		cwd, _ := os.Getwd()
+		return local, cwd
+	}
+	// Local layout (cwd = backend/): ../.claude/skills/skill-evaluation/scripts/eval.py
+	parent := filepath.Join("..", ".claude", "skills", "skill-evaluation", "scripts", "eval.py")
+	if _, err := os.Stat(parent); err == nil {
+		abs, _ := filepath.Abs("..")
+		return parent, abs
+	}
+	// Fallback to Docker path (will fail with clear error if not found)
+	return docker, "/app"
+}
+
 func abuseProtectionDisabled() bool {
 	value := strings.ToLower(strings.TrimSpace(os.Getenv("DISABLE_ABUSE_PROTECTION")))
 	return value == "1" || value == "true" || value == "yes"
@@ -2200,4 +2351,135 @@ func (app *application) collectProgress(jobID string, reader io.Reader) []string
 		_ = app.appendProgress(context.Background(), jobID, "Failed to read evaluator progress: "+redactSecrets(err.Error()))
 	}
 	return lines
+}
+
+// ---------------------------------------------------------------------------
+// Structured job logging
+// ---------------------------------------------------------------------------
+
+// jobLogEntry is a single structured log record. All fields are safe for
+// local storage — no PII, no skill content, no file names, no client IPs.
+type jobLogEntry struct {
+	Timestamp       string           `json:"ts"`
+	JobID           string           `json:"job_id"`
+	Status          string           `json:"status"`
+	Steps           []string         `json:"steps"`
+	DurationMs      int64            `json:"duration_ms"`
+	StepDurationsMs map[string]int64 `json:"step_durations_ms"`
+	LLMEnabled      bool             `json:"llm_enabled"`
+	LLMProvider     string           `json:"llm_provider,omitempty"`
+	LLMModel        string           `json:"llm_model,omitempty"`
+	LLMDurationMs   int64            `json:"llm_duration_ms,omitempty"`
+	LLMInputTokens  int              `json:"llm_input_tokens,omitempty"`
+	LLMOutputTokens int              `json:"llm_output_tokens,omitempty"`
+	LLMEstCostUSD   float64          `json:"llm_estimated_cost_usd,omitempty"`
+}
+
+// jobLogger writes JSON Lines to monthly log files (YYYY-MM.log).
+type jobLogger struct {
+	mu    sync.Mutex
+	dir   string
+	file  *os.File
+	month string // current "YYYY-MM" suffix
+}
+
+func newJobLogger(dir string) *jobLogger {
+	if dir == "" {
+		dir = "logs"
+	}
+	return &jobLogger{dir: dir}
+}
+
+// cleanOldLogs removes log files older than 2 months. In month M it keeps
+// M and M-1 and deletes everything earlier.
+func (jl *jobLogger) cleanOldLogs() {
+	entries, err := os.ReadDir(jl.dir)
+	if err != nil {
+		return // directory may not exist yet; that is fine
+	}
+	now := time.Now().UTC()
+	// Earliest month to keep: 2 months back, day 1.
+	cutoff := time.Date(now.Year(), now.Month()-1, 1, 0, 0, 0, 0, time.UTC)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".log") {
+			continue
+		}
+		stem := strings.TrimSuffix(name, ".log")
+		t, err := time.Parse("2006-01", stem)
+		if err != nil {
+			continue
+		}
+		if t.Before(cutoff) {
+			_ = os.Remove(filepath.Join(jl.dir, name))
+			log.Printf("removed old log file: %s", name)
+		}
+	}
+}
+
+// ensureFile opens (or rotates) the current month's log file.
+func (jl *jobLogger) ensureFile() error {
+	month := time.Now().UTC().Format("2006-01")
+	if jl.file != nil && jl.month == month {
+		return nil
+	}
+	if jl.file != nil {
+		_ = jl.file.Close()
+	}
+	if err := os.MkdirAll(jl.dir, 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(jl.dir, month+".log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	jl.file = f
+	jl.month = month
+	return nil
+}
+
+// writeEntry serializes and appends a single log entry.
+func (jl *jobLogger) writeEntry(entry jobLogEntry) {
+	jl.mu.Lock()
+	defer jl.mu.Unlock()
+	if err := jl.ensureFile(); err != nil {
+		return
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return
+	}
+	_, _ = jl.file.Write(append(data, '\n'))
+}
+
+// estimateLLMCost returns a best-effort USD cost based on known per-token
+// pricing. Returns 0 for unrecognised models.
+func estimateLLMCost(model string, inputTokens, outputTokens int) float64 {
+	type pricing struct {
+		inputPerM  float64
+		outputPerM float64
+	}
+	table := []struct {
+		prefix string
+		p      pricing
+	}{
+		// Anthropic (mid-2025 pricing)
+		{"claude-sonnet-4", pricing{3.0, 15.0}},
+		{"claude-haiku-3", pricing{0.80, 4.0}},
+		// OpenAI (mid-2025 pricing)
+		{"gpt-5.4", pricing{5.0, 20.0}},
+		{"gpt-4.1-mini", pricing{0.40, 1.60}},
+		{"gpt-4.1-nano", pricing{0.10, 0.40}},
+		{"gpt-4.1", pricing{2.0, 8.0}},
+	}
+	m := strings.ToLower(strings.TrimSpace(model))
+	for _, row := range table {
+		if strings.HasPrefix(m, row.prefix) {
+			return (float64(inputTokens)*row.p.inputPerM + float64(outputTokens)*row.p.outputPerM) / 1_000_000
+		}
+	}
+	return 0
 }
