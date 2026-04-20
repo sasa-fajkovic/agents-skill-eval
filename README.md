@@ -45,6 +45,8 @@ All environment variables are optional. The app runs deterministic-only evaluati
 |---|---|
 | `ANTHROPIC_API_KEY` | Anthropic API key. Enables Anthropic as an AI review provider. |
 | `OPENAI_API_KEY` | OpenAI API key. Enables OpenAI as an AI review provider. |
+| `GEMINI_API_KEY` | Google Gemini API key. Enables Gemini as a free AI review provider. |
+| `GROQ_API_KEY` | Groq API key. Enables Groq as a free AI review provider. |
 
 **Model and provider configuration:**
 
@@ -52,11 +54,17 @@ All environment variables are optional. The app runs deterministic-only evaluati
 |---|---|---|
 | `ANTHROPIC_MODEL` | `claude-sonnet-4-6` | Anthropic model to use for AI review. |
 | `OPENAI_MODEL` | `gpt-4.1` | OpenAI model to use for AI review. |
-| `LLM_PROVIDER` | `anthropic` | Default AI review provider when both keys are set. |
+| `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model to use for AI review. |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model to use for AI review. |
+| `LLM_PROVIDER` | `anthropic` | Default AI review provider when multiple keys are set. |
 | `ANTHROPIC_MAX_TOKENS` | `1200` | Max output tokens for Anthropic requests. |
 | `OPENAI_MAX_TOKENS` | `1200` | Max output tokens for OpenAI requests. |
+| `GEMINI_MAX_TOKENS` | `1200` | Max output tokens for Gemini requests. |
+| `GROQ_MAX_TOKENS` | `1200` | Max output tokens for Groq requests. |
 | `ANTHROPIC_BASE_URL` | Anthropic default | Override the Anthropic API endpoint. |
 | `OPENAI_BASE_URL` | OpenAI default | Override the OpenAI API endpoint. |
+| `GEMINI_BASE_URL` | Gemini default | Override the Gemini API endpoint. |
+| `GROQ_BASE_URL` | Groq default | Override the Groq API endpoint. |
 
 **Infrastructure:**
 
@@ -70,9 +78,16 @@ All environment variables are optional. The app runs deterministic-only evaluati
 **Example with AI review enabled:**
 
 ```bash
+# Paid providers
 docker run -p 8080:8080 \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   -e OPENAI_API_KEY=sk-... \
+  ghcr.io/sasa-fajkovic/agents-skill-eval-app:latest
+
+# Free providers only
+docker run -p 8080:8080 \
+  -e GEMINI_API_KEY=AIza... \
+  -e GROQ_API_KEY=gsk_... \
   ghcr.io/sasa-fajkovic/agents-skill-eval-app:latest
 ```
 

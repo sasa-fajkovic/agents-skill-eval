@@ -20,6 +20,22 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+func testConfig() appConfig {
+	return appConfig{
+		Providers: map[string]providerConfig{
+			"anthropic": {Model: "claude-haiku-4-5", MaxTokens: 1200, BaseURL: "https://api.anthropic.com/v1/messages"},
+			"openai":    {Model: "gpt-4.1-nano", MaxTokens: 1200, BaseURL: "https://api.openai.com/v1/chat/completions"},
+			"groq":      {Model: "llama-3.3-70b-versatile", MaxTokens: 1200, BaseURL: "https://api.groq.com/openai/v1/chat/completions"},
+			"gemini":    {Model: "gemini-2.0-flash", MaxTokens: 1200, BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"},
+		},
+		Pricing: map[string]pricingEntry{
+			"claude-haiku-4": {InputPerM: 0.80, OutputPerM: 4.0},
+			"gpt-4.1-nano":  {InputPerM: 0.10, OutputPerM: 0.40},
+			"llama-3.3-70b": {InputPerM: 0, OutputPerM: 0},
+		},
+	}
+}
+
 func TestValidateFilenameSafety(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -695,10 +711,10 @@ func TestValidateFileType(t *testing.T) {
 }
 
 func TestFinalizeEvaluation(t *testing.T) {
-	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), cfg: testConfig()}
 	raw := `{"status":"ok","skill_name":"demo","skill_description":"Use when validating skill packages.\n\nKeeps output portable.","skill_compatibility":"Claude Code\nCodex CLI","skill_content":"skill body","supporting_context":"extra context","overall_score":90,"overall_tier":"excellent","summary":"demo is mostly portable.","deterministic":{"issues":[{"rule_id":"missing_tests","severity":"warning","message":"missing tests","reason":"scripts need tests"}]}}`
 
-	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1"}, raw)
+	result, _, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1"}, raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -709,18 +725,12 @@ func TestFinalizeEvaluation(t *testing.T) {
 
 func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
 	old := os.Getenv("ANTHROPIC_API_KEY")
-	oldBaseURL := os.Getenv("ANTHROPIC_BASE_URL")
 	oldProvider := os.Getenv("LLM_PROVIDER")
 	defer func() {
 		if old == "" {
 			_ = os.Unsetenv("ANTHROPIC_API_KEY")
 		} else {
 			_ = os.Setenv("ANTHROPIC_API_KEY", old)
-		}
-		if oldBaseURL == "" {
-			_ = os.Unsetenv("ANTHROPIC_BASE_URL")
-		} else {
-			_ = os.Setenv("ANTHROPIC_BASE_URL", oldBaseURL)
 		}
 		if oldProvider == "" {
 			_ = os.Unsetenv("LLM_PROVIDER")
@@ -743,16 +753,17 @@ func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
 		_, _ = io.WriteString(w, `{"content":[{"type":"text","text":"{\"strengths\":[\"Clear scope\"],\"weaknesses\":[\"Missing examples\"],\"suggestions\":[\"Add one end-to-end example\"],\"security_flags\":[\"No explicit failure fallback\"],\"quality_tier\":\"good\"}"}]}`)
 	}))
 	defer server.Close()
-	_ = os.Setenv("ANTHROPIC_BASE_URL", server.URL+"/v1/messages")
 
-	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), httpClient: server.Client()}
+	cfg := testConfig()
+	cfg.Providers["anthropic"] = providerConfig{Model: "claude-haiku-4-5", MaxTokens: 1200, BaseURL: server.URL + "/v1/messages"}
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), httpClient: server.Client(), cfg: cfg}
 	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","overall_score":100,"overall_tier":"excellent","summary":"demo passes deterministic evaluation.","deterministic":{"issues":[]}}`
 
-	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true, LLMProvider: "anthropic"}, raw)
+	result, _, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true, LLMProvider: "anthropic"}, raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"mode":"opt_in"`) || !strings.Contains(result, `"overall_tier":"good"`) || !strings.Contains(result, `"provider":"anthropic"`) || !strings.Contains(result, `"model":"claude-sonnet-4-6"`) {
+	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"mode":"opt_in"`) || !strings.Contains(result, `"overall_tier":"good"`) || !strings.Contains(result, `"provider":"anthropic"`) || !strings.Contains(result, `"model":"claude-haiku-4-5"`) {
 		t.Fatalf("expected optional llm payload, got %s", result)
 	}
 }
@@ -761,7 +772,7 @@ func TestHandleResultConsumeReleasesState(t *testing.T) {
 	ctx := context.Background()
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	app := &application{rdb: rdb}
+	app := &application{rdb: rdb, cfg: testConfig()}
 	jobID := "job-consume"
 	result := `{"status":"ok","skill_name":"demo","overall_score":92,"overall_tier":"excellent"}`
 	if err := rdb.Set(ctx, redisResultKey(jobID), result, time.Minute).Err(); err != nil {
@@ -788,18 +799,12 @@ func TestHandleResultConsumeReleasesState(t *testing.T) {
 
 func TestFinalizeEvaluationWithOptionalLLMFallsBackOnProviderError(t *testing.T) {
 	old := os.Getenv("ANTHROPIC_API_KEY")
-	oldBaseURL := os.Getenv("ANTHROPIC_BASE_URL")
 	oldProvider := os.Getenv("LLM_PROVIDER")
 	defer func() {
 		if old == "" {
 			_ = os.Unsetenv("ANTHROPIC_API_KEY")
 		} else {
 			_ = os.Setenv("ANTHROPIC_API_KEY", old)
-		}
-		if oldBaseURL == "" {
-			_ = os.Unsetenv("ANTHROPIC_BASE_URL")
-		} else {
-			_ = os.Setenv("ANTHROPIC_BASE_URL", oldBaseURL)
 		}
 		if oldProvider == "" {
 			_ = os.Unsetenv("LLM_PROVIDER")
@@ -815,12 +820,13 @@ func TestFinalizeEvaluationWithOptionalLLMFallsBackOnProviderError(t *testing.T)
 		_, _ = io.WriteString(w, `{"error":{"message":"provider down"}}`)
 	}))
 	defer server.Close()
-	_ = os.Setenv("ANTHROPIC_BASE_URL", server.URL)
 
-	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), httpClient: server.Client()}
+	cfg := testConfig()
+	cfg.Providers["anthropic"] = providerConfig{Model: "claude-haiku-4-5", MaxTokens: 1200, BaseURL: server.URL}
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), httpClient: server.Client(), cfg: cfg}
 	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":[]}}`
 
-	result, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true, LLMProvider: "anthropic"}, raw)
+	result, _, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true, LLMProvider: "anthropic"}, raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -940,27 +946,14 @@ func TestBuildOpenAIRequestBodyUsesMaxCompletionTokensForGPT54(t *testing.T) {
 
 func TestRunOpenAIReviewWithGPT41UsesMaxTokens(t *testing.T) {
 	oldKey := os.Getenv("OPENAI_API_KEY")
-	oldBaseURL := os.Getenv("OPENAI_BASE_URL")
-	oldModel := os.Getenv("OPENAI_MODEL")
 	defer func() {
 		if oldKey == "" {
 			_ = os.Unsetenv("OPENAI_API_KEY")
 		} else {
 			_ = os.Setenv("OPENAI_API_KEY", oldKey)
 		}
-		if oldBaseURL == "" {
-			_ = os.Unsetenv("OPENAI_BASE_URL")
-		} else {
-			_ = os.Setenv("OPENAI_BASE_URL", oldBaseURL)
-		}
-		if oldModel == "" {
-			_ = os.Unsetenv("OPENAI_MODEL")
-		} else {
-			_ = os.Setenv("OPENAI_MODEL", oldModel)
-		}
 	}()
 	_ = os.Setenv("OPENAI_API_KEY", "configured-openai")
-	_ = os.Setenv("OPENAI_MODEL", "gpt-4.1")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -974,8 +967,9 @@ func TestRunOpenAIReviewWithGPT41UsesMaxTokens(t *testing.T) {
 		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Concise\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"good\"}"}}]}`)
 	}))
 	defer server.Close()
-	_ = os.Setenv("OPENAI_BASE_URL", server.URL)
-	app := &application{httpClient: server.Client()}
+	cfg := testConfig()
+	cfg.Providers["openai"] = providerConfig{Model: "gpt-4.1", MaxTokens: 1200, BaseURL: server.URL}
+	app := &application{httpClient: server.Client(), cfg: cfg}
 	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -987,27 +981,14 @@ func TestRunOpenAIReviewWithGPT41UsesMaxTokens(t *testing.T) {
 
 func TestRunOpenAIReviewWithGPT53ChatLatestUsesMaxCompletionTokens(t *testing.T) {
 	oldKey := os.Getenv("OPENAI_API_KEY")
-	oldBaseURL := os.Getenv("OPENAI_BASE_URL")
-	oldModel := os.Getenv("OPENAI_MODEL")
 	defer func() {
 		if oldKey == "" {
 			_ = os.Unsetenv("OPENAI_API_KEY")
 		} else {
 			_ = os.Setenv("OPENAI_API_KEY", oldKey)
 		}
-		if oldBaseURL == "" {
-			_ = os.Unsetenv("OPENAI_BASE_URL")
-		} else {
-			_ = os.Setenv("OPENAI_BASE_URL", oldBaseURL)
-		}
-		if oldModel == "" {
-			_ = os.Unsetenv("OPENAI_MODEL")
-		} else {
-			_ = os.Setenv("OPENAI_MODEL", oldModel)
-		}
 	}()
 	_ = os.Setenv("OPENAI_API_KEY", "configured-openai")
-	_ = os.Setenv("OPENAI_MODEL", "gpt-5.3-chat-latest")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -1021,8 +1002,9 @@ func TestRunOpenAIReviewWithGPT53ChatLatestUsesMaxCompletionTokens(t *testing.T)
 		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Concise\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"good\"}"}}]}`)
 	}))
 	defer server.Close()
-	_ = os.Setenv("OPENAI_BASE_URL", server.URL)
-	app := &application{httpClient: server.Client()}
+	cfg := testConfig()
+	cfg.Providers["openai"] = providerConfig{Model: "gpt-5.3-chat-latest", MaxTokens: 1200, BaseURL: server.URL}
+	app := &application{httpClient: server.Client(), cfg: cfg}
 	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1034,27 +1016,14 @@ func TestRunOpenAIReviewWithGPT53ChatLatestUsesMaxCompletionTokens(t *testing.T)
 
 func TestRunOpenAIReviewWithGPT54UsesMaxCompletionTokens(t *testing.T) {
 	oldKey := os.Getenv("OPENAI_API_KEY")
-	oldBaseURL := os.Getenv("OPENAI_BASE_URL")
-	oldModel := os.Getenv("OPENAI_MODEL")
 	defer func() {
 		if oldKey == "" {
 			_ = os.Unsetenv("OPENAI_API_KEY")
 		} else {
 			_ = os.Setenv("OPENAI_API_KEY", oldKey)
 		}
-		if oldBaseURL == "" {
-			_ = os.Unsetenv("OPENAI_BASE_URL")
-		} else {
-			_ = os.Setenv("OPENAI_BASE_URL", oldBaseURL)
-		}
-		if oldModel == "" {
-			_ = os.Unsetenv("OPENAI_MODEL")
-		} else {
-			_ = os.Setenv("OPENAI_MODEL", oldModel)
-		}
 	}()
 	_ = os.Setenv("OPENAI_API_KEY", "configured-openai")
-	_ = os.Setenv("OPENAI_MODEL", "gpt-5.4")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -1068,8 +1037,9 @@ func TestRunOpenAIReviewWithGPT54UsesMaxCompletionTokens(t *testing.T) {
 		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Concise\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"good\"}"}}]}`)
 	}))
 	defer server.Close()
-	_ = os.Setenv("OPENAI_BASE_URL", server.URL)
-	app := &application{httpClient: server.Client()}
+	cfg := testConfig()
+	cfg.Providers["openai"] = providerConfig{Model: "gpt-5.4", MaxTokens: 1200, BaseURL: server.URL}
+	app := &application{httpClient: server.Client(), cfg: cfg}
 	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1079,30 +1049,17 @@ func TestRunOpenAIReviewWithGPT54UsesMaxCompletionTokens(t *testing.T) {
 	}
 }
 
-func TestRunAnthropicReviewSupportsCurrentSonnetAndHaikuModels(t *testing.T) {
+func TestRunAnthropicReviewSupportsMultipleModels(t *testing.T) {
 	oldKey := os.Getenv("ANTHROPIC_API_KEY")
-	oldBaseURL := os.Getenv("ANTHROPIC_BASE_URL")
-	oldModel := os.Getenv("ANTHROPIC_MODEL")
 	defer func() {
 		if oldKey == "" {
 			_ = os.Unsetenv("ANTHROPIC_API_KEY")
 		} else {
 			_ = os.Setenv("ANTHROPIC_API_KEY", oldKey)
 		}
-		if oldBaseURL == "" {
-			_ = os.Unsetenv("ANTHROPIC_BASE_URL")
-		} else {
-			_ = os.Setenv("ANTHROPIC_BASE_URL", oldBaseURL)
-		}
-		if oldModel == "" {
-			_ = os.Unsetenv("ANTHROPIC_MODEL")
-		} else {
-			_ = os.Setenv("ANTHROPIC_MODEL", oldModel)
-		}
 	}()
 	for _, model := range []string{"claude-sonnet-4-6", "claude-haiku-4-5"} {
 		_ = os.Setenv("ANTHROPIC_API_KEY", "configured-anthropic")
-		_ = os.Setenv("ANTHROPIC_MODEL", model)
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
@@ -1114,8 +1071,9 @@ func TestRunAnthropicReviewSupportsCurrentSonnetAndHaikuModels(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, `{"content":[{"type":"text","text":"{\"strengths\":[\"Clear scope\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"good\"}"}]}`)
 		}))
-		_ = os.Setenv("ANTHROPIC_BASE_URL", server.URL)
-		app := &application{httpClient: server.Client()}
+		cfg := testConfig()
+		cfg.Providers["anthropic"] = providerConfig{Model: model, MaxTokens: 1200, BaseURL: server.URL}
+		app := &application{httpClient: server.Client(), cfg: cfg}
 		analysis, err := app.runLLMReview(context.Background(), "anthropic", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
 		server.Close()
 		if err != nil {
@@ -1129,17 +1087,11 @@ func TestRunAnthropicReviewSupportsCurrentSonnetAndHaikuModels(t *testing.T) {
 
 func TestRunLLMReviewWithOpenAI(t *testing.T) {
 	oldKey := os.Getenv("OPENAI_API_KEY")
-	oldBaseURL := os.Getenv("OPENAI_BASE_URL")
 	defer func() {
 		if oldKey == "" {
 			_ = os.Unsetenv("OPENAI_API_KEY")
 		} else {
 			_ = os.Setenv("OPENAI_API_KEY", oldKey)
-		}
-		if oldBaseURL == "" {
-			_ = os.Unsetenv("OPENAI_BASE_URL")
-		} else {
-			_ = os.Setenv("OPENAI_BASE_URL", oldBaseURL)
 		}
 	}()
 	_ = os.Setenv("OPENAI_API_KEY", "configured-openai")
@@ -1151,19 +1103,20 @@ func TestRunLLMReviewWithOpenAI(t *testing.T) {
 		_, _ = io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"{\"strengths\":[\"Concise\"],\"weaknesses\":[],\"suggestions\":[],\"security_flags\":[],\"quality_tier\":\"good\"}"}}]}`)
 	}))
 	defer server.Close()
-	_ = os.Setenv("OPENAI_BASE_URL", server.URL)
-	app := &application{httpClient: server.Client()}
+	cfg := testConfig()
+	cfg.Providers["openai"] = providerConfig{Model: "gpt-4.1-nano", MaxTokens: 1200, BaseURL: server.URL}
+	app := &application{httpClient: server.Client(), cfg: cfg}
 	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if analysis.Provider != "openai" || analysis.Model != "gpt-4.1" || analysis.QualityTier != "good" {
+	if analysis.Provider != "openai" || analysis.Model != "gpt-4.1-nano" || analysis.QualityTier != "good" {
 		t.Fatalf("unexpected analysis: %+v", analysis)
 	}
 }
 
 func TestSupportedLLMProvider(t *testing.T) {
-	for _, provider := range []string{"anthropic", "openai"} {
+	for _, provider := range []string{"anthropic", "openai", "gemini", "groq"} {
 		if !isSupportedLLMProvider(provider) {
 			t.Fatalf("expected provider %q to be supported", provider)
 		}
@@ -1178,7 +1131,7 @@ func TestHandleVersion(t *testing.T) {
 	buildCommit = "abcdef123456"
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/version", nil)
-	app := &application{}
+	app := &application{cfg: testConfig()}
 	app.handleVersion(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
@@ -1198,11 +1151,11 @@ func TestNormalizeQualityTier(t *testing.T) {
 }
 
 func TestFinalizeEvaluationErrors(t *testing.T) {
-	app := &application{}
-	if _, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1"}, `not-json`); err == nil {
+	app := &application{cfg: testConfig()}
+	if _, _, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1"}, `not-json`); err == nil {
 		t.Fatal("expected parse error")
 	}
-	if _, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1"}, `{"status":"error","message":"ANTHROPIC_API_KEY=secret"}`); err == nil || strings.Contains(err.Error(), "secret") {
+	if _, _, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1"}, `{"status":"error","message":"ANTHROPIC_API_KEY=secret"}`); err == nil || strings.Contains(err.Error(), "secret") {
 		t.Fatalf("expected redacted evaluator error, got %v", err)
 	}
 }
@@ -1246,7 +1199,7 @@ func TestHandleUploadRejectsOversizePayload(t *testing.T) {
 	req.Header.Set("Content-Type", "multipart/form-data; boundary=test")
 	rr := httptest.NewRecorder()
 
-	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), cfg: testConfig()}
 	app.handleUpload(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
@@ -1275,7 +1228,7 @@ func TestHandleUploadRejectsExecutableAttachment(t *testing.T) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
 
-	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), cfg: testConfig()}
 	app.handleUpload(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
@@ -1307,7 +1260,7 @@ func TestHandleUploadRejectsMixedSources(t *testing.T) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
 
-	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), cfg: testConfig()}
 	app.handleUpload(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
@@ -1349,7 +1302,7 @@ func TestHandleUploadSurfacesGitHubNotFoundAsBadRequest(t *testing.T) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
 
-	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), cfg: testConfig()}
 	app.handleUpload(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
@@ -1391,7 +1344,7 @@ func TestHandleUploadSurfacesGitHubRateLimitAsServiceUnavailable(t *testing.T) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
 
-	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond})}
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), cfg: testConfig()}
 	app.handleUpload(rr, req)
 
 	if rr.Code != http.StatusServiceUnavailable {
@@ -1406,7 +1359,7 @@ func TestLimitMiddlewareRejectsHourlyEvaluationBurst(t *testing.T) {
 	ctx := context.Background()
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	app := &application{rdb: rdb}
+	app := &application{rdb: rdb, cfg: testConfig()}
 
     handler := app.uploadAbuseProtection(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -1435,7 +1388,7 @@ func TestLimitMiddlewareRejectsDailyEvaluationBurst(t *testing.T) {
 	ctx := context.Background()
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	app := &application{rdb: rdb}
+	app := &application{rdb: rdb, cfg: testConfig()}
 
     handler := app.uploadAbuseProtection(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -1464,7 +1417,7 @@ func TestLimitMiddlewareKeepsStrictLLMLimit(t *testing.T) {
 	ctx := context.Background()
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	app := &application{rdb: rdb}
+	app := &application{rdb: rdb, cfg: testConfig()}
 
     handler := app.uploadAbuseProtection(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -1486,5 +1439,27 @@ func TestLimitMiddlewareKeepsStrictLLMLimit(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "optional AI review rate limit exceeded") {
 		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestStripMarkdownFences(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain json", `{"strengths":["good"]}`, `{"strengths":["good"]}`},
+		{"json fenced", "```json\n{\"strengths\":[\"good\"]}\n```", `{"strengths":["good"]}`},
+		{"JSON uppercase fenced", "```JSON\n{\"strengths\":[\"good\"]}\n```", `{"strengths":["good"]}`},
+		{"plain fenced", "```\n{\"strengths\":[\"good\"]}\n```", `{"strengths":["good"]}`},
+		{"whitespace padding", "  ```json\n{\"strengths\":[\"good\"]}\n```  ", `{"strengths":["good"]}`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := stripMarkdownFences(tc.input)
+			if got != tc.want {
+				t.Fatalf("stripMarkdownFences(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
 	}
 }

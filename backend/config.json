@@ -1,0 +1,36 @@
+{
+  "providers": {
+    "anthropic": {
+      "model": "claude-haiku-4-5",
+      "max_tokens": 1200,
+      "base_url": "https://api.anthropic.com/v1/messages"
+    },
+    "openai": {
+      "model": "gpt-4.1-nano",
+      "max_tokens": 1200,
+      "base_url": "https://api.openai.com/v1/chat/completions"
+    },
+    "groq": {
+      "model": "llama-3.3-70b-versatile",
+      "max_tokens": 1200,
+      "base_url": "https://api.groq.com/openai/v1/chat/completions"
+    },
+    "gemini": {
+      "model": "gemini-2.0-flash",
+      "max_tokens": 1200,
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    }
+  },
+  "pricing": {
+    "claude-haiku-4": { "input_per_m": 0.80, "output_per_m": 4.0 },
+    "gpt-4.1-nano":   { "input_per_m": 0.10, "output_per_m": 0.40 },
+    "gpt-4.1-mini":   { "input_per_m": 0.40, "output_per_m": 1.60 },
+    "gpt-4.1":        { "input_per_m": 2.0,  "output_per_m": 8.0 },
+    "gpt-5.4":        { "input_per_m": 5.0,  "output_per_m": 20.0 },
+    "gemini-2.5-flash": { "input_per_m": 0, "output_per_m": 0 },
+    "gemini-2.0-flash": { "input_per_m": 0, "output_per_m": 0 },
+    "gemini-1.5-flash": { "input_per_m": 0, "output_per_m": 0 },
+    "llama-3.3-70b":    { "input_per_m": 0, "output_per_m": 0 },
+    "llama-3.1-70b":    { "input_per_m": 0, "output_per_m": 0 }
+  }
+}

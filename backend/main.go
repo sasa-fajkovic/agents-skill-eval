@@ -144,6 +144,40 @@ type application struct {
 	evalWorkDir string
 	httpClient  *http.Client
 	logger      *jobLogger
+	cfg         appConfig
+}
+
+// --- Application configuration (loaded from config.json) ---
+
+type providerConfig struct {
+	Model     string `json:"model"`
+	MaxTokens int    `json:"max_tokens"`
+	BaseURL   string `json:"base_url"`
+}
+
+type pricingEntry struct {
+	InputPerM  float64 `json:"input_per_m"`
+	OutputPerM float64 `json:"output_per_m"`
+}
+
+type appConfig struct {
+	Providers map[string]providerConfig `json:"providers"`
+	Pricing   map[string]pricingEntry   `json:"pricing"`
+}
+
+func loadConfig(path string) (appConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return appConfig{}, fmt.Errorf("read config: %w", err)
+	}
+	var cfg appConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return appConfig{}, fmt.Errorf("parse config: %w", err)
+	}
+	if cfg.Providers == nil {
+		return appConfig{}, errors.New("config: no providers defined")
+	}
+	return cfg, nil
 }
 
 type evalJob struct {
@@ -307,6 +341,12 @@ func main() {
 	evalScript, evalWorkDir := detectEvalScript()
 	logger := newJobLogger(os.Getenv("LOG_DIR"))
 	logger.cleanOldLogs()
+
+	cfg, err := loadConfig("config.json")
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
+
 	app := &application{
 		rdb:         rdb,
 		frontendDir: detectFrontendDir(),
@@ -314,6 +354,7 @@ func main() {
 		evalWorkDir: evalWorkDir,
 		httpClient:  &http.Client{Timeout: 45 * time.Second},
 		logger:      logger,
+		cfg:         cfg,
 	}
 
 	go app.workerLoop(ctx)
@@ -606,6 +647,9 @@ func (app *application) uploadAbuseProtection(next http.Handler) http.Handler {
 		}
 
 		ip := clientIP(r)
+		skipRateLimit := isLoopback(ip)
+
+		if !skipRateLimit {
 		hourlyKey := "ratelimit:hourly:" + ip
 		hourlyCount, err := app.rdb.Incr(r.Context(), hourlyKey).Result()
 		if err != nil {
@@ -639,9 +683,10 @@ func (app *application) uploadAbuseProtection(next http.Handler) http.Handler {
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "daily evaluation rate limit exceeded"})
 			return
 		}
+		} // end !skipRateLimit
 
 		enableLLM := parseBool(r.FormValue("enableLlm"))
-		if enableLLM {
+		if enableLLM && !skipRateLimit {
 			llmKey := "ratelimit:llm:" + ip
 			llmCount, err := app.rdb.Incr(r.Context(), llmKey).Result()
 			if err != nil {
@@ -1050,8 +1095,9 @@ func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw
 			_ = app.appendProgress(ctx, job.JobID, "LLM evaluation...")
 			generated, err := app.runLLMReview(ctx, provider, container)
 			if err != nil {
-				_ = app.appendProgress(ctx, job.JobID, "Optional LLM review failed. Returning deterministic result only.")
+				_ = app.appendProgress(ctx, job.JobID, fmt.Sprintf("Optional AI review failed (%s). Returning deterministic result only.", sanitizeLLMError(err)))
 				captureInfraEvent("llm_review_failed", err, map[string]string{"component": "llm", "provider": provider})
+				log.Printf("[llm] %s review failed: %v", provider, err)
 			} else {
 				analysis = &generated
 				_ = app.appendProgress(ctx, job.JobID, "Optional LLM review completed.")
@@ -1184,6 +1230,10 @@ func llmProviderConfigured(provider string) bool {
 		return strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) != ""
 	case "openai":
 		return strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != ""
+	case "gemini":
+		return strings.TrimSpace(os.Getenv("GEMINI_API_KEY")) != ""
+	case "groq":
+		return strings.TrimSpace(os.Getenv("GROQ_API_KEY")) != ""
 	default:
 		return false
 	}
@@ -1206,29 +1256,35 @@ func normalizeLLMProvider(provider string) string {
 
 func isSupportedLLMProvider(provider string) bool {
 	switch normalizeLLMProvider(provider) {
-	case "anthropic", "openai":
+	case "anthropic", "openai", "gemini", "groq":
 		return true
 	default:
 		return false
 	}
 }
 
-func llmModelForProvider(provider string) string {
-	switch effectiveLLMProvider(provider) {
-	case "openai":
-		return getenvDefault("OPENAI_MODEL", "gpt-4.1")
-	default:
-		return getenvDefault("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+func (app *application) llmModelForProvider(provider string) string {
+	p := effectiveLLMProvider(provider)
+	if pc, ok := app.cfg.Providers[p]; ok && pc.Model != "" {
+		return pc.Model
 	}
+	return "claude-haiku-4-5" // fallback
 }
 
-func llmMaxTokensForProvider(provider string) int {
-	switch effectiveLLMProvider(provider) {
-	case "openai":
-		return parseIntDefault(os.Getenv("OPENAI_MAX_TOKENS"), 1200)
-	default:
-		return parseIntDefault(os.Getenv("ANTHROPIC_MAX_TOKENS"), 1200)
+func (app *application) llmMaxTokensForProvider(provider string) int {
+	p := effectiveLLMProvider(provider)
+	if pc, ok := app.cfg.Providers[p]; ok && pc.MaxTokens > 0 {
+		return pc.MaxTokens
 	}
+	return 1200
+}
+
+func (app *application) llmBaseURLForProvider(provider string) string {
+	p := effectiveLLMProvider(provider)
+	if pc, ok := app.cfg.Providers[p]; ok && pc.BaseURL != "" {
+		return pc.BaseURL
+	}
+	return ""
 }
 
 func (app *application) runLLMReview(ctx context.Context, provider string, container evalContainerResult) (llmAnalysis, error) {
@@ -1244,6 +1300,10 @@ func (app *application) runLLMReview(ctx context.Context, provider string, conta
 	switch provider {
 	case "openai":
 		analysis, err = app.runOpenAIReview(ctx, systemPrompt, userPrompt)
+	case "gemini":
+		analysis, err = app.runGeminiReview(ctx, systemPrompt, userPrompt)
+	case "groq":
+		analysis, err = app.runGroqReview(ctx, systemPrompt, userPrompt)
 	default:
 		analysis, err = app.runAnthropicReview(ctx, systemPrompt, userPrompt)
 	}
@@ -1252,9 +1312,9 @@ func (app *application) runLLMReview(ctx context.Context, provider string, conta
 	}
 	analysis.DurationMs = time.Since(llmStart).Milliseconds()
 	analysis.Provider = provider
-	analysis.Model = llmModelForProvider(provider)
+	analysis.Model = app.llmModelForProvider(provider)
 	analysis.Mode = "opt_in"
-	analysis.EstimatedCostUSD = estimateLLMCost(analysis.Model, analysis.InputTokens, analysis.OutputTokens)
+	analysis.EstimatedCostUSD = app.estimateLLMCost(analysis.Model, analysis.InputTokens, analysis.OutputTokens)
 	analysis.QualityTier = normalizeQualityTier(analysis.QualityTier)
 	analysis.Strengths = uniqueStrings(analysis.Strengths)
 	analysis.Weaknesses = uniqueStrings(analysis.Weaknesses)
@@ -1265,8 +1325,8 @@ func (app *application) runLLMReview(ctx context.Context, provider string, conta
 
 func (app *application) runAnthropicReview(ctx context.Context, systemPrompt, userPrompt string) (llmAnalysis, error) {
 	reqBody := anthropicMessageRequest{
-		Model:     llmModelForProvider("anthropic"),
-		MaxTokens: llmMaxTokensForProvider("anthropic"),
+		Model:     app.llmModelForProvider("anthropic"),
+		MaxTokens: app.llmMaxTokensForProvider("anthropic"),
 		System:    systemPrompt,
 		Messages: []anthropicMessageRecord{{
 			Role:    "user",
@@ -1277,7 +1337,7 @@ func (app *application) runAnthropicReview(ctx context.Context, systemPrompt, us
 	if err != nil {
 		return llmAnalysis{}, errors.New("failed to encode anthropic request")
 	}
-	endpoint := getenvDefault("ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1/messages")
+	endpoint := app.llmBaseURLForProvider("anthropic")
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
 	if err != nil {
 		return llmAnalysis{}, errors.New("failed to create anthropic request")
@@ -1293,24 +1353,52 @@ func (app *application) runAnthropicReview(ctx context.Context, systemPrompt, us
 }
 
 func (app *application) runOpenAIReview(ctx context.Context, systemPrompt, userPrompt string) (llmAnalysis, error) {
-	reqBody, err := buildOpenAIRequestBody(llmModelForProvider("openai"), llmMaxTokensForProvider("openai"), systemPrompt, userPrompt)
+	return app.runOpenAICompatibleReview(ctx, "openai",
+		app.llmBaseURLForProvider("openai"),
+		strings.TrimSpace(os.Getenv("OPENAI_API_KEY")),
+		app.llmModelForProvider("openai"),
+		app.llmMaxTokensForProvider("openai"),
+		systemPrompt, userPrompt)
+}
+
+func (app *application) runGeminiReview(ctx context.Context, systemPrompt, userPrompt string) (llmAnalysis, error) {
+	return app.runOpenAICompatibleReview(ctx, "gemini",
+		app.llmBaseURLForProvider("gemini"),
+		strings.TrimSpace(os.Getenv("GEMINI_API_KEY")),
+		app.llmModelForProvider("gemini"),
+		app.llmMaxTokensForProvider("gemini"),
+		systemPrompt, userPrompt)
+}
+
+func (app *application) runGroqReview(ctx context.Context, systemPrompt, userPrompt string) (llmAnalysis, error) {
+	return app.runOpenAICompatibleReview(ctx, "groq",
+		app.llmBaseURLForProvider("groq"),
+		strings.TrimSpace(os.Getenv("GROQ_API_KEY")),
+		app.llmModelForProvider("groq"),
+		app.llmMaxTokensForProvider("groq"),
+		systemPrompt, userPrompt)
+}
+
+// runOpenAICompatibleReview sends a chat completion request to any
+// OpenAI-compatible API (OpenAI, Gemini, Groq, etc.).
+func (app *application) runOpenAICompatibleReview(ctx context.Context, provider, endpoint, apiKey, model string, maxTokens int, systemPrompt, userPrompt string) (llmAnalysis, error) {
+	reqBody, err := buildOpenAIRequestBody(model, maxTokens, systemPrompt, userPrompt)
 	if err != nil {
 		return llmAnalysis{}, err
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return llmAnalysis{}, errors.New("failed to encode openai request")
+		return llmAnalysis{}, fmt.Errorf("failed to encode %s request", provider)
 	}
-	endpoint := getenvDefault("OPENAI_BASE_URL", "https://api.openai.com/v1/chat/completions")
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
 	if err != nil {
-		return llmAnalysis{}, errors.New("failed to create openai request")
+		return llmAnalysis{}, fmt.Errorf("failed to create %s request", provider)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(os.Getenv("OPENAI_API_KEY")))
-	respBody, err := app.doLLMRequest("openai", req)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	respBody, err := app.doLLMRequest(provider, req)
 	if err != nil {
-		return llmAnalysis{}, wrapProviderError("openai", err)
+		return llmAnalysis{}, wrapProviderError(provider, err)
 	}
 	return parseOpenAIAnalysis(respBody)
 }
@@ -1366,7 +1454,7 @@ func (app *application) doLLMRequest(provider string, req *http.Request) ([]byte
 		switch provider {
 		case "anthropic":
 			return nil, statusError{status: resp.StatusCode, message: parseAnthropicError(respBody, resp.Status)}
-		case "openai":
+		case "openai", "gemini", "groq":
 			return nil, statusError{status: resp.StatusCode, message: parseOpenAIError(respBody, resp.Status)}
 		default:
 			return nil, statusError{status: resp.StatusCode, message: redactSecrets(strings.TrimSpace(string(respBody)))}
@@ -1384,6 +1472,34 @@ func wrapProviderError(provider string, err error) error {
 		return errors.New(statusErr.message)
 	}
 	return errors.New(provider + " request failed: " + err.Error())
+}
+
+// sanitizeLLMError returns a short, user-safe summary of an LLM API error.
+func sanitizeLLMError(err error) string {
+	if err == nil {
+		return "unknown error"
+	}
+	msg := err.Error()
+	var se statusError
+	if errors.As(err, &se) {
+		switch {
+		case se.status == 429:
+			return "rate limit or quota exceeded"
+		case se.status == 401 || se.status == 403:
+			return "authentication failed"
+		case se.status >= 500:
+			return "provider server error"
+		}
+	}
+	switch {
+	case strings.Contains(msg, "quota") || strings.Contains(msg, "429") || strings.Contains(msg, "rate limit"):
+		return "rate limit or quota exceeded"
+	case strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline"):
+		return "request timed out"
+	case strings.Contains(msg, "401") || strings.Contains(msg, "403") || strings.Contains(msg, "auth"):
+		return "authentication failed"
+	}
+	return "provider returned an error"
 }
 
 func llmSystemPrompt() string {
@@ -1417,7 +1533,7 @@ func parseAnthropicAnalysis(body []byte) (llmAnalysis, error) {
 	if text == "" {
 		return llmAnalysis{}, errors.New("anthropic response did not contain text")
 	}
-	text = strings.TrimSpace(strings.TrimPrefix(strings.TrimSuffix(text, "```"), "```json"))
+	text = stripMarkdownFences(text)
 	var analysis llmAnalysis
 	if err := json.Unmarshal([]byte(text), &analysis); err != nil {
 		return llmAnalysis{}, errors.New("anthropic response did not return valid JSON")
@@ -1452,12 +1568,31 @@ func parseOpenAIAnalysis(body []byte) (llmAnalysis, error) {
 }
 
 func parseLLMJSONPayload(text, provider string) (llmAnalysis, error) {
-	text = strings.TrimSpace(strings.TrimPrefix(strings.TrimSuffix(strings.TrimSpace(text), "```"), "```json"))
+	text = stripMarkdownFences(text)
 	var analysis llmAnalysis
 	if err := json.Unmarshal([]byte(text), &analysis); err != nil {
 		return llmAnalysis{}, fmt.Errorf("%s response did not return valid JSON", provider)
 	}
 	return analysis, nil
+}
+
+// stripMarkdownFences removes common markdown code fence wrappers that
+// weaker models (e.g. Llama on Groq) may add despite instructions not to.
+func stripMarkdownFences(text string) string {
+	text = strings.TrimSpace(text)
+	// Strip leading ```json, ```JSON, or plain ```
+	for _, prefix := range []string{"```json", "```JSON", "```"} {
+		if strings.HasPrefix(text, prefix) {
+			text = strings.TrimPrefix(text, prefix)
+			break
+		}
+	}
+	// Strip trailing ```
+	text = strings.TrimSpace(text)
+	if strings.HasSuffix(text, "```") {
+		text = strings.TrimSuffix(text, "```")
+	}
+	return strings.TrimSpace(text)
 }
 
 func joinAnthropicText(parts []struct {
@@ -2135,6 +2270,10 @@ func clientIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
+func isLoopback(ip string) bool {
+	return ip == "127.0.0.1" || ip == "::1" || ip == "localhost"
+}
+
 func isTrustedProxy(remoteAddr string) bool {
 	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
@@ -2252,7 +2391,8 @@ func detectEvalScript() (scriptPath, workDir string) {
 	parent := filepath.Join("..", ".claude", "skills", "skill-evaluation", "scripts", "eval.py")
 	if _, err := os.Stat(parent); err == nil {
 		abs, _ := filepath.Abs("..")
-		return parent, abs
+		absScript, _ := filepath.Abs(parent)
+		return absScript, abs
 	}
 	// Fallback to Docker path (will fail with clear error if not found)
 	return docker, "/app"
@@ -2455,30 +2595,13 @@ func (jl *jobLogger) writeEntry(entry jobLogEntry) {
 	_, _ = jl.file.Write(append(data, '\n'))
 }
 
-// estimateLLMCost returns a best-effort USD cost based on known per-token
-// pricing. Returns 0 for unrecognised models.
-func estimateLLMCost(model string, inputTokens, outputTokens int) float64 {
-	type pricing struct {
-		inputPerM  float64
-		outputPerM float64
-	}
-	table := []struct {
-		prefix string
-		p      pricing
-	}{
-		// Anthropic (mid-2025 pricing)
-		{"claude-sonnet-4", pricing{3.0, 15.0}},
-		{"claude-haiku-3", pricing{0.80, 4.0}},
-		// OpenAI (mid-2025 pricing)
-		{"gpt-5.4", pricing{5.0, 20.0}},
-		{"gpt-4.1-mini", pricing{0.40, 1.60}},
-		{"gpt-4.1-nano", pricing{0.10, 0.40}},
-		{"gpt-4.1", pricing{2.0, 8.0}},
-	}
+// estimateLLMCost returns a best-effort USD cost based on the pricing table
+// in config.json. Returns 0 for unrecognised models.
+func (app *application) estimateLLMCost(model string, inputTokens, outputTokens int) float64 {
 	m := strings.ToLower(strings.TrimSpace(model))
-	for _, row := range table {
-		if strings.HasPrefix(m, row.prefix) {
-			return (float64(inputTokens)*row.p.inputPerM + float64(outputTokens)*row.p.outputPerM) / 1_000_000
+	for prefix, p := range app.cfg.Pricing {
+		if strings.HasPrefix(m, prefix) {
+			return (float64(inputTokens)*p.InputPerM + float64(outputTokens)*p.OutputPerM) / 1_000_000
 		}
 	}
 	return 0

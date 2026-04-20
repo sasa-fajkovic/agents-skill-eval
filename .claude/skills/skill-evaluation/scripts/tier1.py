@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from common import (
@@ -28,6 +29,9 @@ METADATA_REDUNDANT_KEYS = {
 }
 
 
+_TEMP_DIR_RE = re.compile(r"^eval-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
 def check_1_1(fm: dict, skill_dir: str) -> list[Finding]:
     findings = []
     if "name" not in fm:
@@ -42,7 +46,8 @@ def check_1_1(fm: dict, skill_dir: str) -> list[Finding]:
     if not NAME_RE.match(name):
         findings.append(Finding("1.1", "ERROR", f'name "{name}" must be lowercase alphanumeric + hyphens, no leading/trailing/consecutive hyphens'))
     dirname = Path(skill_dir).name
-    if name != dirname:
+    # Skip directory-name comparison for synthetic upload directories (e.g. /tmp/eval-<uuid>).
+    if not _TEMP_DIR_RE.match(dirname) and name != dirname:
         findings.append(Finding("1.1", "ERROR", f'name "{name}" does not match directory "{dirname}"'))
     return findings
 

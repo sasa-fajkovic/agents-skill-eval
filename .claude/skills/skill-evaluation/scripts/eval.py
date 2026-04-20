@@ -134,10 +134,28 @@ def build_json_result(skill_path: Path, findings: list[Finding]) -> dict:
     }
 
 
+def _find_skill_md(root: Path) -> Path | None:
+    """Locate SKILL.md inside *root*, preferring root-level, then one level deep."""
+    candidate = root / "SKILL.md"
+    if candidate.exists():
+        return candidate
+    # Walk one level deep (e.g. copilot-review/SKILL.md inside an upload dir).
+    for child in sorted(root.iterdir()):
+        if child.is_dir():
+            nested = child / "SKILL.md"
+            if nested.exists():
+                return nested
+    return None
+
+
 def evaluate(path: str) -> list[Finding]:
     skill_path = Path(path)
     if skill_path.is_dir():
-        skill_path = skill_path / "SKILL.md"
+        found = _find_skill_md(skill_path)
+        if found is not None:
+            skill_path = found
+        else:
+            skill_path = skill_path / "SKILL.md"  # will fail below with a clear message
     if not skill_path.exists():
         return [Finding("--", "ERROR", f"file not found: {skill_path}")]
 

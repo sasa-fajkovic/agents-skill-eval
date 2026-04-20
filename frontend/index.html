@@ -92,10 +92,10 @@
 
     .button-primary,
     .primary {
-      border-color: rgba(34, 197, 94, 0.42);
-      background: linear-gradient(180deg, rgba(34, 197, 94, 0.24), rgba(22, 163, 74, 0.14));
+      border-color: rgba(34, 197, 94, 0.6);
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.38), rgba(22, 163, 74, 0.28));
       color: #d1fae5;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 16px rgba(34, 197, 94, 0.15);
     }
 
     .button-secondary {
@@ -652,14 +652,19 @@
       min-height: 52px;
       width: 100%;
       padding: 12px 22px;
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 700;
       letter-spacing: 0.04em;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 28px rgba(22, 163, 74, 0.16);
+      color: #ffffff;
+      border-color: rgba(34, 197, 94, 0.7);
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.52), rgba(22, 163, 74, 0.38));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 28px rgba(22, 163, 74, 0.22), 0 0 0 1px rgba(34, 197, 94, 0.12);
     }
 
     .upload-actions #upload-button:hover {
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 14px 34px rgba(22, 163, 74, 0.22);
+      border-color: rgba(34, 197, 94, 0.85);
+      background: linear-gradient(180deg, rgba(34, 197, 94, 0.62), rgba(22, 163, 74, 0.46));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 14px 34px rgba(22, 163, 74, 0.30), 0 0 0 1px rgba(34, 197, 94, 0.18);
     }
 
     button {
@@ -721,6 +726,7 @@
     .provider-toggle {
       display: inline-flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 6px;
       width: 100%;
       padding: 6px;
@@ -738,7 +744,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      flex: 1 1 0;
+      flex: 1 1 calc(50% - 6px);
       min-height: 42px;
       padding: 10px 16px;
       border-radius: 12px;
@@ -768,6 +774,42 @@
       cursor: not-allowed;
       opacity: 0.7;
       transform: none;
+    }
+
+    .provider-chip--featured {
+      flex: 1 1 100%;
+    }
+
+    .chip-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 7px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      line-height: 1.6;
+      vertical-align: middle;
+      margin-left: 5px;
+    }
+
+    .chip-badge--free {
+      background: rgba(34, 197, 94, 0.18);
+      color: #4ade80;
+      border: 1px solid rgba(34, 197, 94, 0.25);
+    }
+
+    .chip-model {
+      font-weight: 400;
+      font-size: 12px;
+      opacity: 0.6;
+    }
+
+    html[data-theme="light"] .chip-badge--free {
+      background: rgba(22, 163, 74, 0.10);
+      color: #15803d;
+      border-color: rgba(22, 163, 74, 0.22);
     }
 
     html[data-theme="light"] .provider-toggle {
@@ -1244,6 +1286,7 @@
     }
 
     .json-result-view {
+      position: relative;
       margin: 0;
       min-height: 360px;
       max-height: 360px;
@@ -1258,6 +1301,38 @@
       line-height: 1.75;
       white-space: pre-wrap;
       word-break: break-word;
+      user-select: all;
+      -webkit-user-select: all;
+    }
+
+    .json-copy-btn {
+      position: sticky;
+      top: 0;
+      float: right;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      margin: 0 0 -32px 0;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 34, 0.9);
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+      z-index: 2;
+    }
+
+    .json-copy-btn:hover {
+      color: var(--text);
+      border-color: var(--line-strong);
+      background: rgba(30, 41, 59, 0.95);
+    }
+
+    .json-copy-btn svg {
+      width: 16px;
+      height: 16px;
     }
 
     .result-list {
@@ -1309,6 +1384,16 @@
     .result-list.security li::before {
       background: #ef4444;
       box-shadow: 0 0 10px rgba(239, 68, 68, 0.55);
+    }
+
+    .result-list.issues li[data-severity="error"]::before {
+      background: #ef4444;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.55);
+    }
+
+    .result-list.issues li[data-severity="warning"]::before {
+      background: #f97316;
+      box-shadow: 0 0 10px rgba(249, 115, 22, 0.55);
     }
 
     .checklist {
@@ -1543,10 +1628,10 @@
 
     html[data-theme="light"] .button-primary,
     html[data-theme="light"] .primary {
-      border-color: rgba(34, 197, 94, 0.34);
-      background: #dcfce7;
-      color: #166534;
-      box-shadow: none;
+      border-color: rgba(22, 163, 74, 0.4);
+      background: linear-gradient(180deg, #dcfce7, #bbf7d0);
+      color: #14532d;
+      box-shadow: 0 1px 3px rgba(22, 163, 74, 0.12);
     }
 
     html[data-theme="light"] .skill-download-link {
@@ -1695,6 +1780,16 @@
       background: #e2e8f0;
       color: #0f172a;
       border-color: rgba(15, 23, 42, 0.14);
+    }
+
+    html[data-theme="light"] .json-copy-btn {
+      background: rgba(241, 245, 249, 0.95);
+      border-color: rgba(15, 23, 42, 0.14);
+    }
+
+    html[data-theme="light"] .json-copy-btn:hover {
+      background: #ffffff;
+      border-color: rgba(15, 23, 42, 0.25);
     }
 
     html[data-theme="light"] .support-chip::before,
@@ -1980,10 +2075,11 @@
             </label>
             <div class="llm-provider-row">
               <label for="llm-provider">AI provider</label>
-              <input id="llm-provider" class="sr-only" type="hidden" value="anthropic">
+              <input id="llm-provider" class="sr-only" type="hidden" value="groq">
               <div class="provider-toggle" role="group" aria-label="AI provider" aria-disabled="true">
-                <button type="button" class="provider-chip" data-provider-value="anthropic" aria-pressed="true" disabled>Anthropic Claude</button>
-                <button type="button" class="provider-chip" data-provider-value="openai" aria-pressed="false" disabled>OpenAI</button>
+                <button type="button" class="provider-chip provider-chip--featured" data-provider-value="groq" aria-pressed="true" disabled>Groq <span class="chip-model">Llama 3.3 70B</span> <span class="chip-badge chip-badge--free">Free</span></button>
+                <button type="button" class="provider-chip" data-provider-value="anthropic" aria-pressed="false" disabled>Anthropic <span class="chip-model">Claude Haiku 4.5</span></button>
+                <button type="button" class="provider-chip" data-provider-value="openai" aria-pressed="false" disabled>OpenAI <span class="chip-model">GPT-4.1 Nano</span></button>
               </div>
             </div>
           </div>
@@ -2462,7 +2558,8 @@
           const severity = String(item.severity || '').trim();
           const prefix = severity ? `${severity.toUpperCase()}: ` : '';
           const detail = reason ? ` <span class="result-item-reason">${escapeHtml(reason)}</span>` : '';
-          return `<li>${escapeHtml(prefix + message)}${detail}</li>`;
+          const sevAttr = severity ? ` data-severity="${severity.toLowerCase()}"` : '';
+          return `<li${sevAttr}>${escapeHtml(prefix + message)}${detail}</li>`;
         }
         return `<li>${escapeHtml(item)}</li>`;
       }).join('')}</ul>`;
@@ -2472,8 +2569,12 @@
       switch (String(value || '').toLowerCase()) {
         case 'openai':
           return 'OpenAI';
-        default:
+        case 'groq':
+          return 'Groq';
+        case 'anthropic':
           return 'Anthropic Claude';
+        default:
+          return String(value || 'Unknown');
       }
     }
 
@@ -2510,6 +2611,19 @@
       });
     }
 
+    function copyJsonResult(btn) {
+      const pre = btn.closest('.json-result-view');
+      if (!pre) return;
+      // Extract plain text (strip HTML tags from syntax highlighting)
+      const text = pre.textContent || pre.innerText || '';
+      navigator.clipboard.writeText(text.trim()).then(() => {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        btn.style.color = '#22c55e';
+        setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 1500);
+      });
+    }
+
     function explainAiReviewOutcome(progressLines, data) {
       return getAiReviewOutcome(progressLines, data).summary;
     }
@@ -2524,6 +2638,9 @@
       results.classList.remove('loading');
       if (!skipPhaseRender) {
         updatePhaseTarget(data.progress || [], 'Evaluation completed.', data);
+        // Snap all phases to complete — result is already here, no point animating.
+        phaseVisualDone = phaseTargetIndex;
+        phaseFillIndex = -1;
         renderPhaseTracker();
       }
       const score = Number(data.overall_score ?? 0);
@@ -2590,7 +2707,7 @@
                 <span class="download-note">Available in this tab until refresh</span>
               </div>
             </div>
-            <pre class="json-result-view">${syntaxHighlightJson(data)}</pre>
+            <pre class="json-result-view"><button type="button" class="json-copy-btn" title="Copy JSON" onclick="copyJsonResult(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>${syntaxHighlightJson(data)}</pre>
           </article>
         </div>
 
@@ -2685,7 +2802,7 @@
                 <div class="result-meta">Latest progress and terminal message for this failed run.</div>
               </div>
             </div>
-            <pre class="json-result-view">${syntaxHighlightJson({ job_id: jobId, status: 'error', message, progress: progressLines })}</pre>
+            <pre class="json-result-view"><button type="button" class="json-copy-btn" title="Copy JSON" onclick="copyJsonResult(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>${syntaxHighlightJson({ job_id: jobId, status: 'error', message, progress: progressLines })}</pre>
           </article>
         </div>
 
@@ -2932,7 +3049,7 @@
         if (button.disabled) {
           return;
         }
-        llmProviderSelect.value = button.dataset.providerValue || 'anthropic';
+        llmProviderSelect.value = button.dataset.providerValue || 'groq';
         syncProviderControls();
       });
     });
@@ -2943,7 +3060,7 @@
       folderInput.value = '';
       githubUrlInput.value = '';
       enableLlmCheckbox.checked = false;
-      llmProviderSelect.value = 'anthropic';
+      llmProviderSelect.value = 'groq';
       syncProviderControls();
       updateFiles([]);
       resetPhaseState();
