@@ -19,6 +19,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install dependencies
+        run: pip install pytest
+
       - name: Run unit and integration tests
         run: python -m pytest .claude/skills/skill-evaluation/tests/ -q
 
