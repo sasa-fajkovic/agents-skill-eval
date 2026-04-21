@@ -151,7 +151,7 @@ def evaluate(path: str) -> list[Finding]:
 
     findings.extend(run_tier1_checks(fm, lines, skill_dir))
     findings.extend(run_tier2_checks(body, skill_dir))
-    findings.extend(run_tier3_checks(body, findings))
+    findings.extend(run_tier3_checks(body, skill_dir))
     findings.extend(run_tier4_checks(body, skill_dir))
     emit_progress("Collecting supporting context...")
     _ = collect_supporting_context(skill_path)
@@ -171,7 +171,7 @@ def render_human_output(resolved: Path, findings: list[Finding]) -> None:
     print_separator("DETERMINISTIC EVALUATION")
     print()
 
-    for prefix, title in (("1.", "Tier 1 — Spec Compliance (1.1-1.11)"), ("2.", "Tier 2 — Security (2.1-2.3)"), ("3.", "Tier 3 — Token Efficiency (3.1-3.7)"), ("4.", "Tier 4 — Effectiveness (4.1-4.7)")):
+    for prefix, title in (("1.", "Tier 1 — Spec Compliance (1.1-1.11)"), ("2.", "Tier 2 — Security (2.1-2.2, 2.4)"), ("3.", "Tier 3 — Token Efficiency (3.1-3.7)"), ("4.", "Tier 4 — Effectiveness (4.1-4.7)")):
         tier_findings = [finding for finding in findings if finding.check_id.startswith(prefix)]
         print_box_top(title)
         if tier_findings:

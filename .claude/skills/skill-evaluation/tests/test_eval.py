@@ -51,35 +51,45 @@ description: Evaluate skills. Use when validating a skill package.
             (scripts_dir / script_name).write_text(script_content, encoding="utf-8")
         return skill_dir
 
-    def test_flags_mcp_instruction_in_skill_body(self) -> None:
-        skill_dir = self.make_skill_dir("Use GitHub MCP to inspect pull requests.")
+    def test_flags_blocked_mcp_namespace_as_error(self) -> None:
+        """A blocked MCP namespace (github) should produce a 3.7 ERROR with CLI suggestion."""
+        skill_dir = self.make_skill_dir("Call mcp__github_get_pull_request to fetch the PR.")
         findings = skill_eval.evaluate(str(skill_dir))
-        messages = [str(f) for f in findings if f.check_id == "2.3"]
-        self.assertTrue(any("GitHub MCP" in message for message in messages), messages)
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertTrue(any(f.severity == "ERROR" for f in mcp_findings), mcp_findings)
+        self.assertTrue(any("gh" in f.message for f in mcp_findings), mcp_findings)
 
-    def test_allows_explicit_mcp_prohibition(self) -> None:
+    def test_allows_explicit_mcp_negation(self) -> None:
+        """Negation context should suppress MCP findings."""
         skill_dir = self.make_skill_dir("Do not use MCP servers. Use gh instead.")
         findings = skill_eval.evaluate(str(skill_dir))
-        messages = [str(f) for f in findings if f.check_id == "2.3"]
-        self.assertEqual(messages, [])
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertEqual(mcp_findings, [])
+
+    def test_allows_figma_mcp_namespace(self) -> None:
+        """Allowed namespace (figma) should produce no 3.7 finding."""
+        skill_dir = self.make_skill_dir("Use mcp__figma_get_design_context to read the frame.")
+        findings = skill_eval.evaluate(str(skill_dir))
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertEqual(mcp_findings, [])
 
     def test_flags_mcp_reference_in_script(self) -> None:
         skill_dir = self.make_skill_dir(
             "Use scripts when needed.",
-            "#!/usr/bin/env python3\nif __name__ == \"__main__\":\n    print('call mcp__github__pull_request_read')\n",
+            "#!/usr/bin/env python3\nif __name__ == \"__main__\":\n    print('call mcp__github_pull_request_read')\n",
         )
         findings = skill_eval.evaluate(str(skill_dir))
-        messages = [str(f) for f in findings if f.check_id == "2.3"]
-        self.assertTrue(any("scripts/helper.py" in message for message in messages), messages)
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertTrue(any("scripts/helper.py" in f.message for f in mcp_findings), mcp_findings)
 
     def test_ignores_mcp_reference_in_non_entrypoint_helper_module(self) -> None:
         skill_dir = self.make_skill_dir(
             "Use scripts when needed.",
-            "PATTERN = 'mcp__github__pull_request_read'\n",
+            "PATTERN = 'mcp__github_pull_request_read'\n",
         )
         findings = skill_eval.evaluate(str(skill_dir))
-        messages = [str(f) for f in findings if f.check_id == "2.3"]
-        self.assertEqual(messages, [])
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertEqual(mcp_findings, [])
 
     def test_ci_mode_emits_single_json_object(self) -> None:
         skill_dir = self.make_skill_dir("Use when validating a skill package.")

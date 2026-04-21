@@ -9,7 +9,7 @@ compatibility: Designed for Claude Code. Uses Read, Glob, Grep, and Bash tools.
 
 # Skill Evaluator
 
-Validate a SKILL.md against the agentskills.io stable spec (5 fields only). Non-standard fields, experimental fields, platform-specific extensions, and any MCP usage instructions are an error.
+Validate a SKILL.md against the agentskills.io stable spec (5 fields only). Non-standard fields, experimental fields, and platform-specific extensions are an error. MCP usage is evaluated per the namespace policy in `references/mcp-policy.md`.
 
 ## Tool constraints
 
@@ -35,11 +35,11 @@ Use Read, Glob, Grep, and Bash tools. Do not modify any files. Bash is used only
 
 4. **Run all tiers via eval.py**: Run `python3 scripts/eval.py <path>` via Bash (resolve the script path relative to this skill's directory). The script runs all four tiers deterministically:
    - **Tier 1** (Spec Compliance 1.1-1.11): Frontmatter validation, script checks, test coverage. Check 1.7 automatically escalates to ERROR for complex untested scripts (>30 lines or conditional logic).
-   - **Tier 2** (Security 2.1-2.4): Tool scoping, destructive operations, MCP prohibition (must not use MCP), hardcoded user paths.
-   - **Tier 3** (Token Efficiency 3.1-3.7): Inline code, reference data, duplication, verbose prose, preload instructions.
+   - **Tier 2** (Security 2.1-2.2, 2.4): Tool scoping, destructive operations, hardcoded user paths.
+   - **Tier 3** (Token Efficiency 3.1-3.7): Inline code, reference data, duplication, verbose prose, preload instructions, MCP namespace policy (see `references/mcp-policy.md`).
    - **Tier 4** (Effectiveness 4.1-4.8): Ambiguity, examples, negative framing, defaults, idempotency, success criteria, exit codes, minimum content gate.
 
-   Skills must not instruct agents to use MCP servers or `mcp__*` tools; require CLI or direct API alternatives instead. **Important**: the tool output gets truncated by the harness UI. After running the script, reproduce its ENTIRE output as your own text response so the user sees all findings without needing to expand collapsed output.
+   Skills must apply the MCP namespace policy from `references/mcp-policy.md`: allowed namespaces (e.g. Figma, Slack) pass, blocked namespaces (e.g. GitHub, Atlassian) with strictly better CLI alternatives are ERRORs, and everything else is a WARN needing per-case review. **Important**: the tool output gets truncated by the harness UI. After running the script, reproduce its ENTIRE output as your own text response so the user sees all findings without needing to expand collapsed output.
 
 ### Phase 2: LLM review (optional)
 
@@ -79,5 +79,5 @@ All tier output comes from eval.py (already formatted with boxes). The LLM adds 
 2. Do not suggest changes that reduce reliability (e.g., removing hardcoded values the agent can't guess).
 3. Do not nitpick formatting or markdown style — focus on spec compliance, security, tokens, and effectiveness.
 4. Load reference files on demand, not upfront. Read only the reference file relevant to the current tier being evaluated.
-5. Treat MCP usage in evaluated skills as disallowed, not merely suboptimal. Flag any positive instruction to use MCP servers or `mcp__*` tools as a security/portability failure and recommend CLI or direct API alternatives.
+5. Apply the MCP namespace policy from `references/mcp-policy.md`: allowed namespaces pass, blocked namespaces are ERRORs with a suggested CLI, everything else is a WARN needing per-case review.
 6. Prefer `.sh` and `.py` for bundled scripts. Treat `.js`, `.ts`, `.go`, and similar runtime-dependent script types as portability warnings and surface them in `metadata.unsupported_script_types`.

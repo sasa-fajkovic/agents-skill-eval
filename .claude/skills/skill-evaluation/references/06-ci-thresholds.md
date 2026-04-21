@@ -28,6 +28,7 @@ Else → exit 0 (PASS)
 - 1.8: scripts missing --help
 - 1.10: scripts use interactive prompts
 - 1.11: scripts use unrecognized scripting language (not .py, .sh, or another known runtime)
+- 3.7: MCP tool from a blocked namespace (has a strictly better CLI alternative; see [`mcp-policy.md`](mcp-policy.md))
 - 4.8: redirect/pointer skill with no actionable instructions
 
 ### WARN (reported, does not block)
@@ -39,9 +40,9 @@ Else → exit 0 (PASS)
 - 1.11: scripts use discouraged but recognized language (e.g., JavaScript — works but Python/Bash preferred)
 - 2.1: unscoped tool usage in body
 - 2.2: destructive operations without safeguards (suppressed when skill-level Rules section contains a global safeguard)
-- 2.3: MCP usage or references (prefer CLI or direct API alternatives)
 - 2.4: hardcoded user home directory paths
-- 3.1-3.7: all token efficiency checks
+- 3.1-3.6: token efficiency checks (inline code, reference data, tutorials, duplication, verbose prose, preload)
+- 3.7: MCP tool from an unknown namespace or generic MCP prose (per-case review; see [`mcp-policy.md`](mcp-policy.md))
 - 4.1-4.7: all effectiveness checks
 - 4.8: thin skill body (few non-blank lines, no scripts)
 

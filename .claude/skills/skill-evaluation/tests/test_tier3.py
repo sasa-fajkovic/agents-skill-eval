@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -167,6 +168,75 @@ class Tier3Tests(unittest.TestCase):
         )
         findings = tier3.check_3_4(body)
         self.assertEqual(len([f for f in findings if f.check_id == "3.4"]), 0)
+
+
+class Tier3MCPNamespaceTests(unittest.TestCase):
+    """Tests for the namespace-aware MCP scanner (check 3.7)."""
+
+    def _make_skill_dir(self, script_content: str | None = None) -> str:
+        root = Path(tempfile.mkdtemp())
+        skill_dir = root / "demo"
+        scripts_dir = skill_dir / "scripts"
+        scripts_dir.mkdir(parents=True)
+        if script_content is not None:
+            (scripts_dir / "runner.py").write_text(
+                f'if __name__ == "__main__":\n    print("{script_content}")\n',
+                encoding="utf-8",
+            )
+        return str(skill_dir)
+
+    def test_check_3_7_allows_figma_namespace(self) -> None:
+        skill_dir = self._make_skill_dir()
+        findings = tier3.check_3_7("Use mcp__figma_get_design_context to read the frame.", skill_dir)
+        self.assertEqual([f for f in findings if f.check_id == "3.7"], [])
+
+    def test_check_3_7_allows_slack_namespace(self) -> None:
+        skill_dir = self._make_skill_dir()
+        findings = tier3.check_3_7("Use mcp__slack_post_message to notify the channel.", skill_dir)
+        self.assertEqual([f for f in findings if f.check_id == "3.7"], [])
+
+    def test_check_3_7_errors_on_github_namespace(self) -> None:
+        skill_dir = self._make_skill_dir()
+        findings = tier3.check_3_7("Use mcp__github_get_pull_request to fetch the PR.", skill_dir)
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertTrue(len(mcp_findings) > 0)
+        self.assertEqual(mcp_findings[0].severity, "ERROR")
+        self.assertIn("gh", mcp_findings[0].message)
+
+    def test_check_3_7_errors_on_atlassian_namespace(self) -> None:
+        skill_dir = self._make_skill_dir()
+        findings = tier3.check_3_7("Run mcp__atlassian_get_jira_issue with the ticket key.", skill_dir)
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertTrue(len(mcp_findings) > 0)
+        self.assertEqual(mcp_findings[0].severity, "ERROR")
+        self.assertIn("acli", mcp_findings[0].message)
+
+    def test_check_3_7_warns_on_unknown_namespace(self) -> None:
+        skill_dir = self._make_skill_dir()
+        findings = tier3.check_3_7("Use mcp__datadog_get_metrics to check monitoring.", skill_dir)
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertTrue(len(mcp_findings) > 0)
+        self.assertEqual(mcp_findings[0].severity, "WARN")
+
+    def test_check_3_7_warns_on_generic_mcp_prose(self) -> None:
+        skill_dir = self._make_skill_dir()
+        findings = tier3.check_3_7("Use the MCP server to interact with the service.", skill_dir)
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertTrue(len(mcp_findings) > 0)
+        self.assertEqual(mcp_findings[0].severity, "WARN")
+
+    def test_check_3_7_suppresses_when_negated(self) -> None:
+        skill_dir = self._make_skill_dir()
+        findings = tier3.check_3_7("Do not use mcp__github_get_pull_request. Use gh instead.", skill_dir)
+        self.assertEqual([f for f in findings if f.check_id == "3.7"], [])
+
+    def test_check_3_7_scans_entrypoint_scripts(self) -> None:
+        skill_dir = self._make_skill_dir("mcp__github_get_pull_request")
+        findings = tier3.check_3_7("Use scripts when needed.", skill_dir)
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertTrue(len(mcp_findings) > 0)
+        self.assertEqual(mcp_findings[0].severity, "ERROR")
+        self.assertIn("runner.py", mcp_findings[0].message)
 
 
 if __name__ == "__main__":

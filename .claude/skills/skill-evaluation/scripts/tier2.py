@@ -2,16 +2,8 @@ from __future__ import annotations
 
 import re
 
-from common import DESTRUCTIVE_OPS, HARDCODED_USER_PATH, MCP_NEGATION, MCP_REFERENCE, SAFEGUARD, SCOPED_TOOL_CONTEXT, UNSCOPED_TOOL, Finding
+from common import DESTRUCTIVE_OPS, HARDCODED_USER_PATH, SAFEGUARD, SCOPED_TOOL_CONTEXT, UNSCOPED_TOOL, Finding
 from extract import entrypoint_scripts, read_text_file
-
-_CLI_FALLBACK = re.compile(
-    r"(?i)(instead\s+use|use\s+.*\s+instead|prefer\s+cli|"
-    r"fallback\s*:|alternative\s*:|"
-    r"\bacli\b|\bgh\b|\bcurl\b|\bkubectl\b|"
-    r"command[- ]line\s+alternative|"
-    r"cli\s+(?:fallback|alternative|equivalent))"
-)
 
 
 def check_2_1(body: str) -> list[Finding]:
@@ -79,37 +71,6 @@ def check_2_2(body: str) -> list[Finding]:
     return findings
 
 
-def _find_mcp_findings(text: str, display: str) -> list[Finding]:
-    findings = []
-    lines = text.split("\n")
-    for index, line in enumerate(lines):
-        match = MCP_REFERENCE.search(line)
-        if not match:
-            continue
-        # Wider context window (±3 lines) for negation and fallback detection
-        ctx_start = max(0, index - 3)
-        ctx_end = min(len(lines), index + 4)
-        context = "\n".join(lines[ctx_start:ctx_end])
-        if MCP_NEGATION.search(context):
-            continue
-        # Skip if a CLI fallback/alternative is provided nearby
-        if _CLI_FALLBACK.search(context):
-            continue
-        findings.append(Finding("2.3", "WARN", f'{display}{index + 1}: MCP usage/reference "{match.group().strip()}" reduces portability; prefer CLI or direct API alternatives for cross-platform compatibility'))
-    return findings
-
-
-def check_2_3(body: str, skill_dir: str) -> list[Finding]:
-    findings = _find_mcp_findings(body, "line ")
-    for script_path, display in entrypoint_scripts(skill_dir):
-        try:
-            content = read_text_file(script_path)
-        except (OSError, UnicodeDecodeError):
-            continue
-        findings.extend(_find_mcp_findings(content, f"{display}:"))
-    return findings
-
-
 def check_2_4(body: str, skill_dir: str) -> list[Finding]:
     """Detect hardcoded user home directory paths."""
     findings: list[Finding] = []
@@ -137,6 +98,5 @@ def run_tier2_checks(body: str, skill_dir: str) -> list[Finding]:
     findings: list[Finding] = []
     findings.extend(check_2_1(body))
     findings.extend(check_2_2(body))
-    findings.extend(check_2_3(body, skill_dir))
     findings.extend(check_2_4(body, skill_dir))
     return findings

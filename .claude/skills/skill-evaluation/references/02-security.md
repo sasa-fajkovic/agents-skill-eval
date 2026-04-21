@@ -1,4 +1,4 @@
-# Security Checks (2.1-2.4)
+# Security Checks (2.1-2.2, 2.4)
 
 Detection methods and examples. Since `allowed-tools` is not part of the stable agentskills.io spec, security scoping must come from the skill body prose.
 
@@ -97,56 +97,6 @@ Support --dry-run flag to preview changes without executing.
 
 **Fix suggestion**: `Destructive operation "<operation>" found without safeguards. Add a confirmation step, backup, or dry-run option before: <quoted line>.`
 
-## 2.3: MCP usage is not allowed
-
-**What**: Skill tells the agent to use MCP servers or `mcp__*` tools.
-
-**Check (ERROR)**: Flag any positive instruction to use MCP, whether in the skill body or in bundled scripts.
-
-**Disallowed patterns (flag these)**:
-- `mcp__github__*`, `mcp__atlassian__*`, `mcp__*`
-- "Use GitHub MCP"
-- "Call the MCP server"
-- "Use Model Context Protocol tools"
-- Any step that depends on MCP server availability instead of a portable CLI or direct API
-
-**Allowed patterns (do NOT flag these)**:
-- "Do not use MCP servers; use gh instead"
-- "MCP is not allowed in portable skills"
-- "Prefer direct REST API calls over MCP"
-
-**Why this is an ERROR, not a WARN**:
-- MCP server names and tool schemas are platform-specific, so the skill is no longer portable.
-- MCP tool definitions add token overhead on every call even when unused.
-- Skills should not require side-channel platform integrations when a CLI or direct API can express the same behavior.
-
-**Detection heuristic**:
-```
-Scan body and bundled scripts for:
-  - "mcp__"
-  - "MCP", "Model Context Protocol", "MCP server"
-  - service-specific phrases like "GitHub MCP", "Jira MCP"
-If surrounding context is prohibitive ("do not", "never", "not allowed", "use gh instead"):
-  PASS
-Else:
-  ERROR
-```
-
-**Examples**:
-
-```markdown
-# ERROR: MCP instruction
-Use GitHub MCP to inspect the pull request and then summarize the findings.
-
-# ERROR: explicit MCP tool call
-Run `mcp__atlassian__getJiraIssue` with the ticket key.
-
-# PASS: prohibition with alternative
-Do not use MCP servers. Use `gh` for GitHub and direct REST API calls for Jira instead.
-```
-
-**Fix suggestion**: `MCP usage is not allowed in portable skills. Replace <MCP reference> with a concrete CLI or direct API workflow and state that MCP tools must not be used.`
-
 ## 2.4: hardcoded user home directory paths
 
 **What**: Skill body or scripts contain absolute paths to a specific user's home directory.
@@ -169,3 +119,7 @@ If found → WARN
 - Environment variables or relative paths
 
 **Fix suggestion**: `Replace hardcoded path "/Users/<user>/..." with $HOME or ~ for portability.`
+
+---
+
+> **Note on MCP**: MCP usage is not a security concern — it is a token-efficiency / portability one. See check **3.7** in `03-token-efficiency.md` and the single-source policy at [`mcp-policy.md`](mcp-policy.md).
