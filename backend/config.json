@@ -31,8 +31,8 @@
       "base_url": "https://api.groq.com/openai/v1/chat/completions"
     },
     "gemini": {
-      "model": "gemini-2.0-flash",
-      "max_tokens": 1200,
+      "model": "gemini-2.5-flash",
+      "max_tokens": 8192,
       "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     }
   },

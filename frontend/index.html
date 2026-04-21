@@ -777,7 +777,7 @@
     }
 
     .provider-chip--featured {
-      flex: 1 1 100%;
+      flex: 1 1 calc(50% - 6px);
     }
 
     .chip-badge {
@@ -2080,6 +2080,7 @@
               <input id="llm-provider" class="sr-only" type="hidden" value="groq">
               <div class="provider-toggle" role="group" aria-label="AI provider" aria-disabled="true">
                 <button type="button" class="provider-chip provider-chip--featured" data-provider-value="groq" aria-pressed="true" disabled>Groq <span class="chip-model">Llama 3.3 70B</span> <span class="chip-badge chip-badge--free">Free</span></button>
+                <button type="button" class="provider-chip provider-chip--featured" data-provider-value="gemini" aria-pressed="false" disabled>Gemini <span class="chip-model">2.5 Flash</span> <span class="chip-badge chip-badge--free">Free</span></button>
                 <button type="button" class="provider-chip" data-provider-value="anthropic" aria-pressed="false" disabled>Anthropic <span class="chip-model">Claude Haiku 4.5</span></button>
                 <button type="button" class="provider-chip" data-provider-value="openai" aria-pressed="false" disabled>OpenAI <span class="chip-model">GPT-4.1 Nano</span></button>
               </div>
@@ -2573,6 +2574,8 @@
           return 'OpenAI';
         case 'groq':
           return 'Groq';
+        case 'gemini':
+          return 'Gemini';
         case 'anthropic':
           return 'Anthropic Claude';
         default:
