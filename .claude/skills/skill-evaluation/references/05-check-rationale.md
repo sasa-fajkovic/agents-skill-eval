@@ -76,7 +76,10 @@ Why every check exists — the real-world failure mode it prevents.
 **Why**: MCP tool names, schemas, and server availability are platform-specific, so the skill silently stops being portable. They also add persistent token overhead and create another execution surface that the skill author often does not constrain well. If a workflow can be expressed with `gh`, `git`, `acli`, `curl`, or another concrete CLI/API, the portable skill should use that instead.
 **Value**: Skills stay portable, cheaper to run, and easier to audit.
 
-## Tier 3: Token Efficiency
+### 2.4 — hardcoded user home directory paths
+**What**: Skill body or scripts contain absolute paths to a specific user's home directory (e.g., `/Users/john/`, `/home/dev/`).
+**Why**: Hardcoded user paths break portability across machines and users. The skill only works on the original author's machine. Use `$HOME`, `~`, or environment variables instead.
+**Value**: Skills work on any machine regardless of username or OS.
 
 ### 3.1 — inline code should be script
 **What**: Code blocks >5 lines should be in scripts/ directory.
@@ -149,3 +152,8 @@ Why every check exists — the real-world failure mode it prevents.
 **What**: Scripts that only return 0/1 without documenting what different codes mean.
 **Why**: Distinct exit codes let agents make branching decisions without parsing stderr. "Exit 2 = not found, retry with different query" is actionable. "Exit 1 = something failed" forces the agent to parse error output and guess. Combined with --help documentation, exit codes become a reliable API.
 **Value**: Agents can react to specific failure types programmatically.
+
+### 4.8 — minimum content / substance gate
+**What**: Skill body has fewer than 10 non-blank lines and no bundled scripts. Redirect/pointer skills that just say "read docs elsewhere" get an ERROR.
+**Why**: A skill with 4-5 lines of body text cannot meaningfully guide an agent. Redirect skills are particularly egregious — they provide zero actionable instructions and just point to external docs that the agent may not be able to access. Skills should be self-contained with enough context for the agent to act autonomously.
+**Value**: Skills contain enough substance to actually guide agent behavior. Stubs and redirects are surfaced instead of silently scoring high.

@@ -1,0 +1,29 @@
+{
+  "penalties": {
+    "error_penalty": 5,
+    "error_cap": 70,
+    "warning_penalty": 2,
+    "warning_cap": 30
+  },
+  "score_caps": {
+    "1.1": 75,
+    "1.2": 75,
+    "4.8": 35
+  },
+  "blending": {
+    "deterministic_weight": 0.6,
+    "llm_weight": 0.4
+  },
+  "tiers": [
+    { "name": "excellent",  "min_score": 90 },
+    { "name": "good",       "min_score": 70 },
+    { "name": "needs_work", "min_score": 50 },
+    { "name": "poor",       "min_score": 0  }
+  ],
+  "llm_tier_base_scores": {
+    "excellent": 95,
+    "good": 85,
+    "needs_work": 60,
+    "poor": 45
+  }
+}

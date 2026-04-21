@@ -11,9 +11,26 @@ _TEMPLATE_INDICATOR = re.compile(
     r"^\s*- \[[ x]\]|"        # checkbox items
     r"\[.*?\.{3}.*?\]|"       # bracket placeholders like [2-3 sentences...]
     r"\[.*?steps.*?\]|"        # [steps], [remaining steps]
+    r"\(.*?(?:optional|describe|sentence|link|placeholder|specify|fill).*?\)|"  # parenthetical placeholders
+    r"<[A-Z][A-Z _/-]*>|"     # uppercase angle-bracket placeholders like <URL>, <DESCRIPTION>
     r"\{%|<%|{{",              # template engine syntax
     re.IGNORECASE | re.MULTILINE,
 )
+
+
+_CONFIG_CONTENT_SNIFF = re.compile(
+    r"^\s*[\{\[\]]|"                      # starts with { [ ]
+    r"^\s*---\s*$|"                        # YAML document delimiter
+    r'^\s*"[^"]+"\s*:|'                    # JSON key
+    r"^\s*[a-zA-Z_][a-zA-Z0-9_-]*\s*:|"   # YAML key
+    r"^\s*//|"                             # JSON comments (jsonc)
+    r"^\s*<[a-zA-Z]|"                      # XML/HTML tag
+    r"^\s*\+[-+]+\+\s*$|"                 # ASCII table border
+    r"^\s*\|.*\|.*\|\s*$",                # ASCII table row
+    re.MULTILINE,
+)
+
+_ASKUSERQUESTION_BLOCK = re.compile(r"(?i)askuserquestion|ask_user_question|AskUser")
 
 
 def check_3_1(body: str) -> list[Finding]:
@@ -23,16 +40,48 @@ def check_3_1(body: str) -> list[Finding]:
         lines = [line for line in content.splitlines() if line.strip()]
         if len(lines) <= 5:
             continue
-        if lang in {"json", "yaml", "yml", "text", "output", "markdown", "md"}:
+        if lang in {"json", "jsonc", "json5", "yaml", "yml", "text", "output", "markdown", "md", "xml", "html", "css", "toml", "ini", "conf", "cfg", "properties", "env", "graphql", "gql", "proto", "protobuf", "sql"}:
             continue
         if lang not in executable_langs and not SCRIPT_WORTHINESS.search(content):
             continue
+        # For unlabeled blocks, sniff content to skip JSON/YAML/config/ASCII-art
+        if lang == "":
+            first_nonempty = next((l.strip() for l in content.splitlines() if l.strip()), "")
+            config_line_count = sum(1 for l in lines if _CONFIG_CONTENT_SNIFF.match(l))
+            if config_line_count >= len(lines) * 0.5:
+                continue
+            # Skip AskUserQuestion JSON blocks
+            if _ASKUSERQUESTION_BLOCK.search(content) and first_nonempty.startswith("{"):
+                continue
         # Skip template/documentation blocks (markdown headings, checkboxes, bracket placeholders)
         template_lines = sum(1 for l in lines if _TEMPLATE_INDICATOR.search(l))
         if template_lines >= max(2, len(lines) * 0.3):
             continue
         findings.append(Finding("3.1", "WARN", f"code block at lines {start}-{end} is {len(lines)} lines; move long executable logic into scripts/"))
     return findings
+
+
+_CORE_CONTENT_HEADING = re.compile(
+    r"(?i)^#{1,4}\s+(?:.*?)("
+    r"test\s*(?:matrix|cases?|plan|scenarios?)|"
+    r"api\s*(?:endpoint|route|interface)|"
+    r"rule|check|validation|requirement|"
+    r"error\s*code|status\s*code|"
+    r"mapping|lookup|reference|"
+    r"workflow|pipeline|step|"
+    r"endpoint|route|command"
+    r")",
+    re.MULTILINE,
+)
+
+
+def _is_under_core_heading(body: str, line_num: int) -> bool:
+    """Check if *line_num* falls under a heading that indicates core skill content."""
+    lines = body.splitlines()
+    for i in range(line_num - 2, -1, -1):
+        if i < len(lines) and lines[i].strip().startswith("#"):
+            return bool(_CORE_CONTENT_HEADING.match(lines[i].strip()))
+    return False
 
 
 def check_3_2(body: str) -> list[Finding]:
@@ -47,16 +96,20 @@ def check_3_2(body: str) -> list[Finding]:
             table_rows += 1
         else:
             if table_start and table_rows > 12:
-                findings.append(Finding("3.2", "WARN", f"table at lines {table_start}-{index - 1} has {table_rows - 2} data rows; move large reference material to references/"))
+                # Skip if under a core content heading
+                if not _is_under_core_heading(body, table_start):
+                    findings.append(Finding("3.2", "WARN", f"table at lines {table_start}-{index - 1} has {table_rows - 2} data rows; move large reference material to references/"))
             table_start = None
             table_rows = 0
     if table_start and table_rows > 12:
-        findings.append(Finding("3.2", "WARN", f"table at lines {table_start}-{len(lines)} has {table_rows - 2} data rows; move large reference material to references/"))
+        if not _is_under_core_heading(body, table_start):
+            findings.append(Finding("3.2", "WARN", f"table at lines {table_start}-{len(lines)} has {table_rows - 2} data rows; move large reference material to references/"))
 
     for start, end, _lang, content in fenced_code_blocks(body):
         block_lines = [line for line in content.splitlines() if line.strip()]
         if len(block_lines) > 15 and any(line.strip().startswith(("{", "}", "[", "]")) or ":" in line for line in block_lines[:5]):
-            findings.append(Finding("3.2", "WARN", f"mapping-style block at lines {start}-{end} is {len(block_lines)} lines; move dense reference data to references/"))
+            if not _is_under_core_heading(body, start):
+                findings.append(Finding("3.2", "WARN", f"mapping-style block at lines {start}-{end} is {len(block_lines)} lines; move dense reference data to references/"))
     return findings
 
 
@@ -66,6 +119,26 @@ def check_3_3(body: str) -> list[Finding]:
         if STANDARD_TOOL_TUTORIAL.search(line):
             findings.append(Finding("3.3", "WARN", f"line {line_num}: explains standard tool usage the agent likely already knows"))
     return findings
+
+
+_CONTRAST_HEADING = re.compile(
+    r"(?i)(wrong|correct|bad|good|before|after|"
+    r"mode\s*[a-z]|option\s*[a-z0-9]|approach\s*[a-z0-9]|"
+    r"example\s*[0-9]|variant|alternative|"
+    r"do\b|don'?t\b|avoid|prefer)"
+)
+
+_REST_ENDPOINT_BLOCK = re.compile(
+    r"(?i)(curl\s|https?://|GET\s+/|POST\s+/|PUT\s+/|PATCH\s+/|DELETE\s+/)"
+)
+
+
+def _context_around_block(body: str, start_line: int, end_line: int, radius: int = 3) -> str:
+    """Return the text of *radius* lines before *start_line* in *body*."""
+    lines = body.splitlines()
+    ctx_start = max(0, start_line - 1 - radius)
+    ctx_end = min(len(lines), start_line - 1)
+    return "\n".join(lines[ctx_start:ctx_end])
 
 
 def check_3_4(body: str) -> list[Finding]:
@@ -85,6 +158,17 @@ def check_3_4(body: str) -> list[Finding]:
             seen_pairs.add(key)
             similarity = difflib.SequenceMatcher(None, "\n".join(block_a), "\n".join(block_b)).ratio()
             if similarity >= 0.8:
+                # Check if surrounding headings indicate these are contrast/comparison pairs
+                ctx_a = _context_around_block(body, start_a, end_a)
+                ctx_b = _context_around_block(body, start_b, end_b)
+                if _CONTRAST_HEADING.search(ctx_a) and _CONTRAST_HEADING.search(ctx_b):
+                    continue
+                # Skip similar REST endpoint/curl blocks (structurally similar API calls)
+                orig_a = blocks[index][3]
+                orig_b_idx = next(i for i, (s, _, _, _) in enumerate(blocks) if s == start_b)
+                orig_b = blocks[orig_b_idx][3]
+                if _REST_ENDPOINT_BLOCK.search(orig_a) and _REST_ENDPOINT_BLOCK.search(orig_b):
+                    continue
                 findings.append(Finding("3.4", "WARN", f"code blocks at lines {start_a}-{end_a} and {start_b}-{end_b} are duplicated or near-duplicated"))
 
     paragraphs = body_paragraphs(body)

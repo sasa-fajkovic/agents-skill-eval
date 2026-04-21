@@ -1,4 +1,4 @@
-# Effectiveness Checks (4.1-4.7)
+# Effectiveness Checks (4.1-4.8)
 
 LLM-assessed checks. These require reading and reasoning about the skill body — they cannot be purely mechanical.
 
@@ -80,26 +80,6 @@ If none of the above → flag.
 
 **Fix suggestion**: `Flag "<flag>" has no default behavior specified. Add: "If <flag> is omitted, <default behavior>."`
 
-## 4.6: no success criteria
-
-**What to flag**: Skill has no definition of what "done" looks like.
-
-**Indicators of success criteria present**:
-- An "Output" section describing what the skill produces
-- Explicit completion statement: "Done when...", "Complete when..."
-- Final step in Process that produces a specific artifact
-- Expected output format (even if brief)
-
-**Indicators of missing success criteria**:
-- Process section ends with an open-ended instruction ("continue as needed")
-- No Output section
-- No final step that produces something concrete
-- Ambiguous ending: "ensure everything is correct"
-
-**Assessment approach**: Check for Output section or completion criteria in the last 2 steps of the Process section. If neither exists, flag.
-
-**Fix suggestion**: `No success criteria found. Add an Output section defining what the skill produces when done, or add a completion condition to the final process step.`
-
 ## 4.5: not idempotent
 
 **What to flag**: Skills or scripts that would fail or cause problems if run twice.
@@ -122,6 +102,26 @@ Per [agentskills.io best practices](https://agentskills.io/skill-creation/using-
 
 **Fix suggestion**: `Step <N> is not idempotent — running twice would <consequence>. Add an existence check or use "create if not exists" pattern.`
 
+## 4.6: no success criteria
+
+**What to flag**: Skill has no definition of what "done" looks like.
+
+**Indicators of success criteria present**:
+- An "Output" section describing what the skill produces
+- Explicit completion statement: "Done when...", "Complete when..."
+- Final step in Process that produces a specific artifact
+- Expected output format (even if brief)
+
+**Indicators of missing success criteria**:
+- Process section ends with an open-ended instruction ("continue as needed")
+- No Output section
+- No final step that produces something concrete
+- Ambiguous ending: "ensure everything is correct"
+
+**Assessment approach**: Check for Output section or completion criteria in the last 2 steps of the Process section. If neither exists, flag.
+
+**Fix suggestion**: `No success criteria found. Add an Output section defining what the skill produces when done, or add a completion condition to the final process step.`
+
 ## 4.7: scripts lack meaningful exit codes
 
 **What to flag**: Skills that reference scripts but don't document exit codes, or scripts that only use 0/1.
@@ -131,4 +131,24 @@ Per agentskills.io best practices, use distinct exit codes for different failure
 **Assessment approach**: Check if the skill or its --help output documents exit codes beyond 0/1. Check if scripts use distinct exit codes for different error types.
 
 **Fix suggestion**: `Document exit codes in --help output. Use distinct codes for different failures (e.g., 1=invalid args, 2=not found, 3=auth failure).`
+
+## 4.8: minimum content / substance gate
+
+**What to flag**: Skills with very short bodies (< 10 non-blank lines) that contain insufficient content to guide an agent.
+
+**Check (ERROR for redirect/pointer skills, WARN for thin skills without scripts)**:
+- Redirect/pointer skills that just say "read docs at X" get an ERROR — they provide zero actionable instructions.
+- Skills with < 10 non-blank lines and no bundled scripts get a WARN — too thin to be effective.
+- Skills with bundled scripts are exempt (the scripts carry the logic).
+
+**Detection heuristic**:
+```
+Count non-blank body lines (excluding frontmatter)
+If < 10 lines:
+  If body matches redirect patterns ("read the following", "see docs") → ERROR
+  Else if no entrypoint scripts → WARN
+  Else → PASS (scripts handle the logic)
+```
+
+**Fix suggestion**: `Expand the skill body with actionable instructions, steps, and examples. A skill should be self-contained enough to guide an agent without requiring external documentation.`
 

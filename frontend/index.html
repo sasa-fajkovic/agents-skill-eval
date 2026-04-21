@@ -93,9 +93,8 @@
     .button-primary,
     .primary {
       border-color: rgba(34, 197, 94, 0.6);
-      background: linear-gradient(180deg, rgba(34, 197, 94, 0.38), rgba(22, 163, 74, 0.28));
+      background: rgba(34, 197, 94, 0.32);
       color: #d1fae5;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 16px rgba(34, 197, 94, 0.15);
     }
 
     .button-secondary {
@@ -498,13 +497,13 @@
 
     .skill-download-link {
       border-color: rgba(239, 68, 68, 0.3);
-      background: linear-gradient(180deg, rgba(239, 68, 68, 0.18), rgba(127, 29, 29, 0.16));
+      background: rgba(239, 68, 68, 0.16);
       color: #fee2e2;
     }
 
     .skill-download-link:hover {
       border-color: rgba(248, 113, 113, 0.48);
-      background: linear-gradient(180deg, rgba(239, 68, 68, 0.24), rgba(127, 29, 29, 0.2));
+      background: rgba(239, 68, 68, 0.22);
     }
 
     .entry-copy {
@@ -657,14 +656,12 @@
       letter-spacing: 0.04em;
       color: #ffffff;
       border-color: rgba(34, 197, 94, 0.7);
-      background: linear-gradient(180deg, rgba(34, 197, 94, 0.52), rgba(22, 163, 74, 0.38));
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 28px rgba(22, 163, 74, 0.22), 0 0 0 1px rgba(34, 197, 94, 0.12);
+      background: rgba(34, 197, 94, 0.42);
     }
 
     .upload-actions #upload-button:hover {
       border-color: rgba(34, 197, 94, 0.85);
-      background: linear-gradient(180deg, rgba(34, 197, 94, 0.62), rgba(22, 163, 74, 0.46));
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 14px 34px rgba(22, 163, 74, 0.30), 0 0 0 1px rgba(34, 197, 94, 0.18);
+      background: rgba(34, 197, 94, 0.52);
     }
 
     button {
@@ -733,7 +730,6 @@
       border-radius: 16px;
       border: 1px solid rgba(59, 130, 246, 0.22);
       background: rgba(8, 13, 20, 0.78);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
     }
 
     .provider-toggle[aria-disabled="true"] {
@@ -765,9 +761,8 @@
 
     .provider-chip[aria-pressed="true"] {
       border-color: rgba(56, 189, 248, 0.3);
-      background: linear-gradient(180deg, rgba(37, 99, 235, 0.24), rgba(15, 23, 42, 0.9));
+      background: rgba(37, 99, 235, 0.22);
       color: #f8fafc;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 0 0 1px rgba(59, 130, 246, 0.12);
     }
 
     .provider-chip:disabled {
@@ -815,7 +810,6 @@
     html[data-theme="light"] .provider-toggle {
       border-color: rgba(148, 163, 184, 0.3);
       background: rgba(241, 245, 249, 0.92);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
     }
 
     html[data-theme="light"] .provider-chip:hover {
@@ -824,9 +818,8 @@
 
     html[data-theme="light"] .provider-chip[aria-pressed="true"] {
       border-color: rgba(59, 130, 246, 0.26);
-      background: linear-gradient(180deg, rgba(191, 219, 254, 0.95), rgba(219, 234, 254, 0.92));
+      background: rgba(191, 219, 254, 0.7);
       color: #0f172a;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88), 0 0 0 1px rgba(59, 130, 246, 0.08);
     }
 
     .llm-copy strong {
@@ -1230,8 +1223,6 @@
 
     .score-number.excellent,
     .tier-badge.excellent { color: #86efac; }
-    .score-number.very_good,
-    .tier-badge.very_good { color: #6ee7a0; }
     .score-number.good,
     .tier-badge.good { color: #4ade80; }
     .score-number.needs_work,
@@ -1631,14 +1622,13 @@
     html[data-theme="light"] .button-primary,
     html[data-theme="light"] .primary {
       border-color: rgba(22, 163, 74, 0.4);
-      background: linear-gradient(180deg, #dcfce7, #bbf7d0);
+      background: #dcfce7;
       color: #14532d;
-      box-shadow: 0 1px 3px rgba(22, 163, 74, 0.12);
     }
 
     html[data-theme="light"] .skill-download-link {
       border-color: rgba(239, 68, 68, 0.2);
-      background: linear-gradient(180deg, rgba(254, 226, 226, 0.96), rgba(254, 242, 242, 0.94));
+      background: rgba(254, 226, 226, 0.96);
       color: #991b1b;
     }
 
@@ -2155,17 +2145,20 @@
     let phaseVisualDone = -1;
     let evalDone = false;
     let evalFailed = false;
-    const PHASE_FILL_MS = 1000;
+    const LLM_PHASE_FILL_MS = 5000;
+    const LLM_PHASE_FILL_CAP = 90;
     let jobInFlight = false;
     let latestResult = null;
+    let pendingResult = null;
+    let pendingResultJobId = null;
     const phaseDefinitions = [
-      { key: 'queued', step: '01', label: 'Queued' },
-      { key: 'worker', step: '02', label: 'Evaluator assigned' },
-      { key: 'sandbox', step: '03', label: 'Evaluator start' },
-      { key: 'deterministic', step: '04', label: 'Deterministic checks' },
-      { key: 'llm', step: '05', label: 'Optional AI review' },
-      { key: 'finalizing', step: '06', label: 'Finalizing result' },
-      { key: 'complete', step: '07', label: 'Complete' },
+      { key: 'queued', step: '01', label: 'Queued', fillMs: 400 },
+      { key: 'worker', step: '02', label: 'Evaluator assigned', fillMs: 600 },
+      { key: 'sandbox', step: '03', label: 'Evaluator start', fillMs: 800 },
+      { key: 'deterministic', step: '04', label: 'Deterministic checks', fillMs: 1000 },
+      { key: 'llm', step: '05', label: 'Optional AI review', fillMs: 700 },
+      { key: 'finalizing', step: '06', label: 'Finalizing result', fillMs: 500 },
+      { key: 'complete', step: '07', label: 'Complete', fillMs: 350 },
     ];
 
     resetPhaseState();
@@ -2256,7 +2249,7 @@
     function getAiReviewOutcome(progressLines, resultData = null) {
       const lines = Array.isArray(progressLines) ? progressLines : [];
       const combined = lines.join(' ');
-      const llmRequested = resultData?.llm_enabled ?? enableLlmCheckbox.checked;
+      const llmRequested = enableLlmCheckbox.checked;
       if (resultData?.llm_analysis) {
         return { state: 'complete', label: 'Complete', summary: 'Optional AI review completed for this run.' };
       }
@@ -2309,7 +2302,7 @@
       if (/Starting evaluator/.test(combined)) observed.add('sandbox');
       if (/Preparing deterministic result/.test(combined)) observed.add('deterministic');
       if (/LLM evaluation|Optional LLM review completed/.test(combined) || resultData?.llm_analysis) observed.add('llm');
-      const llmActive = (resultData?.llm_enabled ?? enableLlmCheckbox.checked) &&
+      const llmActive = (enableLlmCheckbox.checked) &&
         !/Optional LLM review completed|Optional LLM review failed|selected provider is not configured/i.test(combined) &&
         !resultData;
       if (/Preparing final evaluation result/.test(combined) && !llmActive) observed.add('finalizing');
@@ -2334,6 +2327,8 @@
       phaseVisualDone = -1;
       evalDone = false;
       evalFailed = false;
+      pendingResult = null;
+      pendingResultJobId = null;
     }
 
     function updatePhaseTarget(progressLines, trailer, resultData) {
@@ -2352,7 +2347,7 @@
     function nextFillablePhaseIndex() {
       let next = Math.max(phaseFillIndex, phaseVisualDone) + 1;
       if (next >= phaseDefinitions.length) return -1;
-      const llmEnabled = latestResult?.llm_enabled ?? enableLlmCheckbox.checked;
+      const llmEnabled = latestResult?.llm_analysis ? true : enableLlmCheckbox.checked;
       if (phaseDefinitions[next].key === 'llm' && !llmEnabled) {
         phaseVisualDone = Math.max(phaseVisualDone, next);
         next++;
@@ -2366,12 +2361,19 @@
     function canAdvancePast(index) {
       let next = index + 1;
       if (next >= phaseDefinitions.length) return true;
-      const llmEnabled = latestResult?.llm_enabled ?? enableLlmCheckbox.checked;
+      const llmEnabled = latestResult?.llm_analysis ? true : enableLlmCheckbox.checked;
       if (phaseDefinitions[next].key === 'llm' && !llmEnabled) next++;
       if (next >= phaseDefinitions.length) return true;
       if (phaseDefinitions[next].key === 'complete' && !evalDone) return false;
       if (next > phaseTargetIndex) return false;
       return true;
+    }
+
+    function getFillDurationForPhase(index) {
+      if (phaseDefinitions[index].key === 'llm' && !pendingResult) {
+        return LLM_PHASE_FILL_MS;
+      }
+      return phaseDefinitions[index].fillMs;
     }
 
     function inferPhaseKey(progressLines, trailer = '') {
@@ -2390,7 +2392,7 @@
     function renderPhaseTracker() {
       const now = Date.now();
       const aiReviewOutcome = getAiReviewOutcome(lastProgressLines, latestResult);
-      const llmEnabled = latestResult?.llm_enabled ?? enableLlmCheckbox.checked;
+      const llmEnabled = latestResult?.llm_analysis ? true : enableLlmCheckbox.checked;
 
       phaseTracker.innerHTML = phaseDefinitions.map((phase, index) => {
         let state, stateLabel, fillPct;
@@ -2406,7 +2408,9 @@
         } else if (index === phaseFillIndex) {
           state = 'filling';
           stateLabel = 'In progress';
-          fillPct = Math.min(92, Math.round(((now - phaseFillStart) / PHASE_FILL_MS) * 100));
+          const duration = getFillDurationForPhase(index);
+          const cap = phaseDefinitions[index].key === 'llm' && !pendingResult ? LLM_PHASE_FILL_CAP : 92;
+          fillPct = Math.min(cap, Math.round(((now - phaseFillStart) / duration) * 100));
         } else {
           state = 'pending';
           stateLabel = 'Pending';
@@ -2467,17 +2471,17 @@
 
     function refreshAnimatedProgress() {
       const animating = phaseFillIndex >= 0 || phaseVisualDone < phaseTargetIndex;
-      if (!jobInFlight && !animating) return;
+      if (!jobInFlight && !animating && !pendingResult) return;
 
       const now = Date.now();
 
-      // Complete current fill if 1 second has elapsed AND next phase is ready
-      if (phaseFillIndex >= 0 && now - phaseFillStart >= PHASE_FILL_MS) {
+      // Complete current fill if duration has elapsed AND next phase is ready
+      if (phaseFillIndex >= 0 && now - phaseFillStart >= getFillDurationForPhase(phaseFillIndex)) {
         if (canAdvancePast(phaseFillIndex)) {
           phaseVisualDone = Math.max(phaseVisualDone, phaseFillIndex);
           phaseFillIndex = -1;
         }
-        // else: keep filling, capped at 92% (renderPhaseTracker handles the cap)
+        // else: keep filling, capped by renderPhaseTracker (92% or 90% for LLM)
       }
 
       // Start next fill unless evaluation failed
@@ -2490,6 +2494,16 @@
       }
 
       renderPhaseTracker();
+
+      // Once all phases are visually done, render the deferred result
+      if (pendingResult && phaseFillIndex < 0 && phaseVisualDone >= phaseDefinitions.length - 1) {
+        const data = pendingResult;
+        const jobId = pendingResultJobId;
+        pendingResult = null;
+        pendingResultJobId = null;
+        renderResult(data, true);
+        if (jobId) void releaseJobState(jobId);
+      }
     }
 
     function escapeHtml(value) {
@@ -2556,13 +2570,12 @@
       const className = variant ? `result-list ${variant}` : 'result-list';
       return `<ul class="${className}">${items.map((item) => {
         if (item && typeof item === 'object') {
-          const message = String(item.message || item.finding || item.rule_id || '').trim();
+          const ruleId = String(item.rule_id || '').trim();
+          const message = String(item.message || item.finding || '').trim();
           const reason = String(item.reason || '').trim();
-          const severity = String(item.severity || '').trim();
-          const prefix = severity ? `${severity.toUpperCase()}: ` : '';
+          const prefix = ruleId ? `${ruleId}: ` : '';
           const detail = reason ? ` <span class="result-item-reason">${escapeHtml(reason)}</span>` : '';
-          const sevAttr = severity ? ` data-severity="${severity.toLowerCase()}"` : '';
-          return `<li${sevAttr}>${escapeHtml(prefix + message)}${detail}</li>`;
+          return `<li>${escapeHtml(prefix + message)}${detail}</li>`;
         }
         return `<li>${escapeHtml(item)}</li>`;
       }).join('')}</ul>`;
@@ -2583,12 +2596,12 @@
       }
     }
 
-    function renderChecklist(deterministic) {
+    function renderChecklist(checksOverview, metadata) {
       const checks = [
-        ['Checks passed', deterministic.passed],
-        ['Checks failed', deterministic.failed],
-        ['Files discovered', deterministic.file_count],
-        ['Line count', deterministic.line_count],
+        ['Checks passed', checksOverview?.checks_passed],
+        ['Checks failed', checksOverview?.checks_failed],
+        ['Files discovered', metadata?.file_count],
+        ['Line count', metadata?.line_count],
       ];
 
       return `
@@ -2643,16 +2656,14 @@
       results.classList.remove('loading');
       if (!skipPhaseRender) {
         updatePhaseTarget(data.progress || [], 'Evaluation completed.', data);
-        // Snap all phases to complete — result is already here, no point animating.
+        // Snap all phases to complete — used only for cached/instant results.
         phaseVisualDone = phaseTargetIndex;
         phaseFillIndex = -1;
         renderPhaseTracker();
       }
       const score = Number(data.overall_score ?? 0);
-      const tier = data.overall_tier || data.llm_analysis?.quality_tier || (score >= 90 ? 'excellent' : score >= 85 ? 'very_good' : score >= 75 ? 'good' : score >= 50 ? 'needs_work' : 'poor');
+      const tier = data.overall_tier || data.llm_analysis?.quality_tier || (score >= 90 ? 'excellent' : score >= 70 ? 'good' : score >= 50 ? 'needs_work' : 'poor');
       const skillName = String(data.skill_name || 'Unnamed skill').trim() || 'Unnamed skill';
-      const skillDescription = String(data.skill_description || '').trim();
-      const skillCompatibility = String(data.skill_compatibility || '').trim();
       const llmProvider = String(data.llm_analysis?.provider || '').trim();
       const llmModel = String(data.llm_analysis?.model || '').trim();
       const aiReviewSummary = explainAiReviewOutcome(data.progress || [], data);
@@ -2696,8 +2707,6 @@
               </div>
               <div class="score-card-skill">
                 <h3 class="score-card-name">${escapeHtml(skillName)}</h3>
-                ${skillDescription ? `<p class="score-card-description">${escapeHtml(skillDescription)}</p>` : ''}
-                ${skillCompatibility ? `<div class="score-card-meta"><span class="score-card-meta-label">Compatibility</span><p class="score-card-compatibility">${escapeHtml(skillCompatibility)}</p></div>` : ''}
               </div>
             </div>
           </article>
@@ -2724,15 +2733,15 @@
         <div class="results-grid">
           <article class="result-card">
             <span class="result-label">Deterministic checks</span>
-            ${renderChecklist(data.deterministic || {})}
+            ${renderChecklist(data.checks_overview || {}, data.metadata || {})}
           </article>
           <article class="result-card">
             <span class="result-label">Issues</span>
-            ${renderList(data.deterministic?.issues || [], 'issues')}
+            ${renderList([...(data.findings?.error_findings || []), ...(data.findings?.warning_findings || [])], 'issues')}
           </article>
           <article class="result-card">
             <span class="result-label">Run mode</span>
-            <p class="result-summary">${escapeHtml(data.llm_enabled ? 'Deterministic checks plus optional AI review request.' : 'Deterministic-only evaluation.')}</p>
+            <p class="result-summary">${escapeHtml(data.llm_analysis ? 'Deterministic checks plus optional AI review.' : 'Deterministic-only evaluation.')}</p>
           </article>
           ${aiReviewCards}
         </div>
@@ -2859,8 +2868,13 @@
           }
 
           renderProgress(jobId, data.progress || [], 'Evaluation completed.');
-          renderResult(data);
-          void releaseJobState(jobId);
+          // Defer result rendering — let phase animations play through first
+          latestResult = data;
+          evalDone = true;
+          updatePhaseTarget(data.progress || [], 'Evaluation completed.', data);
+          pendingResult = data;
+          pendingResultJobId = jobId;
+          renderPhaseTracker();
         } catch (error) {
           clearInterval(pollTimer);
           pollTimer = null;

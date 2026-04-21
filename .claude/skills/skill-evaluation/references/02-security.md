@@ -1,4 +1,4 @@
-# Security Checks (2.1-2.3)
+# Security Checks (2.1-2.4)
 
 Detection methods and examples. Since `allowed-tools` is not part of the stable agentskills.io spec, security scoping must come from the skill body prose.
 
@@ -146,3 +146,26 @@ Do not use MCP servers. Use `gh` for GitHub and direct REST API calls for Jira i
 ```
 
 **Fix suggestion**: `MCP usage is not allowed in portable skills. Replace <MCP reference> with a concrete CLI or direct API workflow and state that MCP tools must not be used.`
+
+## 2.4: hardcoded user home directory paths
+
+**What**: Skill body or scripts contain absolute paths to a specific user's home directory.
+
+**Check (WARN)**: Scan body and scripts for patterns like `/Users/<username>/`, `/home/<username>/`, or `C:\Users\<username>\`.
+
+**Why this matters**: Hardcoded user paths break portability — the skill works only on the original author's machine.
+
+**Detection heuristic**:
+```
+Scan body and script lines for:
+  /Users/<word>/   (macOS)
+  /home/<word>/    (Linux)
+  C:\Users\<word>\ (Windows)
+If found → WARN
+```
+
+**Allowed alternatives**:
+- `$HOME`, `~`, `%USERPROFILE%`
+- Environment variables or relative paths
+
+**Fix suggestion**: `Replace hardcoded path "/Users/<user>/..." with $HOME or ~ for portability.`

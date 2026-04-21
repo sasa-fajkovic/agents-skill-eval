@@ -107,6 +107,67 @@ class Tier3Tests(unittest.TestCase):
         findings = tier3.check_3_4(body)
         self.assertEqual(len([f for f in findings if f.check_id == "3.4"]), 0)
 
+    # --- 3.1: content sniffing for unlabeled blocks ---
+
+    def test_check_3_1_skips_unlabeled_json_config_block(self) -> None:
+        """Unlabeled block that looks like JSON config should not fire."""
+        body = '```\n{\n  "key1": "val1",\n  "key2": "val2",\n  "key3": "val3",\n  "key4": "val4",\n  "key5": "val5",\n  "key6": "val6"\n}\n```'
+        findings = tier3.check_3_1(body)
+        self.assertEqual(len([f for f in findings if f.check_id == "3.1"]), 0)
+
+    def test_check_3_1_skips_unlabeled_yaml_config_block(self) -> None:
+        """Unlabeled block that looks like YAML config should not fire."""
+        body = "```\nname: demo\nversion: 1.0\nhost: localhost\nport: 8080\ndb_name: mydb\ntimeout: 30\n```"
+        findings = tier3.check_3_1(body)
+        self.assertEqual(len([f for f in findings if f.check_id == "3.1"]), 0)
+
+    # --- 3.2: core content heading awareness ---
+
+    def test_check_3_2_skips_table_under_test_matrix_heading(self) -> None:
+        """Tables under 'Test Matrix' heading are core content — don't flag."""
+        rows = ["| Col A | Col B | Col C |"] + ["| --- | --- | --- |"]
+        rows += [f"| val{i} | val{i} | val{i} |" for i in range(15)]
+        body = "## Test Matrix\n\n" + "\n".join(rows)
+        findings = tier3.check_3_2(body)
+        self.assertEqual(len([f for f in findings if f.check_id == "3.2"]), 0)
+
+    def test_check_3_2_flags_table_under_generic_heading(self) -> None:
+        """Tables under generic headings should still be flagged."""
+        rows = ["| Col A | Col B | Col C |"] + ["| --- | --- | --- |"]
+        rows += [f"| val{i} | val{i} | val{i} |" for i in range(15)]
+        body = "## Notes\n\n" + "\n".join(rows)
+        findings = tier3.check_3_2(body)
+        self.assertTrue(any(f.check_id == "3.2" for f in findings))
+
+    # --- 3.4: contrast pair detection ---
+
+    def test_check_3_4_skips_wrong_correct_pair(self) -> None:
+        """WRONG/CORRECT comparison blocks should not be flagged as duplicates."""
+        block = "\n".join(f"  echo step{i}" for i in range(6))
+        body = (
+            "### Wrong\n"
+            f"```bash\n{block}\n```\n\n"
+            "### Correct\n"
+            f"```bash\n{block}\n```"
+        )
+        findings = tier3.check_3_4(body)
+        self.assertEqual(len([f for f in findings if f.check_id == "3.4"]), 0)
+
+    def test_check_3_4_skips_similar_rest_endpoint_blocks(self) -> None:
+        """REST endpoint blocks with similar curl structures should not fire."""
+        body = (
+            "```\ncurl -X POST https://api.example.com/users \\\n"
+            "  -H 'Content-Type: application/json' \\\n"
+            "  -d '{\"name\": \"alice\"}'\n"
+            "more lines\nmore lines\nmore lines\n```\n\n"
+            "```\ncurl -X POST https://api.example.com/orders \\\n"
+            "  -H 'Content-Type: application/json' \\\n"
+            "  -d '{\"item\": \"widget\"}'\n"
+            "more lines\nmore lines\nmore lines\n```"
+        )
+        findings = tier3.check_3_4(body)
+        self.assertEqual(len([f for f in findings if f.check_id == "3.4"]), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -48,12 +48,12 @@ class Tier1Tests(unittest.TestCase):
         self.assertEqual(len(at_findings), 1)
         self.assertEqual(at_findings[0].severity, "WARN")
 
-    def test_check_1_3_claude_code_extension_is_error(self) -> None:
+    def test_check_1_3_claude_code_extension_is_warn(self) -> None:
         fm = {"name": "demo", "description": "test", "model": "claude-sonnet"}
         findings = tier1.check_1_3(fm)
         model_findings = [f for f in findings if "model" in f.message]
         self.assertEqual(len(model_findings), 1)
-        self.assertEqual(model_findings[0].severity, "ERROR")
+        self.assertEqual(model_findings[0].severity, "WARN")
 
     # --- 1.4: empty value checks ---
 
@@ -161,6 +161,26 @@ class Tier1Tests(unittest.TestCase):
 
         findings = tier1.check_1_11(str(skill_dir))
         self.assertEqual(len(findings), 0)
+
+    # --- 1.6: reference skill line limit ---
+
+    def test_check_1_6_reference_skill_gets_higher_limit(self) -> None:
+        """Reference skills get 800-line limit instead of 500."""
+        lines = ["line"] * 600  # Over 500 but under 800
+        findings = tier1.check_1_6(lines, description="reference documentation for API endpoints")
+        self.assertEqual(len(findings), 0)
+
+    def test_check_1_6_reference_skill_over_limit(self) -> None:
+        lines = ["line"] * 850  # Over 800
+        findings = tier1.check_1_6(lines, description="knowledge base reference")
+        self.assertEqual(len(findings), 1)
+        self.assertIn("800", findings[0].message)
+
+    def test_check_1_6_normal_skill_500_limit(self) -> None:
+        lines = ["line"] * 600
+        findings = tier1.check_1_6(lines, description="Use when creating PRs")
+        self.assertEqual(len(findings), 1)
+        self.assertIn("500", findings[0].message)
 
 
 if __name__ == "__main__":

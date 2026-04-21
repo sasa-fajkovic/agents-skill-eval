@@ -14,13 +14,14 @@ from common import (
     MAX_LINES,
     MAX_NAME_LEN,
     NAME_RE,
+    NON_INTERACTIVE_FALLBACK,
     SCRIPT_COMPLEXITY,
     STABLE_FIELDS,
     STRUCTURED_OUTPUT,
     WHEN_PHRASES,
     INTERACTIVE_PROMPT,
 )
-from extract import entrypoint_scripts, read_text_file, scripts_under
+from extract import entrypoint_scripts, read_text_file, scripts_under, _is_library_or_test_file
 
 METADATA_REDUNDANT_KEYS = {
     "author", "maintainer", "email", "version", "semver",
@@ -78,7 +79,7 @@ def check_1_3(fm: dict) -> list[Finding]:
         if key == "allowed-tools":
             findings.append(Finding("1.3", "WARN", f'"{key}" is a recognized but experimental agentskills.io field — may not be supported by all runtimes yet'))
         elif key in CLAUDE_CODE_EXTENSIONS:
-            findings.append(Finding("1.3", "ERROR", f'"{key}" is a Claude Code extension (not in agentskills.io stable spec)'))
+            findings.append(Finding("1.3", "WARN", f'"{key}" is a Claude Code extension (not in agentskills.io stable spec) — functional in CC but reduces cross-platform portability'))
         else:
             findings.append(Finding("1.3", "ERROR", f'"{key}" is not a recognized agentskills.io field (move to metadata: if needed)'))
     return findings
@@ -124,10 +125,21 @@ def check_1_5(fm: dict) -> list[Finding]:
     return findings
 
 
-def check_1_6(lines: list[str]) -> list[Finding]:
+_REFERENCE_SKILL = re.compile(
+    r"(?i)(reference|knowledge|lookup|glossary|catalog|inventory|"
+    r"documentation|cheat\s*sheet|playbook|runbook|handbook)"
+)
+
+MAX_LINES_REFERENCE = 800
+
+
+def check_1_6(lines: list[str], description: str = "") -> list[Finding]:
     count = len(lines)
-    if count > MAX_LINES:
-        return [Finding("1.6", "ERROR", f"SKILL.md is {count} lines (max {MAX_LINES})")]
+    # Reference/knowledge skills get a higher line limit
+    limit = MAX_LINES_REFERENCE if _REFERENCE_SKILL.search(description) else MAX_LINES
+    if count > limit:
+        suffix = " (reference skill)" if limit == MAX_LINES_REFERENCE else ""
+        return [Finding("1.6", "ERROR", f"SKILL.md is {count} lines (max {limit}{suffix})")]
     return []
 
 
@@ -139,18 +151,34 @@ def check_1_7(skill_dir: str) -> list[Finding]:
     findings = []
     for script_path, display in scripts:
         stem = script_path.stem
-        expected = tests_dir / (f"{stem}.bats" if script_path.suffix == ".sh" else f"test_{stem}.py")
-        if not expected.exists():
-            try:
-                content = read_text_file(script_path)
-            except (OSError, UnicodeDecodeError):
-                content = ""
-            line_count = len(content.splitlines())
-            has_complexity = bool(SCRIPT_COMPLEXITY.search(content))
-            if line_count > 30 or (has_complexity and line_count > 20):
-                findings.append(Finding("1.7", "WARN", f"{display} has no matching test file (expected {expected.relative_to(Path(skill_dir))}); script is {line_count} lines with conditional/loop logic — tests are strongly recommended"))
-            else:
-                findings.append(Finding("1.7", "WARN", f"{display} has no matching test file (expected {expected.relative_to(Path(skill_dir))})"))
+        # Skip library/test files themselves — they don't need their own tests
+        if _is_library_or_test_file(script_path):
+            continue
+        # Check for multiple test file naming conventions
+        candidates = []
+        if script_path.suffix == ".sh":
+            candidates = [
+                tests_dir / f"{stem}.bats",
+                tests_dir / f"test_{stem}.bats",
+            ]
+        else:
+            candidates = [
+                tests_dir / f"test_{stem}.py",
+                tests_dir / f"{stem}_test.py",
+            ]
+        if any(c.exists() for c in candidates):
+            continue
+        try:
+            content = read_text_file(script_path)
+        except (OSError, UnicodeDecodeError):
+            content = ""
+        line_count = len(content.splitlines())
+        has_complexity = bool(SCRIPT_COMPLEXITY.search(content))
+        expected = candidates[0].relative_to(Path(skill_dir))
+        if line_count > 30 or (has_complexity and line_count > 20):
+            findings.append(Finding("1.7", "WARN", f"{display} has no matching test file (expected {expected}); script is {line_count} lines with conditional/loop logic — tests are strongly recommended"))
+        else:
+            findings.append(Finding("1.7", "WARN", f"{display} has no matching test file (expected {expected})"))
     return findings
 
 
@@ -188,6 +216,8 @@ def check_1_10(skill_dir: str) -> list[Finding]:
             content = read_text_file(script_path)
         except (OSError, UnicodeDecodeError):
             continue
+        # Check if the script has a non-interactive fallback pattern anywhere
+        has_fallback = bool(NON_INTERACTIVE_FALLBACK.search(content))
         for match in INTERACTIVE_PROMPT.finditer(content):
             line_num = content[:match.start()].count("\n") + 1
             line = content.splitlines()[line_num - 1] if line_num <= len(content.splitlines()) else ""
@@ -198,11 +228,20 @@ def check_1_10(skill_dir: str) -> list[Finding]:
                 continue
             if "re.compile" in line or "re.search" in line or "re.match" in line:
                 continue
+            # If the script has a non-interactive fallback, also check local context
+            if has_fallback:
+                lines = content.splitlines()
+                ctx_start = max(0, line_num - 6)
+                ctx_end = min(len(lines), line_num + 5)
+                context = "\n".join(lines[ctx_start:ctx_end])
+                if NON_INTERACTIVE_FALLBACK.search(context):
+                    continue
             findings.append(Finding("1.10", "ERROR", f'{display}:{line_num} — interactive prompt detected ("{match.group().strip()}"). Agents cannot respond to prompts; use flags or env vars instead'))
     return findings
 
 
 _JS_EXTENSIONS = {".js", ".ts"}
+_DATA_EXTENSIONS = {".json", ".yaml", ".yml", ".toml", ".txt", ".md", ".csv", ".xml", ".ini", ".cfg", ".conf", ".env"}
 
 
 def check_1_11(skill_dir: str) -> list[Finding]:
@@ -211,6 +250,9 @@ def check_1_11(skill_dir: str) -> list[Finding]:
     if scripts_dir.is_dir():
         for file_path in sorted(scripts_dir.iterdir()):
             if file_path.is_dir():
+                continue
+            # Skip data/config files — they aren't scripts
+            if file_path.suffix in _DATA_EXTENSIONS:
                 continue
             if file_path.suffix and file_path.suffix not in ALLOWED_SCRIPT_EXTENSIONS:
                 if file_path.suffix in _JS_EXTENSIONS:
@@ -229,7 +271,8 @@ def run_tier1_checks(fm: dict, lines: list[str], skill_dir: str) -> list[Finding
     findings.extend(check_1_3(fm))
     findings.extend(check_1_4(fm))
     findings.extend(check_1_5(fm))
-    findings.extend(check_1_6(lines))
+    desc = fm.get("description", "") if isinstance(fm.get("description"), str) else ""
+    findings.extend(check_1_6(lines, desc))
     findings.extend(check_1_7(skill_dir))
     findings.extend(check_1_8(skill_dir))
     findings.extend(check_1_9(skill_dir))

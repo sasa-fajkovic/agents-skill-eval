@@ -21,6 +21,7 @@ from common import (
     RESET,
     YELLOW,
     Finding,
+    diagnose_frontmatter_failure,
     emit_progress,
     parse_frontmatter,
     print_box_bottom,
@@ -32,65 +33,41 @@ from common import (
 from extract import (
     collect_metadata,
     collect_supporting_context,
-    extract_skill_compatibility,
-    extract_skill_description,
     extract_skill_name,
 )
+from scoring import apply_score_caps, deterministic_score, tier_for_score
 from tier1 import check_1_6, run_tier1_checks
 from tier2 import check_2_1, check_2_2, run_tier2_checks
 from tier3 import run_tier3_checks
 from tier4 import run_tier4_checks
 
 
-def _load_tier_thresholds() -> list[tuple[str, int]]:
-    """Load tier thresholds from EVAL_TIERS env var or use defaults.
-
-    EVAL_TIERS format: "excellent:90,very_good:85,good:75,needs_work:50,poor:0"
-    Returns list of (name, min_score) sorted descending by min_score.
-    """
-    raw = os.environ.get("EVAL_TIERS", "")
-    if raw.strip():
-        tiers = []
-        for part in raw.split(","):
-            name, score_str = part.strip().split(":")
-            tiers.append((name.strip(), int(score_str.strip())))
-        tiers.sort(key=lambda t: t[1], reverse=True)
-        return tiers
-    return [("excellent", 90), ("very_good", 85), ("good", 75), ("needs_work", 50), ("poor", 0)]
-
-
-def quality_tier_for(score: int) -> str:
-    for name, min_score in _load_tier_thresholds():
-        if score >= min_score:
-            return name
-    return "poor"
-
-
 def overall_score_for(findings: list[Finding]) -> int:
     errors = sum(1 for finding in findings if finding.severity == "ERROR")
     warnings = sum(1 for finding in findings if finding.severity == "WARN")
-    error_penalty = int(os.environ.get("EVAL_ERROR_PENALTY", "5"))
-    error_cap = int(os.environ.get("EVAL_ERROR_CAP", "70"))
-    warning_penalty = int(os.environ.get("EVAL_WARNING_PENALTY", "2"))
-    warning_cap = int(os.environ.get("EVAL_WARNING_CAP", "24"))
-    score = 100 - min(errors * error_penalty, error_cap) - min(warnings * warning_penalty, warning_cap)
-    return max(0, min(100, score))
+    score = deterministic_score(errors, warnings)
+    error_ids = [f.check_id for f in findings if f.severity == "ERROR"]
+    return apply_score_caps(score, error_ids)
+
+
+def quality_tier_for(score: int) -> str:
+    return tier_for_score(score)
 
 
 def summary_for(skill_name: str, findings: list[Finding]) -> str:
     errors = [finding for finding in findings if finding.severity == "ERROR"]
     warnings = [finding for finding in findings if finding.severity == "WARN"]
     if errors:
-        return f"{skill_name} has {len(errors)} blocking issue(s); the primary problem is {errors[0].message.lower()}."
+        return f"{skill_name} has {len(errors)} blocking issue(s); the primary problem is {errors[0].message}."
     if warnings:
-        return f"{skill_name} is mostly portable, but it has {len(warnings)} warning(s), led by {warnings[0].message.lower()}."
+        return f"{skill_name} is mostly portable, but it has {len(warnings)} warning(s), led by {warnings[0].message}."
     return f"{skill_name} is portable, well-structured, and passes the deterministic evaluator."
 
 
-def issue_payload(finding: Finding) -> dict:
+def finding_payload(finding: Finding) -> dict:
+    """Produce a JSON-serializable dict for a single finding (no severity — caller groups by severity)."""
     return {
-        "rule_id": finding.rule_id,
-        "severity": finding.severity_key,
+        "rule_id": finding.check_id,
         "message": finding.message,
         "reason": finding.reason,
     }
@@ -102,50 +79,29 @@ def build_json_result(skill_path: Path, findings: list[Finding]) -> dict:
     skill_name = extract_skill_name(skill_path, fm)
     metadata = collect_metadata(skill_path)
     errors = [finding for finding in findings if finding.severity == "ERROR"]
+    warnings = [finding for finding in findings if finding.severity == "WARN"]
     overall_score = overall_score_for(findings)
     overall_tier = quality_tier_for(overall_score)
     summary = summary_for(skill_name, findings)
-
-    strengths = []
-    if not findings:
-        strengths.append({
-            "finding": "Deterministic checks passed",
-            "reason": "The skill satisfies the current spec and security checks without warnings or errors.",
-        })
-    elif not errors:
-        strengths.append({
-            "finding": "No blocking deterministic failures",
-            "reason": "The skill remains structurally valid even though it has warnings to address.",
-        })
-
-    weaknesses = [{"finding": finding.message, "reason": finding.reason} for finding in errors[:3]]
-    suggestions = [{"finding": finding.message, "reason": f"Address rule {finding.rule_id} to improve portability and evaluator confidence."} for finding in findings[:3]]
-    security_flags = [{"finding": finding.message, "reason": finding.reason} for finding in findings if finding.check_id.startswith("2.")]
 
     return {
         "schema_version": "1.0",
         "status": "ok",
         "skill_name": skill_name,
-        "skill_description": extract_skill_description(skill_text, fm),
-        "skill_compatibility": extract_skill_compatibility(fm),
         "skill_content": skill_text,
         "supporting_context": collect_supporting_context(skill_path),
         "overall_score": overall_score,
         "overall_tier": overall_tier,
-        "quality_tier": overall_tier,
         "summary": summary,
-        "deterministic": {
-            "passed": max(0, len(ALL_CHECK_IDS) - len(findings)),
-            "failed": len(findings),
-            "file_count": metadata["file_count"],
-            "line_count": metadata["line_count"],
-            "issues": [issue_payload(finding) for finding in findings],
+        "checks_overview": {
+            "checks_total": len(ALL_CHECK_IDS),
+            "checks_passed": max(0, len(ALL_CHECK_IDS) - len(findings)),
+            "checks_failed": len(findings),
         },
-        "llm_analysis": {
-            "strengths": strengths,
-            "weaknesses": weaknesses,
-            "suggestions": suggestions,
-            "security_flags": security_flags,
+        "findings": {
+            "total": len(findings),
+            "error_findings": [finding_payload(f) for f in errors],
+            "warning_findings": [finding_payload(f) for f in warnings],
         },
         "metadata": metadata,
     }
@@ -186,7 +142,8 @@ def evaluate(path: str) -> list[Finding]:
     emit_progress("Running deterministic checks...")
     findings: list[Finding] = []
     if fm is None:
-        findings.append(Finding("1.1", "ERROR", "no valid YAML frontmatter found"))
+        diag = diagnose_frontmatter_failure(text)
+        findings.append(Finding("1.1", "ERROR", diag))
         findings.extend(check_1_6(lines))
         findings.extend(check_2_1(body))
         findings.extend(check_2_2(body))

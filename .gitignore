@@ -1,5 +1,6 @@
 # Go
 backend/bin/
+backend/app
 backend/agents-skill-eval
 *.exe
 *.test

@@ -224,8 +224,18 @@ def body_paragraphs(body: str) -> list[tuple[int, str]]:
     current: list[str] = []
     start_line = 1
     lines = body.splitlines()
+    in_fence = False
     for index, line in enumerate(lines, start=1):
         stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            if current:
+                paragraphs.append((start_line, " ".join(current)))
+                current = []
+            continue
+        # Skip content inside fenced code blocks
+        if in_fence:
+            continue
         if not stripped:
             if current:
                 paragraphs.append((start_line, " ".join(current)))
@@ -233,7 +243,7 @@ def body_paragraphs(body: str) -> list[tuple[int, str]]:
             continue
         if not current:
             start_line = index
-        if stripped.startswith("#") or stripped.startswith("```") or stripped.startswith("-") or stripped.startswith("*") or _NUMBERED_LIST_RE.match(stripped):
+        if stripped.startswith("#") or stripped.startswith("-") or stripped.startswith("*") or _NUMBERED_LIST_RE.match(stripped):
             if current:
                 paragraphs.append((start_line, " ".join(current)))
                 current = []
@@ -258,9 +268,24 @@ def scripts_under(skill_dir: str) -> list[tuple[Path, str]]:
     return results
 
 
+_TEST_FILE_RE = re.compile(r"^(test_|_).*|.*_test\.(py|sh)$|.*\.bats$", re.IGNORECASE)
+
+
+def _is_library_or_test_file(file_path: Path) -> bool:
+    """Return True for files that are not standalone entrypoints.
+
+    Library files (``_common.sh``, ``_format.py``) and test files
+    (``test_foo.py``, ``foo_test.py``, ``foo.bats``) should not be
+    required to implement ``--help`` or other entrypoint conventions.
+    """
+    return bool(_TEST_FILE_RE.match(file_path.name))
+
+
 def entrypoint_scripts(skill_dir: str) -> list[tuple[Path, str]]:
     entrypoints = []
     for file_path, display in scripts_under(skill_dir):
+        if _is_library_or_test_file(file_path):
+            continue
         try:
             content = read_text_file(file_path)
         except (OSError, UnicodeDecodeError):
@@ -288,16 +313,22 @@ def collect_metadata(skill_path: Path) -> dict:
 
 
 def main() -> None:
+    import json
     import sys
 
     if "--help" in sys.argv or "-h" in sys.argv:
         print("Usage: extract.py --help")
         print()
         print("Internal extraction helpers for the skill evaluator.")
+        print()
+        print("Exit codes:")
+        print("  0  Help shown successfully")
+        print("  2  Module invoked directly (use eval.py instead)")
         sys.exit(0)
 
-    print("extract.py is an internal helper module. Use eval.py instead.", file=sys.stderr)
-    sys.exit(1)
+    json.dump({"error": "extract.py is an internal helper module. Use eval.py instead."}, sys.stdout)
+    print()
+    sys.exit(2)
 
 
 if __name__ == "__main__":

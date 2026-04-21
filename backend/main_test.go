@@ -22,17 +22,6 @@ import (
 
 func testConfig() appConfig {
 	return appConfig{
-		Scoring: scoringConfig{
-			ErrorPenalty: 5, ErrorCap: 70, WarningPenalty: 2, WarningCap: 24,
-			DeterministicWeight: 0.6, LLMWeight: 0.4,
-			Tiers: []tierConfig{
-				{Name: "excellent", MinScore: 90},
-				{Name: "very_good", MinScore: 85},
-				{Name: "good", MinScore: 75},
-				{Name: "needs_work", MinScore: 50},
-				{Name: "poor", MinScore: 0},
-			},
-		},
 		Providers: map[string]providerConfig{
 			"anthropic": {Model: "claude-haiku-4-5", MaxTokens: 1200, BaseURL: "https://api.anthropic.com/v1/messages"},
 			"openai":    {Model: "gpt-4.1-nano", MaxTokens: 1200, BaseURL: "https://api.openai.com/v1/chat/completions"},
@@ -286,89 +275,96 @@ func TestHashEvaluationRequestStableForSameFiles(t *testing.T) {
 	}
 }
 
-func TestDeterministicIssues(t *testing.T) {
-	got := deterministicIssues([]any{" one ", "", 2, nil})
-	want := []string{"one", "2", "<nil>"}
-	if len(got) != len(want) {
-		t.Fatalf("unexpected length: got %v want %v", got, want)
+// TestDeterministicIssues removed: deterministicIssues function was deleted
+// as part of the scoring consolidation into the Python skill.
+
+func scoringScriptPath(t *testing.T) (script, workDir string) {
+	t.Helper()
+	rel := filepath.Join("..", ".claude", "skills", "skill-evaluation", "scripts", "scoring.py")
+	abs, err := filepath.Abs(rel)
+	if err != nil {
+		t.Fatalf("failed to resolve scoring.py path: %v", err)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("unexpected value at %d: got %q want %q", i, got[i], want[i])
-		}
+	if _, err := os.Stat(abs); err != nil {
+		t.Skip("scoring.py not found, skipping integration test")
 	}
+	return abs, filepath.Dir(abs)
 }
 
-func TestComputeOverallScore(t *testing.T) {
-	// Deterministic-only: just passes through the deterministic score.
-	if got := computeOverallScore(80, nil, 0.6, 0.4); got != 80 {
-		t.Fatalf("unexpected deterministic pass-through score: %d", got)
+func TestCallScoringScript(t *testing.T) {
+	script, workDir := scoringScriptPath(t)
+	app := &application{
+		cfg:           testConfig(),
+		scoringScript: script,
+		evalWorkDir:   workDir,
 	}
-	// With LLM "excellent" (base 95) and deterministic score 96:
+
+	// Deterministic-only (no LLM tier): score passes through.
+	got, err := app.callScoringScript(context.Background(), 80, "")
+	if err != nil {
+		t.Fatalf("unexpected error (det-only): %v", err)
+	}
+	if got.OverallScore != 80 {
+		t.Fatalf("expected deterministic pass-through score 80, got %d", got.OverallScore)
+	}
+
+	// With LLM "excellent" (base 95) and deterministic 96:
 	// 0.6*96 + 0.4*95 = 57.6 + 38 = 95.6 → 96
-	analysis := &llmAnalysis{QualityTier: "excellent"}
-	if got := computeOverallScore(96, analysis, 0.6, 0.4); got != 96 {
-		t.Fatalf("unexpected blended score (excellent): %d", got)
+	got, err = app.callScoringScript(context.Background(), 96, "excellent")
+	if err != nil {
+		t.Fatalf("unexpected error (excellent): %v", err)
 	}
-	// With LLM "good" (base 85) and deterministic score 96:
-	// 0.6*96 + 0.4*85 = 57.6 + 34 = 91.6 → 92
-	analysis2 := &llmAnalysis{QualityTier: "good"}
-	if got := computeOverallScore(96, analysis2, 0.6, 0.4); got != 92 {
-		t.Fatalf("unexpected blended score (good): %d", got)
+	if got.OverallScore != 96 {
+		t.Fatalf("expected blended score 96 (excellent), got %d", got.OverallScore)
 	}
-	// With LLM "poor" (base 45) and deterministic score 80:
-	// 0.6*80 + 0.4*45 = 48 + 18 = 66
-	analysis3 := &llmAnalysis{QualityTier: "poor"}
-	if got := computeOverallScore(80, analysis3, 0.6, 0.4); got != 66 {
-		t.Fatalf("unexpected blended score (poor): %d", got)
+	if got.OverallTier != "excellent" {
+		t.Fatalf("expected tier excellent, got %q", got.OverallTier)
 	}
-}
 
-func TestComputeOverallTier(t *testing.T) {
-	app := &application{cfg: testConfig()}
-	// Deterministic-only: score 100 → excellent
-	if got := app.computeOverallTier(100, nil); got != "excellent" {
-		t.Fatalf("unexpected deterministic tier: %q", got)
-	}
-	// Deterministic-only: score 50 → needs_work (min_score 50 in testConfig)
-	if got := app.computeOverallTier(50, nil); got != "needs_work" {
-		t.Fatalf("unexpected deterministic tier: %q", got)
-	}
-	// With LLM "poor" (base 45) and deterministic 100:
-	// 0.6*100 + 0.4*45 = 60+18 = 78 → good (75-84 in testConfig)
-	if got := app.computeOverallTier(100, &llmAnalysis{QualityTier: "poor"}); got != "good" {
-		t.Fatalf("unexpected blended tier (poor LLM): %q", got)
-	}
 	// With LLM "good" (base 85) and deterministic 96:
-	// 0.6*96 + 0.4*85 = 57.6+34 = 91.6 → 92 → excellent
-	if got := app.computeOverallTier(96, &llmAnalysis{QualityTier: "good"}); got != "excellent" {
-		t.Fatalf("unexpected blended tier (good LLM, high det): %q", got)
+	// 0.6*96 + 0.4*85 = 57.6 + 34 = 91.6 → 92
+	got, err = app.callScoringScript(context.Background(), 96, "good")
+	if err != nil {
+		t.Fatalf("unexpected error (good): %v", err)
+	}
+	if got.OverallScore != 92 {
+		t.Fatalf("expected blended score 92 (good), got %d", got.OverallScore)
+	}
+	if got.OverallTier != "excellent" {
+		t.Fatalf("expected tier excellent, got %q", got.OverallTier)
+	}
+
+	// With LLM "poor" (base 45) and deterministic 80:
+	// 0.6*80 + 0.4*45 = 48 + 18 = 66
+	got, err = app.callScoringScript(context.Background(), 80, "poor")
+	if err != nil {
+		t.Fatalf("unexpected error (poor): %v", err)
+	}
+	if got.OverallScore != 66 {
+		t.Fatalf("expected blended score 66 (poor), got %d", got.OverallScore)
+	}
+	if got.OverallTier != "needs_work" {
+		t.Fatalf("expected tier needs_work, got %q", got.OverallTier)
+	}
+
+	// Deterministic 100 + LLM "poor": 0.6*100 + 0.4*45 = 60+18 = 78 → good
+	got, err = app.callScoringScript(context.Background(), 100, "poor")
+	if err != nil {
+		t.Fatalf("unexpected error (100+poor): %v", err)
+	}
+	if got.OverallScore != 78 {
+		t.Fatalf("expected blended score 78 (100+poor), got %d", got.OverallScore)
+	}
+	if got.OverallTier != "good" {
+		t.Fatalf("expected tier good, got %q", got.OverallTier)
 	}
 }
 
-func TestSummarizeIssues(t *testing.T) {
-	if got := summarizeIssues(map[string]any{"issues": []any{"first issue", "second"}}, nil); !strings.Contains(got, "Primary issue: first issue") {
-		t.Fatalf("unexpected summary: %q", got)
-	}
-	if got := summarizeIssues(map[string]any{}, nil); !strings.Contains(got, "no deterministic issues") {
-		t.Fatalf("unexpected summary: %q", got)
-	}
-	if got := summarizeIssues(map[string]any{}, &llmAnalysis{Strengths: []string{"Clear structure"}}); !strings.Contains(got, "Key strength: Clear structure") {
-		t.Fatalf("unexpected llm summary: %q", got)
-	}
-}
+// TestSummarizeIssues removed: summarizeIssues function was deleted
+// as part of the scoring consolidation into the Python skill.
 
-func TestScoreFromIssues(t *testing.T) {
-	if got := scoreFromIssues(map[string]any{"issues": []any{"a", "b"}}); got != 80 {
-		t.Fatalf("unexpected score: %d", got)
-	}
-	if got := scoreFromIssues(map[string]any{"issues": []any{"a", "b", "c", "d", "e", "f", "g"}}); got != 40 {
-		t.Fatalf("unexpected clamped score: %d", got)
-	}
-	if got := scoreFromIssues(map[string]any{"issues": []any{}}); got != 100 {
-		t.Fatalf("unexpected zero-issue score: %d", got)
-	}
-}
+// TestScoreFromIssues removed: scoreFromIssues function was deleted
+// as part of the scoring consolidation into the Python skill.
 
 func TestParseIntDefault(t *testing.T) {
 	if got := parseIntDefault("42", 7); got != 42 {
@@ -757,18 +753,28 @@ func TestValidateFileType(t *testing.T) {
 
 func TestFinalizeEvaluation(t *testing.T) {
 	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), cfg: testConfig()}
-	raw := `{"status":"ok","skill_name":"demo","skill_description":"Use when validating skill packages.\n\nKeeps output portable.","skill_compatibility":"Claude Code\nCodex CLI","skill_content":"skill body","supporting_context":"extra context","overall_score":90,"overall_tier":"excellent","summary":"demo is mostly portable.","deterministic":{"issues":[{"rule_id":"missing_tests","severity":"warning","message":"missing tests","reason":"scripts need tests"}]}}`
+	raw := `{"schema_version":"1.0","status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","overall_score":90,"overall_tier":"excellent","summary":"demo is mostly portable.","checks_overview":{"checks_total":30,"checks_passed":29,"checks_failed":1},"findings":{"total":1,"error_findings":[],"warning_findings":[{"rule_id":"1.3","message":"missing tests","reason":"scripts need tests"}]},"metadata":{"file_count":1,"line_count":10,"has_scripts":false,"script_types":[],"unsupported_script_types":[]}}`
 
 	result, _, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1"}, raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(result, `"overall_score":90`) || !strings.Contains(result, `"overall_tier":"excellent"`) || !strings.Contains(result, `"skill_name":"demo"`) || !strings.Contains(result, `"skill_description":"Use when validating skill packages.\n\nKeeps output portable."`) || !strings.Contains(result, `"skill_compatibility":"Claude Code\nCodex CLI"`) {
+	if !strings.Contains(result, `"overall_score":90`) || !strings.Contains(result, `"overall_tier":"excellent"`) || !strings.Contains(result, `"skill_name":"demo"`) {
 		t.Fatalf("unexpected final result: %s", result)
+	}
+	if strings.Contains(result, `"skill_content"`) || strings.Contains(result, `"supporting_context"`) {
+		t.Fatalf("expected skill_content and supporting_context to be stripped: %s", result)
+	}
+	if !strings.Contains(result, `"checks_overview"`) || !strings.Contains(result, `"findings"`) {
+		t.Fatalf("expected checks_overview and findings in result: %s", result)
+	}
+	if strings.Contains(result, `"llm_enabled"`) || strings.Contains(result, `"llm_requested"`) {
+		t.Fatalf("expected llm_enabled/llm_requested to be absent: %s", result)
 	}
 }
 
 func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
+	script, workDir := scoringScriptPath(t)
 	old := os.Getenv("ANTHROPIC_API_KEY")
 	oldProvider := os.Getenv("LLM_PROVIDER")
 	defer func() {
@@ -801,15 +807,18 @@ func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
 
 	cfg := testConfig()
 	cfg.Providers["anthropic"] = providerConfig{Model: "claude-haiku-4-5", MaxTokens: 1200, BaseURL: server.URL + "/v1/messages"}
-	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), httpClient: server.Client(), cfg: cfg}
-	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","overall_score":100,"overall_tier":"excellent","summary":"demo passes deterministic evaluation.","deterministic":{"issues":[]}}`
+	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), httpClient: server.Client(), cfg: cfg, scoringScript: script, evalWorkDir: workDir}
+	raw := `{"schema_version":"1.0","status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","overall_score":100,"overall_tier":"excellent","summary":"demo passes deterministic evaluation.","checks_overview":{"checks_total":30,"checks_passed":28,"checks_failed":0},"findings":{"total":0,"error_findings":[],"warning_findings":[]},"metadata":{}}`
 
 	result, _, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true, LLMProvider: "anthropic"}, raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"mode":"opt_in"`) || !strings.Contains(result, `"overall_tier":"excellent"`) || !strings.Contains(result, `"overall_score":94`) || !strings.Contains(result, `"provider":"anthropic"`) || !strings.Contains(result, `"model":"claude-haiku-4-5"`) {
+	if !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"mode":"opt_in"`) || !strings.Contains(result, `"overall_tier":"excellent"`) || !strings.Contains(result, `"overall_score":94`) || !strings.Contains(result, `"provider":"anthropic"`) || !strings.Contains(result, `"model":"claude-haiku-4-5"`) {
 		t.Fatalf("expected blended score/tier in llm payload, got %s", result)
+	}
+	if strings.Contains(result, `"llm_enabled"`) || strings.Contains(result, `"llm_requested"`) {
+		t.Fatalf("expected llm_enabled/llm_requested to be absent: %s", result)
 	}
 }
 
@@ -869,7 +878,7 @@ func TestFinalizeEvaluationWithOptionalLLMFallsBackOnProviderError(t *testing.T)
 	cfg := testConfig()
 	cfg.Providers["anthropic"] = providerConfig{Model: "claude-haiku-4-5", MaxTokens: 1200, BaseURL: server.URL}
 	app := &application{rdb: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0", DialTimeout: time.Millisecond, ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}), httpClient: server.Client(), cfg: cfg}
-	raw := `{"status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","deterministic":{"issues":[]}}`
+	raw := `{"schema_version":"1.0","status":"ok","skill_name":"demo","skill_content":"skill body","supporting_context":"extra context","overall_score":100,"overall_tier":"excellent","summary":"demo passes.","checks_overview":{"checks_total":30,"checks_passed":28,"checks_failed":0},"findings":{"total":0,"error_findings":[],"warning_findings":[]},"metadata":{}}`
 
 	result, _, err := app.finalizeEvaluation(context.Background(), evalJob{JobID: "job-1", EnableLLM: true, LLMRequested: true, LLMProvider: "anthropic"}, raw)
 	if err != nil {
@@ -905,7 +914,11 @@ func TestBuildLLMPrompt(t *testing.T) {
 	prompt := buildLLMPrompt(evalContainerResult{
 		SkillContent:      strings.Repeat("a", 20),
 		SupportingContext: "context",
-		Deterministic:     map[string]any{"issues": []any{"missing examples"}},
+		Findings: evalFindings{
+			Total:           1,
+			ErrorFindings:   []any{},
+			WarningFindings: []any{map[string]any{"rule_id": "1.3", "message": "missing examples"}},
+		},
 	})
 	for _, expected := range []string{"Deterministic Findings", "Primary SKILL.md Content", "Supporting Context"} {
 		if !strings.Contains(prompt, expected) {
@@ -1015,7 +1028,7 @@ func TestRunOpenAIReviewWithGPT41UsesMaxTokens(t *testing.T) {
 	cfg := testConfig()
 	cfg.Providers["openai"] = providerConfig{Model: "gpt-4.1", MaxTokens: 1200, BaseURL: server.URL}
 	app := &application{httpClient: server.Client(), cfg: cfg}
-	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
+	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Findings: evalFindings{Total: 0, ErrorFindings: []any{}, WarningFindings: []any{}}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1050,7 +1063,7 @@ func TestRunOpenAIReviewWithGPT53ChatLatestUsesMaxCompletionTokens(t *testing.T)
 	cfg := testConfig()
 	cfg.Providers["openai"] = providerConfig{Model: "gpt-5.3-chat-latest", MaxTokens: 1200, BaseURL: server.URL}
 	app := &application{httpClient: server.Client(), cfg: cfg}
-	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
+	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Findings: evalFindings{Total: 0, ErrorFindings: []any{}, WarningFindings: []any{}}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1085,7 +1098,7 @@ func TestRunOpenAIReviewWithGPT54UsesMaxCompletionTokens(t *testing.T) {
 	cfg := testConfig()
 	cfg.Providers["openai"] = providerConfig{Model: "gpt-5.4", MaxTokens: 1200, BaseURL: server.URL}
 	app := &application{httpClient: server.Client(), cfg: cfg}
-	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
+	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Findings: evalFindings{Total: 0, ErrorFindings: []any{}, WarningFindings: []any{}}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1119,7 +1132,7 @@ func TestRunAnthropicReviewSupportsMultipleModels(t *testing.T) {
 		cfg := testConfig()
 		cfg.Providers["anthropic"] = providerConfig{Model: model, MaxTokens: 1200, BaseURL: server.URL}
 		app := &application{httpClient: server.Client(), cfg: cfg}
-		analysis, err := app.runLLMReview(context.Background(), "anthropic", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
+		analysis, err := app.runLLMReview(context.Background(), "anthropic", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Findings: evalFindings{Total: 0, ErrorFindings: []any{}, WarningFindings: []any{}}})
 		server.Close()
 		if err != nil {
 			t.Fatalf("unexpected error for model %q: %v", model, err)
@@ -1151,7 +1164,7 @@ func TestRunLLMReviewWithOpenAI(t *testing.T) {
 	cfg := testConfig()
 	cfg.Providers["openai"] = providerConfig{Model: "gpt-4.1-nano", MaxTokens: 1200, BaseURL: server.URL}
 	app := &application{httpClient: server.Client(), cfg: cfg}
-	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Deterministic: map[string]any{"issues": []any{}}})
+	analysis, err := app.runLLMReview(context.Background(), "openai", evalContainerResult{SkillContent: "skill", SupportingContext: "ctx", Findings: evalFindings{Total: 0, ErrorFindings: []any{}, WarningFindings: []any{}}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

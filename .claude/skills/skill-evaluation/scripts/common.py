@@ -42,9 +42,9 @@ RESET = "\033[0m" if _use_color else ""
 BOX_WIDTH = 60
 ALL_CHECK_IDS = [
     "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10", "1.11",
-    "2.1", "2.2", "2.3",
+    "2.1", "2.2", "2.3", "2.4",
     "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7",
-    "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7",
+    "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8",
 ]
 MAX_SUPPORTING_CONTEXT_CHARS = 12000
 MAX_FILE_EXCERPT_CHARS = 1500
@@ -131,13 +131,22 @@ INTERACTIVE_PROMPT = re.compile(
     r"read\s+-r\s+\w+\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
+NON_INTERACTIVE_FALLBACK = re.compile(
+    r"(?i)(\[\[\s*-t\s+0\s*\]\]|\[\s*-t\s+0\s*\]|isatty|sys\.stdin\.isatty|"
+    r"\$\{.*:-|if\s+.*interactive|NONINTERACTIVE|--no-prompt|--batch|--yes|-y\b)",
+)
 MCP_REFERENCE = re.compile(
     r"(?i)(mcp__\w+|model\s+context\s+protocol|mcp\s+server(?:s)?|"
     r"(?:github|gitlab|jira|atlassian|google\s+workspace|slack|figma)\s+mcp|\bmcp\b)"
 )
+HARDCODED_USER_PATH = re.compile(
+    r"(?:/Users/[a-zA-Z][a-zA-Z0-9._-]+/|/home/[a-zA-Z][a-zA-Z0-9._-]+/|"
+    r"C:\\Users\\[a-zA-Z][a-zA-Z0-9._-]+\\)"
+)
 MCP_NEGATION = re.compile(
-    r"(?i)(do not|don't|never|avoid|instead of|not allowed|prohibited|"
-    r"forbidden|disallow(?:ed)?|must not|ban(?:ned)?|use .* instead|prefer .* instead)"
+    r"(?i)(do not|don't|never|avoid|instead of|not allowed|prohibited|prohibition|"
+    r"forbidden|disallow(?:ed)?|must not|ban(?:ned)?|use .* instead|prefer .* instead|"
+    r"(?:are|is)\s+(?:an?\s+)?error)"
 )
 VERBOSE_PROSE = re.compile(
     r"(?i)\b(first,? you need to|in order to|the next step is to|to accomplish this|"
@@ -166,12 +175,62 @@ CONTEXT_QUALIFICATION = re.compile(
     r"\([^)]*\d[^)]*\)|\bexample\b|:\s*`|:\s*\"|\bsuch as\b|\bi\.e\.\b|\be\.g\.\b|\bspecifically\b"
 )
 NEGATIVE_ONLY = re.compile(r"(?i)\b(don't|do not|never|avoid|must not)\b")
-POSITIVE_ALTERNATIVE = re.compile(r"(?i)\b(use|write|prefer|instead|choose|return|format|do .* not|always|only|leave|skip|keep|query|address|stage|OK to)\b")
+POSITIVE_ALTERNATIVE = re.compile(
+    r"(?i)\b("
+    r"use|using|write|prefer|instead|choose|return|format|do .* not|always|only|"
+    r"leave|skip|keep|query|address|stage|OK to|"
+    # Additional patterns that indicate a positive alternative is present
+    r"let|follow|apply|provide|ensure|make sure|set|run|call|create|"
+    r"update|check|look|resolve|open|handle|submit|report|output|"
+    r"produce|generate|implement|pass|move|put|add|send|establish|"
+    r"configure|specify|replace|convert|switch|adopt|migrate|correct"
+    r")\b"
+)
+# Detect explanatory/descriptive negatives (3rd person, not imperative instructions)
+EXPLANATORY_NEGATIVE = re.compile(
+    r"(?i)"
+    r"(?:\b(?:that|which|who|they|it|this|these|those|ones?|files?|tasks?|"
+    r"changes?|variables?|packages?|commands?|operations?|dependencies)\s+"
+    r"(?:don't|doesn't|do not|does not|won't|can't|cannot)\b)|"
+    r"(?:\b(?:don't|doesn't|won't|can't|cannot)\s+(?:need|have|contain|include|exist|require)\b)"
+)
+# Detect security/safety prohibitions that are valid without a positive alternative
+SECURITY_PROHIBITION = re.compile(
+    r"(?i)\b(secret|token|credential|password|api[_-]?key|sensitive|"
+    r"confidential|private[_-]?key|auth(?:entication|orization)?|"
+    r"permission|security|protect|expose|leak|"
+    r"injection|vulnerab|encrypt|weaken|tamper|privilege|"
+    r"force[_-]?push|prod(?:uction)?(?:\s+(?:data|environment|server))?)\b"
+)
 DEFAULT_BEHAVIOR = re.compile(r"(?i)(defaults to|if omitted|if not provided|required|when omitted|must provide|optional)")
-IDEMPOTENT_GUARD = re.compile(r"(?i)(if not exists|if missing|already exists|mkdir -p|ensure|idempotent|skip if|update if)")
-NON_IDEMPOTENT_OP = re.compile(r"(?i)(>>|\bmkdir\s+(?!-p)\S|\bcurl\s+.*-x\s+post|\bgh pr create\b|\bacli\s+jira\s+workitem\s+create\b|\binsert\s+into\b|\bPOST\s+/|\btouch\s+>|\becho\s+.*>>)")
+IDEMPOTENT_GUARD = re.compile(
+    r"(?i)(if not exists|if missing|already exists|mkdir -p|ensure|idempotent|skip if|update if|"
+    r"upsert|create or update|update or create|check (?:if|whether|for|first)|"
+    r"only if|unless|exists\b.*\bthen\b|search|list|get|read|query|find|fetch|lookup|inspect)"
+)
+NON_IDEMPOTENT_OP = re.compile(
+    r"(?i)(>>|\bmkdir\s+(?!-p)\S|\bcurl\s+.*-x\s+post|\bgh pr create\b|"
+    r"\bacli\s+jira\s+workitem\s+create\b|\binsert\s+into\b|\bPOST\s+/|\btouch\s+>|\becho\s+.*>>)"
+)
 OUTPUT_OR_FORMAT = re.compile(r"(?i)(^#{1,3}\s+output\b|output format|format as|use the following format|template|tone guidance)")
-SUCCESS_CRITERIA = re.compile(r"(?i)(^#{1,3}\s+output\b|^#{1,4}\s+(?:verify|report|confirm)\b|done when|complete when|completion condition|success when|must return|should produce|should show|expected output|verify that|assert that|prints?\b.*\bon success)", re.MULTILINE)
+SUCCESS_CRITERIA = re.compile(
+    r"(?i)("
+    # Headings that indicate output/verification/completion
+    r"^#{1,3}\s+output\b|"
+    r"^#{1,4}\s+.*\b(?:verify|report|confirm|result|deliver|checklist|summary|test plan|final)\b|"
+    # Headings explicitly about presenting/returning results
+    r"^#{1,4}\s+(?:present|return|submit|post)\s+(?:the\s+)?result|"
+    # Inline success criteria phrases
+    r"done when|complete when|completion condition|success when|"
+    r"must return|should produce|should show|expected output|"
+    r"verify that|assert that|prints?\b.*\bon success|"
+    # Deliverable/acceptance patterns
+    r"deliverables?:|acceptance criteria|definition of done|"
+    # Numbered final steps that indicate completion sequence
+    r"final\s+step|last\s+step"
+    r")",
+    re.MULTILINE,
+)
 SCOPED_TOOL_CONTEXT = re.compile(
     r"(?i)(only (?:use |the following |these )|"
     r"(?:allowed|permitted) (?:commands|tools|operations)|"
@@ -198,6 +257,10 @@ SCRIPT_COMPLEXITY = re.compile(
 SCRIPT_WORTHINESS = re.compile(
     r"(\||&&|curl\s|wget\s|\bfor\b|\bwhile\b|\bif\b|\bawk\b|\bsed\b|\bjq\b|\byq\b)"
 )
+MIN_BODY_LINES = 10
+REDIRECT_SKILL = re.compile(
+    r"(?i)(?:read|see|refer to|check|consult)\s+(?:the\s+)?(?:following|these|docs?|documentation|skill|file|`[^`]+`)",
+)
 
 
 class Finding:
@@ -219,23 +282,8 @@ class Finding:
 
     @property
     def rule_id(self) -> str:
-        rule_map = {
-            "1.1": "invalid_name",
-            "1.2": "missing_or_weak_description",
-            "1.3": "non_standard_field",
-            "1.4": "invalid_field_type",
-            "1.5": "redundant_metadata",
-            "1.6": "skill_too_long",
-            "1.7": "missing_tests",
-            "1.8": "missing_help",
-            "1.9": "unstructured_output",
-            "1.10": "interactive_prompt",
-            "1.11": "runtime_dependency_required",
-            "2.1": "unscoped_tool_usage",
-            "2.2": "destructive_operation_without_safeguard",
-            "2.3": "mcp_usage_reduces_portability",
-        }
-        return rule_map.get(self.check_id, f"rule_{self.check_id.replace('.', '_')}")
+        """Return the numeric check identifier (e.g. '1.3', '2.1')."""
+        return self.check_id
 
     @property
     def reason(self) -> str:
@@ -254,6 +302,7 @@ class Finding:
             "2.1": "Broad tool instructions make execution behavior ambiguous and harder to bound safely.",
             "2.2": "Destructive operations need explicit safeguards to avoid irreversible damage.",
             "2.3": "MCP-specific instructions reduce portability and tie the skill to one runtime integration surface.",
+            "2.4": "Hardcoded user home directory paths break portability across machines and users.",
             "3.1": "Long inline code blocks bloat the skill with tokens the agent must read on every call; moving them to scripts saves tokens and enables caching.",
             "3.2": "Large lookup tables and reference data inflate the context window; moving them to reference files allows lazy on-demand loading.",
             "3.3": "Explaining standard tool usage wastes tokens on knowledge the agent already has, adding noise without value.",
@@ -268,6 +317,7 @@ class Finding:
             "4.5": "Non-idempotent operations fail or produce duplicates when retried, and agents commonly retry on transient errors.",
             "4.6": "Without success criteria the agent cannot determine when the task is complete, risking premature exit or infinite loops.",
             "4.7": "Uniform exit codes (0/1 only) prevent the agent from distinguishing failure types and choosing the right recovery strategy.",
+            "4.8": "Skills with insufficient content cannot guide an agent effectively; redirect/pointer skills provide no actionable instructions.",
         }
         return reason_map.get(self.check_id, "This issue reduces portability, clarity, or reliability of the skill definition.")
 
@@ -335,3 +385,44 @@ def parse_frontmatter(text: str) -> tuple[dict | None, str]:
         return fm if isinstance(fm, dict) else None, body
     except yaml.YAMLError:
         return None, body
+
+
+def diagnose_frontmatter_failure(text: str) -> str:
+    """Return a specific diagnostic message explaining why frontmatter parsing failed.
+
+    Called when ``parse_frontmatter`` returns ``None`` for the frontmatter dict.
+    """
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return "file is empty"
+
+    first_line = lines[0].rstrip("\r\n")
+    # Check for encoding artifacts before the opening delimiter
+    stripped_first = first_line.lstrip("\ufeff\u00a7\u00ef\u00bb\u00bf").strip()
+    if first_line != "---" and stripped_first == "---":
+        return f"encoding artifacts before opening `---` delimiter (found {first_line!r}); remove non-ASCII characters before the first line"
+
+    if first_line != "---":
+        return "no YAML frontmatter delimiters found (file must start with `---` on the first line)"
+
+    # Opening delimiter found; check for closing
+    end_line = None
+    for i in range(1, len(lines)):
+        if lines[i].rstrip("\r\n") == "---":
+            end_line = i
+            break
+
+    if end_line is None:
+        return "opening `---` found but no closing `---` delimiter"
+
+    # Delimiters present but YAML parsing failed
+    fm_text = "".join(lines[1:end_line]).strip()
+    try:
+        result = yaml.safe_load(fm_text)
+        if not isinstance(result, dict):
+            return f"YAML frontmatter parsed as {type(result).__name__} instead of a mapping; check for missing key-value pairs"
+        return "no valid YAML frontmatter found"
+    except yaml.YAMLError as exc:
+        # Extract a short error description
+        msg = str(exc).split("\n")[0][:120]
+        return f"YAML parse error in frontmatter: {msg}"

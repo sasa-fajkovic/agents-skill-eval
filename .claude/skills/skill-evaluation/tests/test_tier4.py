@@ -227,6 +227,31 @@ class Tier4Tests(unittest.TestCase):
         findings = tier4.check_4_6(body)
         self.assertEqual(len([f for f in findings if f.check_id == "4.6"]), 0)
 
+    # --- 4.1: raised ambiguity threshold ---
+
+    def test_check_4_1_skips_numbered_list_items(self) -> None:
+        body = "1. Format the output appropriately based on the schema."
+        findings = tier4.check_4_1(body)
+        self.assertEqual(len([f for f in findings if f.check_id == "4.1"]), 0)
+
+    def test_check_4_1_skips_lines_with_inline_code(self) -> None:
+        body = "Set the appropriate value using `config.json`."
+        findings = tier4.check_4_1(body)
+        self.assertEqual(len([f for f in findings if f.check_id == "4.1"]), 0)
+
+    def test_check_4_1_skips_lines_with_numbers(self) -> None:
+        body = "Use the appropriate timeout of 30 seconds."
+        findings = tier4.check_4_1(body)
+        self.assertEqual(len([f for f in findings if f.check_id == "4.1"]), 0)
+
+    # --- 4.4: expanded context window ---
+
+    def test_check_4_4_finds_default_5_lines_away(self) -> None:
+        """Flag should be suppressed when default is documented 5 lines away."""
+        body = "line1\nline2\nline3\nIf omitted, defaults to main branch.\nline5\nUse --target to specify the branch."
+        findings = tier4.check_4_4(body)
+        self.assertEqual(len([f for f in findings if f.check_id == "4.4"]), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

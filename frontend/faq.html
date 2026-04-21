@@ -98,7 +98,7 @@
           "name": "Can I customize scoring penalties and tier thresholds?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. All scoring parameters live in backend/config.json. You can adjust error and warning deduction points, deduction caps, tier thresholds, and the weight split between deterministic and AI review scores."
+            "text": "Yes. All scoring parameters live in the skill's own scoring_config.json file. You can adjust error and warning deduction points, deduction caps, tier thresholds, LLM tier base scores, and the weight split between deterministic and AI review scores. No server-side configuration or environment variables are needed."
           }
         }
       ]
@@ -371,27 +371,34 @@
     <section class="callout">
       <span class="eyebrow">Customization</span>
       <h2>Tune scoring to match your team's standards.</h2>
-      <p>All scoring parameters live in a single file: <code>backend/config.json</code>. Adjust deduction points, caps, tier boundaries, and the weight split between deterministic and AI review scores. Changes take effect on the next server restart.</p>
+      <p>All scoring parameters live in a single file inside the skill itself: <code>scoring_config.json</code>. Adjust deduction points, caps, tier boundaries, LLM tier base scores, and the weight split between deterministic and AI review scores. No server-side configuration or environment variables are needed &mdash; the skill is fully self-contained.</p>
       <div class="terminal">
         <div class="terminal-bar">
-          <span>backend/config.json &mdash; scoring</span>
+          <span>scoring_config.json</span>
           <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
         </div>
         <div class="terminal-body">{
-  "scoring": {
+  "penalties": {
     "error_penalty": 5,       <span class="cfg-comment">// points deducted per ERROR finding</span>
     "error_cap": 70,          <span class="cfg-comment">// max total deduction from errors</span>
     "warning_penalty": 2,     <span class="cfg-comment">// points deducted per WARNING finding</span>
-    "warning_cap": 24,        <span class="cfg-comment">// max total deduction from warnings</span>
+    "warning_cap": 30         <span class="cfg-comment">// max total deduction from warnings</span>
+  },
+  "blending": {
     "deterministic_weight": 0.6, <span class="cfg-comment">// weight of deterministic score in final blend</span>
-    "llm_weight": 0.4,        <span class="cfg-comment">// weight of AI review score in final blend</span>
-    "tiers": [
-      { "name": "excellent",  "min_score": 90 },
-      { "name": "very_good",  "min_score": 80 },
-      { "name": "good",       "min_score": 70 },
-      { "name": "needs_work", "min_score": 50 },
-      { "name": "poor",       "min_score": 0  }
-    ]
+    "llm_weight": 0.4         <span class="cfg-comment">// weight of AI review score in final blend</span>
+  },
+  "tiers": [
+    { "name": "excellent",  "min_score": 90 },
+    { "name": "good",       "min_score": 70 },
+    { "name": "needs_work", "min_score": 50 },
+    { "name": "poor",       "min_score": 0  }
+  ],
+  "llm_tier_base_scores": {
+    "excellent": 95,          <span class="cfg-comment">// LLM "excellent" maps to this score</span>
+    "good": 85,
+    "needs_work": 60,
+    "poor": 45
   }
 }</div>
       </div>
@@ -399,6 +406,7 @@
         <li><strong>Deterministic score</strong> starts at 100 and subtracts <code>error_penalty</code> per error (capped at <code>error_cap</code>) and <code>warning_penalty</code> per warning (capped at <code>warning_cap</code>).</li>
         <li><strong>AI review blend</strong> only applies when optional AI review is enabled. The final score is <code>deterministic_weight &times; det_score + llm_weight &times; llm_score</code>. Without AI review, the deterministic score is used directly.</li>
         <li><strong>Tiers</strong> are evaluated top-to-bottom; the first tier whose <code>min_score</code> the final score meets or exceeds becomes the quality tier.</li>
+        <li><strong>LLM tier base scores</strong> convert the AI reviewer's qualitative tier label into a numeric score for blending.</li>
       </ul>
     </section>
   </main>

@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"mime"
 	"mime/multipart"
 	"net"
@@ -63,10 +62,15 @@ var (
 		"application/xml":    true,
 		"image/png":          true,
 		"image/jpeg":         true,
-		"application/json":   true,
-		"text/x-python":      true,
-		"text/x-sh":          true,
-		"text/x-shellscript": true,
+		"application/json":     true,
+		"application/toml":     true,
+		"application/x-yaml":  true,
+		"text/yaml":            true,
+		"text/x-python":        true,
+		"text/x-python-script": true,
+		"text/x-script.python": true,
+		"text/x-sh":            true,
+		"text/x-shellscript":   true,
 	}
 	blockedExecutableExtensions = map[string]bool{
 		".apk":    true,
@@ -125,27 +129,30 @@ type redactionPattern struct {
 
 type evalContainerResult struct {
 	Status            string         `json:"status"`
-	SkillName         string         `json:"skill_name"`
-	SkillDescription  string         `json:"skill_description"`
-	SkillCompatibility string        `json:"skill_compatibility"`
 	SkillContent      string         `json:"skill_content"`
 	SupportingContext string         `json:"supporting_context"`
 	OverallScore      int            `json:"overall_score"`
 	OverallTier       string         `json:"overall_tier"`
-	QualityTier       string         `json:"quality_tier"`
 	Summary           string         `json:"summary"`
-	Deterministic     map[string]any `json:"deterministic"`
+	Findings          evalFindings   `json:"findings"`
 	Message           string         `json:"message"`
 }
 
+type evalFindings struct {
+	Total           int   `json:"total"`
+	ErrorFindings   []any `json:"error_findings"`
+	WarningFindings []any `json:"warning_findings"`
+}
+
 type application struct {
-	rdb         *redis.Client
-	frontendDir string
-	evalScript  string
-	evalWorkDir string
-	httpClient  *http.Client
-	logger      *jobLogger
-	cfg         appConfig
+	rdb           *redis.Client
+	frontendDir   string
+	evalScript    string
+	scoringScript string
+	evalWorkDir   string
+	httpClient    *http.Client
+	logger        *jobLogger
+	cfg           appConfig
 }
 
 // --- Application configuration (loaded from config.json) ---
@@ -161,23 +168,7 @@ type pricingEntry struct {
 	OutputPerM float64 `json:"output_per_m"`
 }
 
-type tierConfig struct {
-	Name     string `json:"name"`
-	MinScore int    `json:"min_score"`
-}
-
-type scoringConfig struct {
-	ErrorPenalty        int          `json:"error_penalty"`
-	ErrorCap            int          `json:"error_cap"`
-	WarningPenalty      int          `json:"warning_penalty"`
-	WarningCap          int          `json:"warning_cap"`
-	DeterministicWeight float64      `json:"deterministic_weight"`
-	LLMWeight           float64      `json:"llm_weight"`
-	Tiers               []tierConfig `json:"tiers"`
-}
-
 type appConfig struct {
-	Scoring   scoringConfig             `json:"scoring"`
 	Providers map[string]providerConfig `json:"providers"`
 	Pricing   map[string]pricingEntry   `json:"pricing"`
 }
@@ -193,15 +184,6 @@ func loadConfig(path string) (appConfig, error) {
 	}
 	if cfg.Providers == nil {
 		return appConfig{}, errors.New("config: no providers defined")
-	}
-	if len(cfg.Scoring.Tiers) == 0 {
-		return appConfig{}, errors.New("config: no scoring tiers defined")
-	}
-	// Validate tiers are sorted descending by min_score.
-	for i := 1; i < len(cfg.Scoring.Tiers); i++ {
-		if cfg.Scoring.Tiers[i].MinScore >= cfg.Scoring.Tiers[i-1].MinScore {
-			return appConfig{}, fmt.Errorf("config: tiers must be sorted descending by min_score (tier %q >= %q)", cfg.Scoring.Tiers[i].Name, cfg.Scoring.Tiers[i-1].Name)
-		}
 	}
 	return cfg, nil
 }
@@ -374,13 +356,14 @@ func main() {
 	}
 
 	app := &application{
-		rdb:         rdb,
-		frontendDir: detectFrontendDir(),
-		evalScript:  evalScript,
-		evalWorkDir: evalWorkDir,
-		httpClient:  &http.Client{Timeout: 45 * time.Second},
-		logger:      logger,
-		cfg:         cfg,
+		rdb:           rdb,
+		frontendDir:   detectFrontendDir(),
+		evalScript:    evalScript,
+		scoringScript: filepath.Join(filepath.Dir(evalScript), "scoring.py"),
+		evalWorkDir:   evalWorkDir,
+		httpClient:    &http.Client{Timeout: 45 * time.Second},
+		logger:        logger,
+		cfg:           cfg,
 	}
 
 	go app.workerLoop(ctx)
@@ -551,17 +534,15 @@ func (app *application) handleResult(w http.ResponseWriter, r *http.Request) {
 	consume := parseBool(r.URL.Query().Get("consume"))
 
 	if errorMessage, err := app.rdb.Get(r.Context(), redisErrorKey(jobID)).Result(); err == nil {
-		progress := app.getProgress(r.Context(), jobID)
 		var structured map[string]any
 		if json.Unmarshal([]byte(errorMessage), &structured) == nil {
-			structured["progress"] = progress
 			writeJSON(w, http.StatusInternalServerError, structured)
 			if consume {
 				app.releaseJobState(r.Context(), jobID)
 			}
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"status": "error", "message": errorMessage, "progress": progress})
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"status": "error", "message": errorMessage})
 		if consume {
 			app.releaseJobState(r.Context(), jobID)
 		}
@@ -589,16 +570,7 @@ func (app *application) handleResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	progress := app.getProgress(r.Context(), jobID)
-	var structured map[string]any
-	if json.Unmarshal([]byte(result), &structured) == nil {
-		structured["progress"] = progress
-		writeJSON(w, http.StatusOK, structured)
-		if consume {
-			app.releaseJobState(r.Context(), jobID)
-		}
-		return
-	}
+	// Write the stored JSON directly to preserve field ordering from Python/finalizeEvaluation.
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(result))
@@ -826,14 +798,7 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 	_ = app.appendProgress(parent, job.JobID, "Starting evaluator...")
 	cmd := exec.CommandContext(ctx, "python3", app.evalScript, job.InputDir, "--ci")
 	cmd.Dir = app.evalWorkDir
-	cmd.Env = append(os.Environ(),
-		"EVAL_PROGRESS_STDERR=1",
-		fmt.Sprintf("EVAL_ERROR_PENALTY=%d", app.cfg.Scoring.ErrorPenalty),
-		fmt.Sprintf("EVAL_ERROR_CAP=%d", app.cfg.Scoring.ErrorCap),
-		fmt.Sprintf("EVAL_WARNING_PENALTY=%d", app.cfg.Scoring.WarningPenalty),
-		fmt.Sprintf("EVAL_WARNING_CAP=%d", app.cfg.Scoring.WarningCap),
-		fmt.Sprintf("EVAL_TIERS=%s", encodeTiersEnv(app.cfg.Scoring.Tiers)),
-	)
+	cmd.Env = append(os.Environ(), "EVAL_PROGRESS_STDERR=1")
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		sentry.CaptureException(err)
@@ -1106,6 +1071,7 @@ func isScannableTextFile(name string) bool {
 }
 
 func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw string) (string, *llmAnalysis, error) {
+	// Parse into typed struct for fields Go needs (LLM prompt, scoring).
 	var container evalContainerResult
 	if err := json.Unmarshal([]byte(raw), &container); err != nil {
 		return "", nil, errors.New("failed to parse evaluator output")
@@ -1119,6 +1085,18 @@ func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw
 
 	_ = app.appendProgress(ctx, job.JobID, "Preparing final evaluation result...")
 
+	// Parse into ordered struct — preserves field order in JSON output.
+	// Python's JSON is the base; Go strips internal fields and overlays LLM.
+	var ordered evalOutputJSON
+	if err := json.Unmarshal([]byte(raw), &ordered); err != nil {
+		return "", nil, errors.New("failed to parse evaluator output for serialization")
+	}
+
+	// Strip large fields used for LLM context but not needed in the response.
+	ordered.SkillContent = nil
+	ordered.SupportingContext = nil
+
+	// Optional LLM analysis.
 	var analysis *llmAnalysis
 	if job.EnableLLM {
 		provider := effectiveLLMProvider(job.LLMProvider)
@@ -1138,47 +1116,26 @@ func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw
 		}
 	}
 
-	baseScore := container.OverallScore
-	if baseScore == 0 && container.OverallTier == "" && strings.TrimSpace(container.Summary) == "" {
-		baseScore = scoreFromIssues(container.Deterministic)
-	}
-	baseTier := strings.TrimSpace(container.OverallTier)
-	if baseTier == "" {
-		baseTier = strings.TrimSpace(container.QualityTier)
-	}
-	if baseTier == "" {
-		baseTier = app.overallTierFromScore(baseScore)
-	}
-	baseSummary := strings.TrimSpace(container.Summary)
-	if baseSummary == "" {
-		baseSummary = summarizeIssues(container.Deterministic, nil)
+	// If LLM blending happened, override score/tier in the pass-through result.
+	if analysis != nil {
+		blended, err := app.callScoringScript(ctx, container.OverallScore, analysis.QualityTier)
+		if err != nil {
+			log.Printf("[scoring] script failed, falling back to deterministic: %v", err)
+		} else {
+			ordered.OverallScore = json.RawMessage(fmt.Sprintf("%d", blended.OverallScore))
+			ordered.OverallTier = json.RawMessage(fmt.Sprintf("%q", blended.OverallTier))
+		}
 	}
 
-	finalScore := baseScore
-	finalTier := baseTier
-	finalSummary := baseSummary
+	// Add LLM analysis when available (application-level overlay, not part of the skill's output).
 	if analysis != nil {
-		finalScore = computeOverallScore(baseScore, analysis, app.cfg.Scoring.DeterministicWeight, app.cfg.Scoring.LLMWeight)
-		finalTier = app.overallTierFromScore(finalScore)
-		finalSummary = summarizeIssues(container.Deterministic, analysis)
+		analysisJSON, err := json.Marshal(analysis)
+		if err == nil {
+			ordered.LLMAnalysis = analysisJSON
+		}
 	}
 
-	result := map[string]any{
-		"status":              "ok",
-		"skill_name":          container.SkillName,
-		"skill_description":   container.SkillDescription,
-		"skill_compatibility": container.SkillCompatibility,
-		"overall_score":       finalScore,
-		"overall_tier":        finalTier,
-		"summary":             finalSummary,
-		"deterministic":       container.Deterministic,
-		"llm_enabled":         job.EnableLLM,
-		"llm_requested":       job.LLMRequested,
-	}
-	if analysis != nil {
-		result["llm_analysis"] = analysis
-	}
-	encoded, err := json.Marshal(result)
+	encoded, err := json.Marshal(ordered)
 	if err != nil {
 		return "", nil, errors.New("failed to serialize final evaluation result")
 	}
@@ -1186,84 +1143,51 @@ func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw
 	return string(encoded), analysis, nil
 }
 
-func deterministicIssues(value any) []string {
-	raw, ok := value.([]any)
-	if !ok {
-		return nil
-	}
-	result := make([]string, 0, len(raw))
-	for _, item := range raw {
-		switch typed := item.(type) {
-		case string:
-			text := strings.TrimSpace(typed)
-			if text != "" {
-				result = append(result, text)
-			}
-		case map[string]any:
-			message := strings.TrimSpace(fmt.Sprint(typed["message"]))
-			if message != "" {
-				result = append(result, message)
-			}
-		default:
-			text := strings.TrimSpace(fmt.Sprint(item))
-			if text != "" {
-				result = append(result, text)
-			}
-		}
-	}
-	return result
+// evalOutputJSON controls the exact field order in the final JSON response.
+// All fields use json.RawMessage to preserve Python's original values and ordering.
+type evalOutputJSON struct {
+	SchemaVersion     json.RawMessage `json:"schema_version"`
+	Status            json.RawMessage `json:"status"`
+	SkillName         json.RawMessage `json:"skill_name"`
+	OverallScore      json.RawMessage `json:"overall_score"`
+	OverallTier       json.RawMessage `json:"overall_tier"`
+	Summary           json.RawMessage `json:"summary"`
+	ChecksOverview    json.RawMessage `json:"checks_overview"`
+	Findings          json.RawMessage `json:"findings"`
+	Metadata          json.RawMessage `json:"metadata"`
+	SkillContent      json.RawMessage `json:"skill_content,omitempty"`
+	SupportingContext json.RawMessage `json:"supporting_context,omitempty"`
+	LLMAnalysis       json.RawMessage `json:"llm_analysis,omitempty"`
 }
 
-func computeOverallScore(deterministicScore int, analysis *llmAnalysis, detWeight, llmWeight float64) int {
-	if analysis == nil {
-		return deterministicScore
-	}
-	llmScore := qualityTierBaseScore(analysis.QualityTier)
-	combined := detWeight*float64(deterministicScore) + llmWeight*float64(llmScore)
-	score := int(math.Round(combined))
-	return max(0, min(100, score))
+// scoringResult holds the JSON returned by scoring.py.
+type scoringResult struct {
+	OverallScore int    `json:"overall_score"`
+	OverallTier  string `json:"overall_tier"`
 }
 
-// scoreFromIssues is a fallback when the Python evaluator does not provide
-// an overall_score (e.g. older script versions). It counts raw issues
-// without distinguishing severity.
-func scoreFromIssues(deterministic map[string]any) int {
-	issues := deterministicIssues(deterministic["issues"])
-	return 100 - min(len(issues)*10, 60)
-}
-
-func encodeTiersEnv(tiers []tierConfig) string {
-	parts := make([]string, len(tiers))
-	for i, t := range tiers {
-		parts[i] = fmt.Sprintf("%s:%d", t.Name, t.MinScore)
+// callScoringScript calls the Python scoring.py script to compute
+// a blended score from the deterministic result and LLM quality tier.
+// All scoring formulas live in Python so there is a single source of truth.
+func (app *application) callScoringScript(ctx context.Context, detScore int, llmTier string) (scoringResult, error) {
+	args := []string{
+		app.scoringScript,
+		"--det-score", fmt.Sprintf("%d", detScore),
 	}
-	return strings.Join(parts, ",")
-}
-
-func (app *application) computeOverallTier(deterministicScore int, analysis *llmAnalysis) string {
-	score := computeOverallScore(deterministicScore, analysis, app.cfg.Scoring.DeterministicWeight, app.cfg.Scoring.LLMWeight)
-	return app.overallTierFromScore(score)
-}
-
-func (app *application) overallTierFromScore(score int) string {
-	for _, tier := range app.cfg.Scoring.Tiers {
-		if score >= tier.MinScore {
-			return tier.Name
-		}
+	if llmTier != "" {
+		args = append(args, "--llm-tier", llmTier)
 	}
-	// Fallback to last tier (should not happen if tiers include min_score 0).
-	return app.cfg.Scoring.Tiers[len(app.cfg.Scoring.Tiers)-1].Name
-}
-
-func summarizeIssues(deterministic map[string]any, analysis *llmAnalysis) string {
-	issues := deterministicIssues(deterministic["issues"])
-	if len(issues) > 0 {
-		return fmt.Sprintf("Skill evaluated with %d deterministic issue(s). Primary issue: %s.", len(issues), issues[0])
+	cmd := exec.CommandContext(ctx, "python3", args...)
+	cmd.Dir = app.evalWorkDir
+	out, err := cmd.Output()
+	if err != nil {
+		return scoringResult{}, fmt.Errorf("scoring script failed: %w", err)
 	}
-	if analysis != nil && len(analysis.Strengths) > 0 {
-		return fmt.Sprintf("Skill evaluated successfully. Key strength: %s", analysis.Strengths[0])
+	var result scoringResult
+	if err := json.Unmarshal(out, &result); err != nil {
+		return scoringResult{}, fmt.Errorf("scoring script returned invalid JSON: %w", err)
 	}
-	return "Skill evaluated successfully with no deterministic issues detected."
+	return result, nil
 }
 
 func llmProviderConfigured(provider string) bool {
@@ -1596,7 +1520,7 @@ Use this schema exactly:
   "weaknesses": ["string"],
   "suggestions": ["string"],
   "security_flags": ["string"],
-  "quality_tier": "excellent|very_good|good|needs_work|poor"
+  "quality_tier": "excellent|good|needs_work|poor"
 }
 
 Keep each array to 3-6 items. Be specific — reference actual content from the skill.
@@ -1605,10 +1529,10 @@ Use the deterministic findings as hard constraints — do not contradict them.`)
 }
 
 func buildLLMPrompt(container evalContainerResult) string {
-	deterministicJSON, _ := json.Marshal(container.Deterministic)
+	findingsJSON, _ := json.Marshal(container.Findings)
 	skillContent := truncateForLLM(container.SkillContent, 40000)
 	supporting := truncateForLLM(container.SupportingContext, 12000)
-	return strings.TrimSpace("Evaluate this skill package against the agentskills.io specification.\n\n## Deterministic Findings (treat as ground truth)\n" + string(deterministicJSON) + "\n\n## Primary SKILL.md Content\n" + skillContent + "\n\n## Supporting Context (scripts, references, tests)\n" + supporting)
+	return strings.TrimSpace("Evaluate this skill package against the agentskills.io specification.\n\n## Deterministic Findings (treat as ground truth)\n" + string(findingsJSON) + "\n\n## Primary SKILL.md Content\n" + skillContent + "\n\n## Supporting Context (scripts, references, tests)\n" + supporting)
 }
 
 func parseAnthropicAnalysis(body []byte) (llmAnalysis, error) {
@@ -1741,30 +1665,11 @@ func uniqueStrings(values []string) []string {
 	return result
 }
 
-func qualityTierBaseScore(tier string) int {
-	switch normalizeQualityTier(tier) {
-	case "excellent":
-		return 95
-	case "very_good":
-		return 90
-	case "good":
-		return 85
-	case "needs_work":
-		return 60
-	case "poor":
-		return 45
-	default:
-		return 70
-	}
-}
-
 func normalizeQualityTier(tier string) string {
 	switch strings.TrimSpace(strings.ToLower(tier)) {
 	case "excellent":
 		return "excellent"
-	case "very_good", "very good":
-		return "very_good"
-	case "good":
+	case "very_good", "very good", "good":
 		return "good"
 	case "needs_work", "needs work":
 		return "needs_work"
@@ -2294,7 +2199,7 @@ func validateFileType(filename, mimeType string) error {
 	if blockedExecutableExtensions[ext] {
 		return fmt.Errorf("%s is not an allowed upload type", filename)
 	}
-	if strings.HasPrefix(normalized, "application/x-") && normalized != "application/xml" {
+	if strings.HasPrefix(normalized, "application/x-") && normalized != "application/xml" && normalized != "application/x-yaml" {
 		return fmt.Errorf("%s has unsupported executable MIME type %s", filename, mimeType)
 	}
 	if !allowedMimeTypes[normalized] {
