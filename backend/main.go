@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"mime"
 	"mime/multipart"
 	"net"
@@ -160,11 +161,19 @@ type pricingEntry struct {
 	OutputPerM float64 `json:"output_per_m"`
 }
 
+type tierConfig struct {
+	Name     string `json:"name"`
+	MinScore int    `json:"min_score"`
+}
+
 type scoringConfig struct {
-	ErrorPenalty   int `json:"error_penalty"`
-	ErrorCap       int `json:"error_cap"`
-	WarningPenalty int `json:"warning_penalty"`
-	WarningCap     int `json:"warning_cap"`
+	ErrorPenalty        int          `json:"error_penalty"`
+	ErrorCap            int          `json:"error_cap"`
+	WarningPenalty      int          `json:"warning_penalty"`
+	WarningCap          int          `json:"warning_cap"`
+	DeterministicWeight float64      `json:"deterministic_weight"`
+	LLMWeight           float64      `json:"llm_weight"`
+	Tiers               []tierConfig `json:"tiers"`
 }
 
 type appConfig struct {
@@ -184,6 +193,15 @@ func loadConfig(path string) (appConfig, error) {
 	}
 	if cfg.Providers == nil {
 		return appConfig{}, errors.New("config: no providers defined")
+	}
+	if len(cfg.Scoring.Tiers) == 0 {
+		return appConfig{}, errors.New("config: no scoring tiers defined")
+	}
+	// Validate tiers are sorted descending by min_score.
+	for i := 1; i < len(cfg.Scoring.Tiers); i++ {
+		if cfg.Scoring.Tiers[i].MinScore >= cfg.Scoring.Tiers[i-1].MinScore {
+			return appConfig{}, fmt.Errorf("config: tiers must be sorted descending by min_score (tier %q >= %q)", cfg.Scoring.Tiers[i].Name, cfg.Scoring.Tiers[i-1].Name)
+		}
 	}
 	return cfg, nil
 }
@@ -814,6 +832,7 @@ func (app *application) processJob(parent context.Context, job evalJob) {
 		fmt.Sprintf("EVAL_ERROR_CAP=%d", app.cfg.Scoring.ErrorCap),
 		fmt.Sprintf("EVAL_WARNING_PENALTY=%d", app.cfg.Scoring.WarningPenalty),
 		fmt.Sprintf("EVAL_WARNING_CAP=%d", app.cfg.Scoring.WarningCap),
+		fmt.Sprintf("EVAL_TIERS=%s", encodeTiersEnv(app.cfg.Scoring.Tiers)),
 	)
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -1121,14 +1140,14 @@ func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw
 
 	baseScore := container.OverallScore
 	if baseScore == 0 && container.OverallTier == "" && strings.TrimSpace(container.Summary) == "" {
-		baseScore = computeOverallScore(container.Deterministic, nil)
+		baseScore = scoreFromIssues(container.Deterministic)
 	}
 	baseTier := strings.TrimSpace(container.OverallTier)
 	if baseTier == "" {
 		baseTier = strings.TrimSpace(container.QualityTier)
 	}
 	if baseTier == "" {
-		baseTier = computeOverallTier(container.Deterministic, nil)
+		baseTier = app.overallTierFromScore(baseScore)
 	}
 	baseSummary := strings.TrimSpace(container.Summary)
 	if baseSummary == "" {
@@ -1139,8 +1158,8 @@ func (app *application) finalizeEvaluation(ctx context.Context, job evalJob, raw
 	finalTier := baseTier
 	finalSummary := baseSummary
 	if analysis != nil {
-		finalScore = computeOverallScore(container.Deterministic, analysis)
-		finalTier = computeOverallTier(container.Deterministic, analysis)
+		finalScore = computeOverallScore(baseScore, analysis, app.cfg.Scoring.DeterministicWeight, app.cfg.Scoring.LLMWeight)
+		finalTier = app.overallTierFromScore(finalScore)
 		finalSummary = summarizeIssues(container.Deterministic, analysis)
 	}
 
@@ -1195,36 +1214,45 @@ func deterministicIssues(value any) []string {
 	return result
 }
 
-func computeOverallScore(deterministic map[string]any, analysis *llmAnalysis) int {
+func computeOverallScore(deterministicScore int, analysis *llmAnalysis, detWeight, llmWeight float64) int {
+	if analysis == nil {
+		return deterministicScore
+	}
+	llmScore := qualityTierBaseScore(analysis.QualityTier)
+	combined := detWeight*float64(deterministicScore) + llmWeight*float64(llmScore)
+	score := int(math.Round(combined))
+	return max(0, min(100, score))
+}
+
+// scoreFromIssues is a fallback when the Python evaluator does not provide
+// an overall_score (e.g. older script versions). It counts raw issues
+// without distinguishing severity.
+func scoreFromIssues(deterministic map[string]any) int {
 	issues := deterministicIssues(deterministic["issues"])
-	score := 100 - min(len(issues)*10, 60)
-	if analysis != nil {
-		score = max(0, min(100, qualityTierBaseScore(analysis.QualityTier)-min(len(issues)*5, 30)))
-	}
-	if score < 0 {
-		return 0
-	}
-	return score
+	return 100 - min(len(issues)*10, 60)
 }
 
-func computeOverallTier(deterministic map[string]any, analysis *llmAnalysis) string {
-	if analysis != nil {
-		return normalizeQualityTier(analysis.QualityTier)
+func encodeTiersEnv(tiers []tierConfig) string {
+	parts := make([]string, len(tiers))
+	for i, t := range tiers {
+		parts[i] = fmt.Sprintf("%s:%d", t.Name, t.MinScore)
 	}
-	return overallTierFromScore(computeOverallScore(deterministic, nil))
+	return strings.Join(parts, ",")
 }
 
-func overallTierFromScore(score int) string {
-	switch {
-	case score >= 90:
-		return "excellent"
-	case score >= 75:
-		return "good"
-	case score >= 50:
-		return "needs_work"
-	default:
-		return "poor"
+func (app *application) computeOverallTier(deterministicScore int, analysis *llmAnalysis) string {
+	score := computeOverallScore(deterministicScore, analysis, app.cfg.Scoring.DeterministicWeight, app.cfg.Scoring.LLMWeight)
+	return app.overallTierFromScore(score)
+}
+
+func (app *application) overallTierFromScore(score int) string {
+	for _, tier := range app.cfg.Scoring.Tiers {
+		if score >= tier.MinScore {
+			return tier.Name
+		}
 	}
+	// Fallback to last tier (should not happen if tiers include min_score 0).
+	return app.cfg.Scoring.Tiers[len(app.cfg.Scoring.Tiers)-1].Name
 }
 
 func summarizeIssues(deterministic map[string]any, analysis *llmAnalysis) string {
@@ -1517,25 +1545,70 @@ func sanitizeLLMError(err error) string {
 }
 
 func llmSystemPrompt() string {
-	return strings.TrimSpace(`You are evaluating an uploaded SKILL.md package.
-Return exactly one JSON object and nothing else.
-Do not wrap the JSON in markdown fences.
+	return strings.TrimSpace(`You are an expert evaluator of agent skill packages based on the agentskills.io open standard.
+
+## Evaluation Framework
+
+Evaluate the uploaded SKILL.md package against these criteria derived from the agentskills.io specification:
+
+### 1. Portability (cross-platform compatibility)
+- Does the skill work across agent runtimes (Claude Code, Copilot, Cursor, Windsurf, etc.)?
+- Does it avoid runtime-specific extensions in stable frontmatter fields?
+- Are scripts written in universally available languages (Python, Bash preferred; JavaScript acceptable)?
+- Does it avoid MCP-specific instructions that tie it to one integration surface?
+
+### 2. Progressive Disclosure & Token Efficiency
+- Is the SKILL.md concise, with heavy logic moved to scripts/?
+- Are large reference tables and data moved to references/ for lazy loading?
+- Does it avoid preloading all references upfront?
+- Does it avoid explaining standard tool usage the agent already knows?
+- Is there duplicated content that inflates token cost?
+
+### 3. Description & Triggering
+- Does the description include a "Use when..." clause so agents know when to activate the skill?
+- Is the description specific enough to avoid false triggering on unrelated tasks?
+
+### 4. Clarity & Completeness
+- Are instructions specific and actionable (not ambiguous like "handle appropriately")?
+- Are there concrete examples for input/output formats?
+- Do negative instructions ("don't do X") also say what to do instead?
+- Are default behaviors defined for optional flags and parameters?
+- Are success/completion criteria stated so the agent knows when it's done?
+
+### 5. Script Design (if scripts/ are present)
+- Do entrypoint scripts implement --help for autonomous discovery?
+- Do scripts produce structured output (JSON/CSV) for composability?
+- Are scripts idempotent or guarded against duplicate execution?
+- Do scripts avoid interactive prompts that block autonomous execution?
+- Do complex scripts have matching test files?
+
+### 6. Safety & Security
+- Are destructive operations guarded with confirmation or backup steps?
+- Are tool permissions scoped narrowly rather than broadly?
+- Are secrets handled via env vars rather than hardcoded?
+
+## Output Format
+
+Return exactly one JSON object and nothing else. Do not wrap the JSON in markdown fences.
 Use this schema exactly:
 {
   "strengths": ["string"],
   "weaknesses": ["string"],
   "suggestions": ["string"],
   "security_flags": ["string"],
-  "quality_tier": "excellent|good|needs_work|poor"
+  "quality_tier": "excellent|very_good|good|needs_work|poor"
 }
-Keep each list concise. Base the review on the uploaded content and deterministic findings provided by the user message.`)
+
+Keep each array to 3-6 items. Be specific — reference actual content from the skill.
+Base the quality_tier on overall spec alignment: excellent means production-ready with strong portability and clarity; poor means fundamental issues that prevent reliable agent use.
+Use the deterministic findings as hard constraints — do not contradict them.`)
 }
 
 func buildLLMPrompt(container evalContainerResult) string {
 	deterministicJSON, _ := json.Marshal(container.Deterministic)
 	skillContent := truncateForLLM(container.SkillContent, 40000)
 	supporting := truncateForLLM(container.SupportingContext, 12000)
-	return strings.TrimSpace("Evaluate this skill package. Focus on portability, clarity, completeness, examples, failure handling, and security posture. Use the deterministic findings as hard constraints.\n\nDeterministic findings:\n" + string(deterministicJSON) + "\n\nPrimary SKILL.md content:\n" + skillContent + "\n\nSupporting context:\n" + supporting)
+	return strings.TrimSpace("Evaluate this skill package against the agentskills.io specification.\n\n## Deterministic Findings (treat as ground truth)\n" + string(deterministicJSON) + "\n\n## Primary SKILL.md Content\n" + skillContent + "\n\n## Supporting Context (scripts, references, tests)\n" + supporting)
 }
 
 func parseAnthropicAnalysis(body []byte) (llmAnalysis, error) {
@@ -1672,8 +1745,12 @@ func qualityTierBaseScore(tier string) int {
 	switch normalizeQualityTier(tier) {
 	case "excellent":
 		return 95
+	case "very_good":
+		return 90
 	case "good":
 		return 85
+	case "needs_work":
+		return 60
 	case "poor":
 		return 45
 	default:
@@ -1685,8 +1762,12 @@ func normalizeQualityTier(tier string) string {
 	switch strings.TrimSpace(strings.ToLower(tier)) {
 	case "excellent":
 		return "excellent"
+	case "very_good", "very good":
+		return "very_good"
 	case "good":
 		return "good"
+	case "needs_work", "needs work":
+		return "needs_work"
 	case "poor":
 		return "poor"
 	default:

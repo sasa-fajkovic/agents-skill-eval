@@ -160,19 +160,18 @@ PRELOAD_REFERENCE = re.compile(
 )
 AMBIGUOUS_LANGUAGE = re.compile(
     r"(?i)\b(appropriately|as needed|relevant|suitable|proper|reasonable|"
-    r"when necessary|if applicable|the correct format|the standard approach|concise|clear|well-structured|"
-    r"handle errors|clean up|prepare the environment|set up the environment)\b"
+    r"when necessary|if applicable|the correct format|the standard approach)\b"
 )
 CONTEXT_QUALIFICATION = re.compile(
     r"\([^)]*\d[^)]*\)|\bexample\b|:\s*`|:\s*\"|\bsuch as\b|\bi\.e\.\b|\be\.g\.\b|\bspecifically\b"
 )
 NEGATIVE_ONLY = re.compile(r"(?i)\b(don't|do not|never|avoid|must not)\b")
-POSITIVE_ALTERNATIVE = re.compile(r"(?i)\b(use|write|prefer|instead|choose|return|format|do .* not)\b")
+POSITIVE_ALTERNATIVE = re.compile(r"(?i)\b(use|write|prefer|instead|choose|return|format|do .* not|always|only|leave|skip|keep|query|address|stage|OK to)\b")
 DEFAULT_BEHAVIOR = re.compile(r"(?i)(defaults to|if omitted|if not provided|required|when omitted|must provide|optional)")
 IDEMPOTENT_GUARD = re.compile(r"(?i)(if not exists|if missing|already exists|mkdir -p|ensure|idempotent|skip if|update if)")
 NON_IDEMPOTENT_OP = re.compile(r"(?i)(>>|\bmkdir\s+(?!-p)\S|\bcurl\s+.*-x\s+post|\bgh pr create\b|\bacli\s+jira\s+workitem\s+create\b|\binsert\s+into\b|\bPOST\s+/|\btouch\s+>|\becho\s+.*>>)")
 OUTPUT_OR_FORMAT = re.compile(r"(?i)(^#{1,3}\s+output\b|output format|format as|use the following format|template|tone guidance)")
-SUCCESS_CRITERIA = re.compile(r"(?i)(^#{1,3}\s+output\b|done when|complete when|completion condition|returns?\b|produces?\b)")
+SUCCESS_CRITERIA = re.compile(r"(?i)(^#{1,3}\s+output\b|^#{1,4}\s+(?:verify|report|confirm)\b|done when|complete when|completion condition|success when|must return|should produce|should show|expected output|verify that|assert that|prints?\b.*\bon success)", re.MULTILINE)
 SCOPED_TOOL_CONTEXT = re.compile(
     r"(?i)(only (?:use |the following |these )|"
     r"(?:allowed|permitted) (?:commands|tools|operations)|"
@@ -234,7 +233,7 @@ class Finding:
             "1.11": "runtime_dependency_required",
             "2.1": "unscoped_tool_usage",
             "2.2": "destructive_operation_without_safeguard",
-            "2.3": "mcp_usage_disallowed",
+            "2.3": "mcp_usage_reduces_portability",
         }
         return rule_map.get(self.check_id, f"rule_{self.check_id.replace('.', '_')}")
 

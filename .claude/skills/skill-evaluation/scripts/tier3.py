@@ -1,9 +1,19 @@
 from __future__ import annotations
 
 import difflib
+import re
 
 from common import MCP_NEGATION, MCP_REFERENCE, PRELOAD_REFERENCE, SCRIPT_WORTHINESS, STANDARD_TOOL_TUTORIAL, VERBOSE_PROSE, Finding
 from extract import body_paragraphs, fenced_code_blocks, normalize_text_block
+
+_TEMPLATE_INDICATOR = re.compile(
+    r"^\s*#{1,3}\s|"           # markdown headings inside the block
+    r"^\s*- \[[ x]\]|"        # checkbox items
+    r"\[.*?\.{3}.*?\]|"       # bracket placeholders like [2-3 sentences...]
+    r"\[.*?steps.*?\]|"        # [steps], [remaining steps]
+    r"\{%|<%|{{",              # template engine syntax
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def check_3_1(body: str) -> list[Finding]:
@@ -16,6 +26,10 @@ def check_3_1(body: str) -> list[Finding]:
         if lang in {"json", "yaml", "yml", "text", "output", "markdown", "md"}:
             continue
         if lang not in executable_langs and not SCRIPT_WORTHINESS.search(content):
+            continue
+        # Skip template/documentation blocks (markdown headings, checkboxes, bracket placeholders)
+        template_lines = sum(1 for l in lines if _TEMPLATE_INDICATOR.search(l))
+        if template_lines >= max(2, len(lines) * 0.3):
             continue
         findings.append(Finding("3.1", "WARN", f"code block at lines {start}-{end} is {len(lines)} lines; move long executable logic into scripts/"))
     return findings
@@ -60,10 +74,10 @@ def check_3_4(body: str) -> list[Finding]:
     normalized = [(start, end, normalize_text_block(content)) for start, end, _lang, content in blocks]
     seen_pairs = set()
     for index, (start_a, end_a, block_a) in enumerate(normalized):
-        if not block_a:
+        if not block_a or len(block_a) <= 2:
             continue
         for start_b, end_b, block_b in normalized[index + 1:]:
-            if not block_b:
+            if not block_b or len(block_b) <= 2:
                 continue
             key = (start_a, start_b)
             if key in seen_pairs:

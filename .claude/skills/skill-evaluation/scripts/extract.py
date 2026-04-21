@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from common import (
@@ -215,6 +216,9 @@ def normalize_text_block(text: str) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip()]
 
 
+_NUMBERED_LIST_RE = re.compile(r"^\d+\.\s")
+
+
 def body_paragraphs(body: str) -> list[tuple[int, str]]:
     paragraphs = []
     current: list[str] = []
@@ -229,7 +233,7 @@ def body_paragraphs(body: str) -> list[tuple[int, str]]:
             continue
         if not current:
             start_line = index
-        if stripped.startswith("#") or stripped.startswith("```") or stripped.startswith("-") or stripped.startswith("*"):
+        if stripped.startswith("#") or stripped.startswith("```") or stripped.startswith("-") or stripped.startswith("*") or _NUMBERED_LIST_RE.match(stripped):
             if current:
                 paragraphs.append((start_line, " ".join(current)))
                 current = []

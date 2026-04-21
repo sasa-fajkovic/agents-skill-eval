@@ -33,6 +33,35 @@ class Tier3Tests(unittest.TestCase):
         findings = tier3.check_3_1(body)
         self.assertTrue(any(f.check_id == "3.1" for f in findings))
 
+    def test_check_3_1_skips_template_block_with_checkboxes(self) -> None:
+        body = (
+            "```\n"
+            "## Goals to achieve\n"
+            "[2-3 sentences: purpose and motivation]\n"
+            "\n"
+            "## Acceptance criteria\n"
+            "- [ ] Criterion 1\n"
+            "- [ ] Criterion 2\n"
+            "- [ ] Criterion 3\n"
+            "```"
+        )
+        findings = tier3.check_3_1(body)
+        self.assertEqual(len([f for f in findings if f.check_id == "3.1"]), 0)
+
+    def test_check_3_1_skips_template_block_with_placeholders(self) -> None:
+        body = (
+            "```\n"
+            "## Description\n"
+            "[summarize the change...]\n"
+            "## Steps\n"
+            "- [x] Step already done\n"
+            "- [ ] Remaining step\n"
+            "- [ ] Another remaining step\n"
+            "```"
+        )
+        findings = tier3.check_3_1(body)
+        self.assertEqual(len([f for f in findings if f.check_id == "3.1"]), 0)
+
     # --- 3.3: broader standard tool tutorials ---
 
     def test_check_3_3_flags_git_clone_tutorial(self) -> None:
@@ -63,6 +92,17 @@ class Tier3Tests(unittest.TestCase):
             "This skill validates configuration files against the schema.\n"
             "\n"
             "The output includes a summary of all issues found during evaluation.\n"
+        )
+        findings = tier3.check_3_4(body)
+        self.assertEqual(len([f for f in findings if f.check_id == "3.4"]), 0)
+
+    def test_check_3_4_skips_short_similar_code_blocks(self) -> None:
+        body = (
+            "```bash\nbash ~/.claude/skills/demo/scripts/setup.sh owner repo 123\n```\n"
+            "\n"
+            "Then later:\n"
+            "\n"
+            "```bash\nbash ~/.claude/skills/demo/scripts/review.sh owner repo 123\n```"
         )
         findings = tier3.check_3_4(body)
         self.assertEqual(len([f for f in findings if f.check_id == "3.4"]), 0)

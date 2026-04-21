@@ -43,7 +43,9 @@ def check_1_1(fm: dict, skill_dir: str) -> list[Finding]:
         return findings
     if len(name) > MAX_NAME_LEN:
         findings.append(Finding("1.1", "ERROR", f"name is {len(name)} chars (max {MAX_NAME_LEN})"))
-    if not NAME_RE.match(name):
+    if "--" in name:
+        findings.append(Finding("1.1", "ERROR", f'name "{name}" contains consecutive hyphens; the spec requires single hyphens as separators'))
+    elif not NAME_RE.match(name):
         findings.append(Finding("1.1", "ERROR", f'name "{name}" must be lowercase alphanumeric + hyphens, no leading/trailing/consecutive hyphens'))
     dirname = Path(skill_dir).name
     # Skip directory-name comparison for synthetic upload directories (e.g. /tmp/eval-<uuid>).
@@ -74,7 +76,7 @@ def check_1_3(fm: dict) -> list[Finding]:
         if key in STABLE_FIELDS:
             continue
         if key == "allowed-tools":
-            findings.append(Finding("1.3", "ERROR", f'"{key}" is experimental in agentskills.io (not stable spec)'))
+            findings.append(Finding("1.3", "WARN", f'"{key}" is a recognized but experimental agentskills.io field — may not be supported by all runtimes yet'))
         elif key in CLAUDE_CODE_EXTENSIONS:
             findings.append(Finding("1.3", "ERROR", f'"{key}" is a Claude Code extension (not in agentskills.io stable spec)'))
         else:
@@ -146,7 +148,7 @@ def check_1_7(skill_dir: str) -> list[Finding]:
             line_count = len(content.splitlines())
             has_complexity = bool(SCRIPT_COMPLEXITY.search(content))
             if line_count > 30 or (has_complexity and line_count > 20):
-                findings.append(Finding("1.7", "ERROR", f"{display} has no matching test file (expected {expected.relative_to(Path(skill_dir))}); script is {line_count} lines with conditional/loop logic — tests are required"))
+                findings.append(Finding("1.7", "WARN", f"{display} has no matching test file (expected {expected.relative_to(Path(skill_dir))}); script is {line_count} lines with conditional/loop logic — tests are strongly recommended"))
             else:
                 findings.append(Finding("1.7", "WARN", f"{display} has no matching test file (expected {expected.relative_to(Path(skill_dir))})"))
     return findings
@@ -200,6 +202,9 @@ def check_1_10(skill_dir: str) -> list[Finding]:
     return findings
 
 
+_JS_EXTENSIONS = {".js", ".ts"}
+
+
 def check_1_11(skill_dir: str) -> list[Finding]:
     findings = []
     scripts_dir = Path(skill_dir) / "scripts"
@@ -208,8 +213,12 @@ def check_1_11(skill_dir: str) -> list[Finding]:
             if file_path.is_dir():
                 continue
             if file_path.suffix and file_path.suffix not in ALLOWED_SCRIPT_EXTENSIONS:
-                severity = "WARN" if file_path.suffix in DISCOURAGED_SCRIPT_EXTENSIONS else "ERROR"
-                findings.append(Finding("1.11", severity, f"scripts/{file_path.name} — only Python (.py) and bash (.sh) scripts are allowed. {file_path.suffix} requires an additional runtime"))
+                if file_path.suffix in _JS_EXTENSIONS:
+                    findings.append(Finding("1.11", "WARN", f"scripts/{file_path.name} — the spec lists JavaScript as common, but Python (.py) and Bash (.sh) are preferred because they are available on virtually all systems without additional runtime setup"))
+                elif file_path.suffix in DISCOURAGED_SCRIPT_EXTENSIONS:
+                    findings.append(Finding("1.11", "WARN", f"scripts/{file_path.name} — Python (.py) and Bash (.sh) are preferred because they are available on virtually all systems without additional runtime setup; {file_path.suffix} requires an additional runtime"))
+                else:
+                    findings.append(Finding("1.11", "ERROR", f"scripts/{file_path.name} — Python (.py) and Bash (.sh) are preferred because they are available on virtually all systems; {file_path.suffix} is not a recognized scripting language"))
     return findings
 
 

@@ -55,6 +55,21 @@ class Tier2Tests(unittest.TestCase):
         findings = tier2.check_2_2(body)
         self.assertEqual(len([f for f in findings if f.check_id == "2.2"]), 0)
 
+    # --- 2.3: MCP severity and message ---
+
+    def test_check_2_3_severity_is_warn_not_error(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        skill_dir = root / "demo"
+        scripts_dir = skill_dir / "scripts"
+        scripts_dir.mkdir(parents=True)
+
+        findings = tier2.check_2_3("Use mcp__github__thing to fetch PRs.", str(skill_dir))
+        mcp_findings = [f for f in findings if f.check_id == "2.3"]
+        self.assertTrue(len(mcp_findings) > 0)
+        for f in mcp_findings:
+            self.assertEqual(f.severity, "WARN")
+            self.assertIn("reduces portability", f.message)
+
 
 if __name__ == "__main__":
     unittest.main()

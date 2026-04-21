@@ -53,10 +53,24 @@ def check_4_3(body: str) -> list[Finding]:
     for index, line in enumerate(lines):
         if not NEGATIVE_ONLY.search(line):
             continue
-        context = "\n".join(lines[index:index + 3])
+        context = "\n".join(lines[max(0, index - 2):index + 3])
         if not POSITIVE_ALTERNATIVE.search(context):
             findings.append(Finding("4.3", "WARN", f"line {index + 1}: negative-only instruction does not say what to do instead"))
     return findings
+
+
+def _strip_inline_commands(text: str) -> str:
+    """Remove multi-word inline code spans (command references) from *text*.
+
+    Single-token inline code like `--target` is kept because it likely
+    documents a flag the skill accepts.  Multi-word spans like
+    `gh pr edit --add-reviewer @copilot` are stripped because they are
+    command-line documentation, not flags needing default-behavior docs.
+    """
+    return re.sub(r"`[^`]*\s[^`]*`", "", text)
+
+
+_TABLE_SEPARATOR = re.compile(r"^\|?[\s:|-]+\|[\s:|-]+\|?$")
 
 
 def check_4_4(body: str) -> list[Finding]:
@@ -70,7 +84,12 @@ def check_4_4(body: str) -> list[Finding]:
             continue
         if in_fence:
             continue
-        if "$ARGUMENTS" in line or re.search(r"\$[0-9]+", line) or re.search(r"--[a-z0-9-]+", line, re.IGNORECASE):
+        # Skip markdown table separator rows (e.g. |-------|---------|)
+        if _TABLE_SEPARATOR.match(stripped):
+            continue
+        # Strip multi-word inline code so command refs like `gh pr edit --flag` don't trigger
+        cleaned = _strip_inline_commands(line)
+        if "$ARGUMENTS" in cleaned or re.search(r"\$[0-9]+", cleaned) or re.search(r"--[a-z][a-z0-9-]*", cleaned, re.IGNORECASE):
             context = "\n".join(lines[max(0, index - 2): min(len(lines), index + 3)])
             if not DEFAULT_BEHAVIOR.search(context):
                 findings.append(Finding("4.4", "WARN", f"line {index + 1}: input or flag is referenced without clear default behavior"))

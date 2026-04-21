@@ -22,7 +22,17 @@ import (
 
 func testConfig() appConfig {
 	return appConfig{
-		Scoring: scoringConfig{ErrorPenalty: 5, ErrorCap: 70, WarningPenalty: 2, WarningCap: 24},
+		Scoring: scoringConfig{
+			ErrorPenalty: 5, ErrorCap: 70, WarningPenalty: 2, WarningCap: 24,
+			DeterministicWeight: 0.6, LLMWeight: 0.4,
+			Tiers: []tierConfig{
+				{Name: "excellent", MinScore: 90},
+				{Name: "very_good", MinScore: 85},
+				{Name: "good", MinScore: 75},
+				{Name: "needs_work", MinScore: 50},
+				{Name: "poor", MinScore: 0},
+			},
+		},
 		Providers: map[string]providerConfig{
 			"anthropic": {Model: "claude-haiku-4-5", MaxTokens: 1200, BaseURL: "https://api.anthropic.com/v1/messages"},
 			"openai":    {Model: "gpt-4.1-nano", MaxTokens: 1200, BaseURL: "https://api.openai.com/v1/chat/completions"},
@@ -290,27 +300,49 @@ func TestDeterministicIssues(t *testing.T) {
 }
 
 func TestComputeOverallScore(t *testing.T) {
-	if got := computeOverallScore(map[string]any{"issues": []any{"a", "b"}}, nil); got != 80 {
-		t.Fatalf("unexpected score: %d", got)
+	// Deterministic-only: just passes through the deterministic score.
+	if got := computeOverallScore(80, nil, 0.6, 0.4); got != 80 {
+		t.Fatalf("unexpected deterministic pass-through score: %d", got)
 	}
-	if got := computeOverallScore(map[string]any{"issues": []any{"a", "b", "c", "d", "e", "f", "g"}}, nil); got != 40 {
-		t.Fatalf("unexpected clamped deterministic score: %d", got)
-	}
+	// With LLM "excellent" (base 95) and deterministic score 96:
+	// 0.6*96 + 0.4*95 = 57.6 + 38 = 95.6 → 96
 	analysis := &llmAnalysis{QualityTier: "excellent"}
-	if got := computeOverallScore(map[string]any{"issues": []any{"a", "b"}}, analysis); got != 85 {
-		t.Fatalf("unexpected score with llm analysis: %d", got)
+	if got := computeOverallScore(96, analysis, 0.6, 0.4); got != 96 {
+		t.Fatalf("unexpected blended score (excellent): %d", got)
+	}
+	// With LLM "good" (base 85) and deterministic score 96:
+	// 0.6*96 + 0.4*85 = 57.6 + 34 = 91.6 → 92
+	analysis2 := &llmAnalysis{QualityTier: "good"}
+	if got := computeOverallScore(96, analysis2, 0.6, 0.4); got != 92 {
+		t.Fatalf("unexpected blended score (good): %d", got)
+	}
+	// With LLM "poor" (base 45) and deterministic score 80:
+	// 0.6*80 + 0.4*45 = 48 + 18 = 66
+	analysis3 := &llmAnalysis{QualityTier: "poor"}
+	if got := computeOverallScore(80, analysis3, 0.6, 0.4); got != 66 {
+		t.Fatalf("unexpected blended score (poor): %d", got)
 	}
 }
 
 func TestComputeOverallTier(t *testing.T) {
-	if got := computeOverallTier(map[string]any{"issues": []any{}}, nil); got != "excellent" {
+	app := &application{cfg: testConfig()}
+	// Deterministic-only: score 100 → excellent
+	if got := app.computeOverallTier(100, nil); got != "excellent" {
 		t.Fatalf("unexpected deterministic tier: %q", got)
 	}
-	if got := computeOverallTier(map[string]any{"issues": []any{"a", "b", "c"}}, nil); got != "needs_work" {
+	// Deterministic-only: score 50 → needs_work (min_score 50 in testConfig)
+	if got := app.computeOverallTier(50, nil); got != "needs_work" {
 		t.Fatalf("unexpected deterministic tier: %q", got)
 	}
-	if got := computeOverallTier(map[string]any{"issues": []any{}}, &llmAnalysis{QualityTier: "poor"}); got != "poor" {
-		t.Fatalf("unexpected llm tier: %q", got)
+	// With LLM "poor" (base 45) and deterministic 100:
+	// 0.6*100 + 0.4*45 = 60+18 = 78 → good (75-84 in testConfig)
+	if got := app.computeOverallTier(100, &llmAnalysis{QualityTier: "poor"}); got != "good" {
+		t.Fatalf("unexpected blended tier (poor LLM): %q", got)
+	}
+	// With LLM "good" (base 85) and deterministic 96:
+	// 0.6*96 + 0.4*85 = 57.6+34 = 91.6 → 92 → excellent
+	if got := app.computeOverallTier(96, &llmAnalysis{QualityTier: "good"}); got != "excellent" {
+		t.Fatalf("unexpected blended tier (good LLM, high det): %q", got)
 	}
 }
 
@@ -323,6 +355,18 @@ func TestSummarizeIssues(t *testing.T) {
 	}
 	if got := summarizeIssues(map[string]any{}, &llmAnalysis{Strengths: []string{"Clear structure"}}); !strings.Contains(got, "Key strength: Clear structure") {
 		t.Fatalf("unexpected llm summary: %q", got)
+	}
+}
+
+func TestScoreFromIssues(t *testing.T) {
+	if got := scoreFromIssues(map[string]any{"issues": []any{"a", "b"}}); got != 80 {
+		t.Fatalf("unexpected score: %d", got)
+	}
+	if got := scoreFromIssues(map[string]any{"issues": []any{"a", "b", "c", "d", "e", "f", "g"}}); got != 40 {
+		t.Fatalf("unexpected clamped score: %d", got)
+	}
+	if got := scoreFromIssues(map[string]any{"issues": []any{}}); got != 100 {
+		t.Fatalf("unexpected zero-issue score: %d", got)
 	}
 }
 
@@ -764,8 +808,8 @@ func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"mode":"opt_in"`) || !strings.Contains(result, `"overall_tier":"good"`) || !strings.Contains(result, `"provider":"anthropic"`) || !strings.Contains(result, `"model":"claude-haiku-4-5"`) {
-		t.Fatalf("expected optional llm payload, got %s", result)
+	if !strings.Contains(result, `"llm_enabled":true`) || !strings.Contains(result, `"llm_analysis"`) || !strings.Contains(result, `"mode":"opt_in"`) || !strings.Contains(result, `"overall_tier":"excellent"`) || !strings.Contains(result, `"overall_score":94`) || !strings.Contains(result, `"provider":"anthropic"`) || !strings.Contains(result, `"model":"claude-haiku-4-5"`) {
+		t.Fatalf("expected blended score/tier in llm payload, got %s", result)
 	}
 }
 
@@ -863,7 +907,7 @@ func TestBuildLLMPrompt(t *testing.T) {
 		SupportingContext: "context",
 		Deterministic:     map[string]any{"issues": []any{"missing examples"}},
 	})
-	for _, expected := range []string{"Deterministic findings", "Primary SKILL.md content", "Supporting context"} {
+	for _, expected := range []string{"Deterministic Findings", "Primary SKILL.md Content", "Supporting Context"} {
 		if !strings.Contains(prompt, expected) {
 			t.Fatalf("expected %q in prompt: %s", expected, prompt)
 		}

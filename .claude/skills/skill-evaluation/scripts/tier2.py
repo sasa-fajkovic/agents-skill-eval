@@ -65,7 +65,7 @@ def _find_mcp_findings(text: str, display: str) -> list[Finding]:
         context = "\n".join(lines[max(0, index - 1): min(len(lines), index + 2)])
         if MCP_NEGATION.search(context):
             continue
-        findings.append(Finding("2.3", "ERROR", f'{display}{index + 1}: MCP usage/reference "{match.group().strip()}" is not allowed; use CLI or direct API alternatives instead'))
+        findings.append(Finding("2.3", "WARN", f'{display}{index + 1}: MCP usage/reference "{match.group().strip()}" reduces portability; prefer CLI or direct API alternatives for cross-platform compatibility'))
     return findings
 
 

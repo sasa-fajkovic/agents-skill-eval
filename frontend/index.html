@@ -1230,6 +1230,8 @@
 
     .score-number.excellent,
     .tier-badge.excellent { color: #86efac; }
+    .score-number.very_good,
+    .tier-badge.very_good { color: #6ee7a0; }
     .score-number.good,
     .tier-badge.good { color: #4ade80; }
     .score-number.needs_work,
@@ -1301,8 +1303,8 @@
       line-height: 1.75;
       white-space: pre-wrap;
       word-break: break-word;
-      user-select: all;
-      -webkit-user-select: all;
+      user-select: text;
+      -webkit-user-select: text;
     }
 
     .json-copy-btn {
@@ -2644,7 +2646,7 @@
         renderPhaseTracker();
       }
       const score = Number(data.overall_score ?? 0);
-      const tier = data.overall_tier || data.llm_analysis?.quality_tier || (score >= 90 ? 'excellent' : score >= 75 ? 'good' : score >= 50 ? 'needs_work' : 'poor');
+      const tier = data.overall_tier || data.llm_analysis?.quality_tier || (score >= 90 ? 'excellent' : score >= 85 ? 'very_good' : score >= 75 ? 'good' : score >= 50 ? 'needs_work' : 'poor');
       const skillName = String(data.skill_name || 'Unnamed skill').trim() || 'Unnamed skill';
       const skillDescription = String(data.skill_description || '').trim();
       const skillCompatibility = String(data.skill_compatibility || '').trim();

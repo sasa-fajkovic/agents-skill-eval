@@ -3,7 +3,16 @@
     "error_penalty": 5,
     "error_cap": 70,
     "warning_penalty": 2,
-    "warning_cap": 24
+    "warning_cap": 24,
+    "deterministic_weight": 0.6,
+    "llm_weight": 0.4,
+    "tiers": [
+      { "name": "excellent",  "min_score": 90 },
+      { "name": "very_good",  "min_score": 80 },
+      { "name": "good",       "min_score": 70 },
+      { "name": "needs_work", "min_score": 50 },
+      { "name": "poor",       "min_score": 0  }
+    ]
   },
   "providers": {
     "anthropic": {

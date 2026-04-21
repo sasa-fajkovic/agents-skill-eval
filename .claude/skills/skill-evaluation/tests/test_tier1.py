@@ -26,6 +26,35 @@ class Tier1Tests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertIn("runner.py", findings[0].message)
 
+    # --- 1.1: consecutive hyphens ---
+
+    def test_check_1_1_flags_consecutive_hyphens(self) -> None:
+        fm = {"name": "my--skill"}
+        findings = tier1.check_1_1(fm, "/tmp/my--skill")
+        self.assertTrue(any(f.check_id == "1.1" and "consecutive hyphens" in f.message for f in findings))
+
+    def test_check_1_1_passes_single_hyphens(self) -> None:
+        fm = {"name": "my-cool-skill"}
+        findings = tier1.check_1_1(fm, "/tmp/my-cool-skill")
+        name_findings = [f for f in findings if "hyphens" in f.message or "must be" in f.message]
+        self.assertEqual(len(name_findings), 0)
+
+    # --- 1.3: allowed-tools is WARN not ERROR ---
+
+    def test_check_1_3_allowed_tools_is_warn(self) -> None:
+        fm = {"name": "demo", "description": "test", "allowed-tools": ["Bash"]}
+        findings = tier1.check_1_3(fm)
+        at_findings = [f for f in findings if "allowed-tools" in f.message]
+        self.assertEqual(len(at_findings), 1)
+        self.assertEqual(at_findings[0].severity, "WARN")
+
+    def test_check_1_3_claude_code_extension_is_error(self) -> None:
+        fm = {"name": "demo", "description": "test", "model": "claude-sonnet"}
+        findings = tier1.check_1_3(fm)
+        model_findings = [f for f in findings if "model" in f.message]
+        self.assertEqual(len(model_findings), 1)
+        self.assertEqual(model_findings[0].severity, "ERROR")
+
     # --- 1.4: empty value checks ---
 
     def test_check_1_4_flags_empty_license(self) -> None:
@@ -66,7 +95,7 @@ class Tier1Tests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].severity, "WARN")
 
-    def test_check_1_7_errors_for_complex_untested_script(self) -> None:
+    def test_check_1_7_warns_for_complex_untested_script(self) -> None:
         root = Path(tempfile.mkdtemp())
         skill_dir = root / "demo"
         scripts_dir = skill_dir / "scripts"
@@ -82,7 +111,8 @@ class Tier1Tests(unittest.TestCase):
 
         findings = tier1.check_1_7(str(skill_dir))
         self.assertEqual(len(findings), 1)
-        self.assertEqual(findings[0].severity, "ERROR")
+        self.assertEqual(findings[0].severity, "WARN")
+        self.assertIn("strongly recommended", findings[0].message)
 
     def test_check_1_7_passes_when_test_exists(self) -> None:
         root = Path(tempfile.mkdtemp())
@@ -95,6 +125,41 @@ class Tier1Tests(unittest.TestCase):
         (tests_dir / "runner.bats").write_text("@test 'runs' { run ./runner.sh; }", encoding="utf-8")
 
         findings = tier1.check_1_7(str(skill_dir))
+        self.assertEqual(len(findings), 0)
+
+    # --- 1.11: script language handling ---
+
+    def test_check_1_11_js_is_warn_with_spec_mention(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        skill_dir = root / "demo"
+        scripts_dir = skill_dir / "scripts"
+        scripts_dir.mkdir(parents=True)
+        (scripts_dir / "runner.js").write_text("console.log('hi');\n", encoding="utf-8")
+
+        findings = tier1.check_1_11(str(skill_dir))
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, "WARN")
+        self.assertIn("spec lists JavaScript as common", findings[0].message)
+
+    def test_check_1_11_ts_is_warn(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        skill_dir = root / "demo"
+        scripts_dir = skill_dir / "scripts"
+        scripts_dir.mkdir(parents=True)
+        (scripts_dir / "runner.ts").write_text("console.log('hi');\n", encoding="utf-8")
+
+        findings = tier1.check_1_11(str(skill_dir))
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, "WARN")
+
+    def test_check_1_11_py_is_allowed(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        skill_dir = root / "demo"
+        scripts_dir = skill_dir / "scripts"
+        scripts_dir.mkdir(parents=True)
+        (scripts_dir / "runner.py").write_text("print('hi')\n", encoding="utf-8")
+
+        findings = tier1.check_1_11(str(skill_dir))
         self.assertEqual(len(findings), 0)
 
 

@@ -42,15 +42,27 @@ from tier3 import run_tier3_checks
 from tier4 import run_tier4_checks
 
 
-def quality_tier_for(findings: list[Finding]) -> str:
-    errors = sum(1 for finding in findings if finding.severity == "ERROR")
-    warnings = sum(1 for finding in findings if finding.severity == "WARN")
-    if errors == 0 and warnings == 0:
-        return "excellent"
-    if errors == 0 and warnings <= 2:
-        return "good"
-    if errors <= 2:
-        return "needs_work"
+def _load_tier_thresholds() -> list[tuple[str, int]]:
+    """Load tier thresholds from EVAL_TIERS env var or use defaults.
+
+    EVAL_TIERS format: "excellent:90,very_good:85,good:75,needs_work:50,poor:0"
+    Returns list of (name, min_score) sorted descending by min_score.
+    """
+    raw = os.environ.get("EVAL_TIERS", "")
+    if raw.strip():
+        tiers = []
+        for part in raw.split(","):
+            name, score_str = part.strip().split(":")
+            tiers.append((name.strip(), int(score_str.strip())))
+        tiers.sort(key=lambda t: t[1], reverse=True)
+        return tiers
+    return [("excellent", 90), ("very_good", 85), ("good", 75), ("needs_work", 50), ("poor", 0)]
+
+
+def quality_tier_for(score: int) -> str:
+    for name, min_score in _load_tier_thresholds():
+        if score >= min_score:
+            return name
     return "poor"
 
 
@@ -90,8 +102,8 @@ def build_json_result(skill_path: Path, findings: list[Finding]) -> dict:
     skill_name = extract_skill_name(skill_path, fm)
     metadata = collect_metadata(skill_path)
     errors = [finding for finding in findings if finding.severity == "ERROR"]
-    overall_tier = quality_tier_for(findings)
     overall_score = overall_score_for(findings)
+    overall_tier = quality_tier_for(overall_score)
     summary = summary_for(skill_name, findings)
 
     strengths = []

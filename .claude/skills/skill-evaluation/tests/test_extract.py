@@ -25,6 +25,37 @@ class ExtractTests(unittest.TestCase):
         displays = [display for _path, display in extract.entrypoint_scripts(str(skill_dir))]
         self.assertEqual(displays, ["scripts/runner.py"])
 
+    def test_body_paragraphs_skips_numbered_list_items(self) -> None:
+        body = (
+            "Some intro text.\n"
+            "\n"
+            "1. First step in the workflow.\n"
+            "2. Second step does something else.\n"
+            "3. Third step finalizes.\n"
+            "\n"
+            "Closing paragraph here.\n"
+        )
+        paragraphs = extract.body_paragraphs(body)
+        texts = [text for _line, text in paragraphs]
+        # Numbered items should NOT be merged into a paragraph
+        self.assertNotIn(
+            "First step in the workflow. Second step does something else. Third step finalizes.",
+            texts,
+        )
+        # But regular prose should still be collected
+        self.assertIn("Some intro text.", texts)
+        self.assertIn("Closing paragraph here.", texts)
+
+    def test_body_paragraphs_still_collects_regular_prose(self) -> None:
+        body = (
+            "This is a paragraph that spans\n"
+            "multiple lines of regular prose.\n"
+        )
+        paragraphs = extract.body_paragraphs(body)
+        texts = [text for _line, text in paragraphs]
+        self.assertEqual(len(texts), 1)
+        self.assertIn("multiple lines", texts[0])
+
 
 if __name__ == "__main__":
     unittest.main()
