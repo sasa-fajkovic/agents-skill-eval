@@ -107,24 +107,38 @@ def build_json_result(skill_path: Path, findings: list[Finding]) -> dict:
     }
 
 
-def _find_skill_md(root: Path) -> Path | None:
-    """Locate SKILL.md inside *root*, preferring root-level, then one level deep."""
-    candidate = root / "SKILL.md"
-    if candidate.exists():
-        return candidate
-    # Walk one level deep (e.g. copilot-review/SKILL.md inside an upload dir).
+def _find_skill_md(root: Path) -> tuple[Path | None, list[Path]]:
+    """Locate SKILL.md inside *root*, preferring root-level, then one level deep.
+
+    Returns ``(best_candidate, all_candidates)`` so callers can detect
+    multi-skill uploads (e.g. the user uploaded their entire
+    ``.claude/skills`` directory instead of a single skill folder).
+    """
+    candidates: list[Path] = []
+    top = root / "SKILL.md"
+    if top.exists():
+        candidates.append(top)
     for child in sorted(root.iterdir()):
         if child.is_dir():
             nested = child / "SKILL.md"
             if nested.exists():
-                return nested
-    return None
+                candidates.append(nested)
+    if not candidates:
+        return None, []
+    return candidates[0], candidates
 
 
 def evaluate(path: str) -> list[Finding]:
     skill_path = Path(path)
     if skill_path.is_dir():
-        found = _find_skill_md(skill_path)
+        found, all_candidates = _find_skill_md(skill_path)
+        if len(all_candidates) > 1:
+            dirs = ", ".join(str(c.parent.name) for c in all_candidates)
+            return [Finding(
+                "--", "ERROR",
+                f"multiple SKILL.md files detected ({dirs}). "
+                "Upload a single skill directory, not the entire .claude/skills folder.",
+            )]
         if found is not None:
             skill_path = found
         else:

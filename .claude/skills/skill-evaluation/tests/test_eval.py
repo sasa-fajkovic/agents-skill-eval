@@ -596,5 +596,43 @@ class Test31DocumentationExamples(unittest.TestCase):
         self.assertTrue(any(f.check_id == "3.1" for f in findings))
 
 
+class TestMultiSkillRejection(unittest.TestCase):
+    """Uploading an entire .claude/skills folder (multiple SKILL.md files)
+    should be rejected with a clear error rather than silently evaluating one."""
+
+    def test_rejects_multiple_skill_dirs(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        for name in ("skill-a", "skill-b"):
+            d = root / name
+            d.mkdir()
+            (d / "SKILL.md").write_text("---\nname: {}\n---\nBody.\n".format(name))
+        findings = skill_eval.evaluate(str(root))
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, "ERROR")
+        self.assertIn("multiple SKILL.md", findings[0].message)
+
+    def test_accepts_single_nested_skill(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        d = root / "my-skill"
+        d.mkdir()
+        (d / "SKILL.md").write_text(
+            "---\nname: my-skill\ndescription: Test skill. Use when testing.\n---\n\n"
+            "# Steps\n1. Do something\n"
+        )
+        findings = skill_eval.evaluate(str(root))
+        errors = [f for f in findings if f.check_id == "--"]
+        self.assertEqual(errors, [], "single nested skill should not trigger multi-skill error")
+
+    def test_accepts_root_level_skill(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        (root / "SKILL.md").write_text(
+            "---\nname: root-skill\ndescription: Test skill. Use when testing.\n---\n\n"
+            "# Steps\n1. Do something\n"
+        )
+        findings = skill_eval.evaluate(str(root))
+        errors = [f for f in findings if f.check_id == "--"]
+        self.assertEqual(errors, [], "root-level SKILL.md should not trigger multi-skill error")
+
+
 if __name__ == "__main__":
     unittest.main()

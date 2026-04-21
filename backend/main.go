@@ -471,6 +471,10 @@ func (app *application) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	if err := validateSingleSkill(inputDir); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	if enableLLM {
 		if llmProvider == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "select an AI provider for optional review"})
@@ -1030,6 +1034,33 @@ func scanUploadedPackage(rootDir string) error {
 	}
 	if !foundFiles {
 		return errors.New("uploaded package does not contain any files")
+	}
+	return nil
+}
+
+// validateSingleSkill rejects uploads that contain more than one SKILL.md
+// (e.g. when a user uploads their entire .claude/skills directory instead of
+// a single skill folder).
+func validateSingleSkill(rootDir string) error {
+	var found []string
+	_ = filepath.WalkDir(rootDir, func(current string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() {
+			return nil
+		}
+		if entry.Name() == "SKILL.md" {
+			rel, err := filepath.Rel(rootDir, filepath.Dir(current))
+			if err != nil {
+				rel = filepath.Dir(current)
+			}
+			found = append(found, rel)
+		}
+		return nil
+	})
+	if len(found) > 1 {
+		return fmt.Errorf(
+			"multiple SKILL.md files detected (%s); upload a single skill directory, not the entire .claude/skills folder",
+			strings.Join(found, ", "),
+		)
 	}
 	return nil
 }
