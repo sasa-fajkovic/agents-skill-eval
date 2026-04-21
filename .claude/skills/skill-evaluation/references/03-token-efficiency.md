@@ -152,23 +152,23 @@ Compare for repeated phrases or near-identical wording
 
 **Fix suggestion**: `Line <N> instructs preloading all references, defeating lazy loading. Change to conditional loading: "Read references/<file>.md when <condition>."`
 
-## 3.7: MCP references waste tokens and should be removed
+## 3.7: MCP namespace policy
 
-**MCP tool overhead** (tool definitions load on every API call):
-| MCP Server | Approx. overhead/call | CLI Alternative | CLI cost |
-|------------|----------------------|-----------------|----------|
-| GitHub | ~55K tokens | `gh` CLI | ~500 tokens |
-| Atlassian/Jira | ~10K tokens | `curl` + REST API | ~500 tokens |
-| Google Workspace | ~2-4K tokens | Platform-specific CLIs | Variable |
+Single source of truth: see [`mcp-policy.md`](mcp-policy.md).
 
-**Detection**:
-```
-Scan body for MCP tool references:
-  Patterns: "mcp__", "MCP", tool names matching known MCP servers
-If Tier 2.3 already flagged MCP usage:
-  Do not add a duplicate warning unless the skill also spends significant space explaining MCP setup
-Else if the skill still discusses MCP concepts or setup cost:
-  WARN that the content is wasting tokens on a disallowed integration path
-```
+Typical per-call tool-definition overhead:
 
-**Fix suggestion**: `Remove MCP references and setup guidance entirely. Use a concrete CLI or direct API workflow instead so the skill stays portable and avoids MCP overhead.`
+| MCP server       | Overhead      | Alternative                      | Alt cost |
+|------------------|---------------|----------------------------------|----------|
+| GitHub           | ~55 K tokens  | `gh` CLI or GitHub REST API      | ~0.5 K   |
+| Atlassian / Jira | ~10 K tokens  | `acli` CLI or Atlassian REST API | ~0.5 K   |
+| Figma            | ~15 K tokens  | (none — MCP is the only path)    | n/a      |
+
+Detection summary: scan body + entrypoint scripts for `mcp__<ns>_*`
+tokens and generic MCP prose.
+  - Allowed namespace → PASS.
+  - Blocked namespace → ERROR, with the suggested CLI/REST.
+  - Other / generic   → WARN (per-case review).
+  - Negation in ±3 lines suppresses.
+
+**Fix suggestion**: For blocked namespaces, replace with the suggested CLI/API alternative. For other namespaces, evaluate whether a portable CLI alternative exists.

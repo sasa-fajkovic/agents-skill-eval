@@ -168,6 +168,59 @@ func TestScanUploadedPackage(t *testing.T) {
 	})
 }
 
+func TestValidateSingleSkill(t *testing.T) {
+	t.Run("accepts single skill at root", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# skill"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := validateSingleSkill(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("accepts single nested skill", func(t *testing.T) {
+		dir := t.TempDir()
+		nested := filepath.Join(dir, "my-skill")
+		if err := os.MkdirAll(nested, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(nested, "SKILL.md"), []byte("# skill"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := validateSingleSkill(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("rejects multiple skills", func(t *testing.T) {
+		dir := t.TempDir()
+		for _, name := range []string{"skill-a", "skill-b"} {
+			nested := filepath.Join(dir, name)
+			if err := os.MkdirAll(nested, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(nested, "SKILL.md"), []byte("# "+name), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		err := validateSingleSkill(dir)
+		if err == nil {
+			t.Fatal("expected error for multiple SKILL.md files")
+		}
+		if !strings.Contains(err.Error(), "multiple SKILL.md") {
+			t.Fatalf("expected 'multiple SKILL.md' in error, got: %v", err)
+		}
+	})
+
+	t.Run("accepts empty directory", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := validateSingleSkill(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 func TestSanitizeRelativeUploadPath(t *testing.T) {
 	tests := []struct {
 		name    string

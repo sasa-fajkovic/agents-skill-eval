@@ -34,11 +34,6 @@ Why every check exists — the real-world failure mode it prevents.
 **Why**: Official skill authoring guidance recommends under 500 lines / 5000 tokens. The full SKILL.md loads when the skill activates. A 1000-line skill costs twice as much per activation and leaves less context window for actual work. Long skills also tend to contain content that belongs in references/ or scripts/.
 **Value**: Predictable context cost. Forces content into the right tier of progressive disclosure.
 
-### 1.7 — scripts without matching tests
-**What**: Each script (in `scripts/` or skill root) must have a named test file — `.sh` → `tests/<stem>.bats`, `.py` → `tests/test_<stem>.py`. eval.py always emits WARN; the LLM escalates to ERROR for scripts with real logic (>30 lines, conditionals, loops). Thin wrappers stay WARN.
-**Why**: Scripts run in production. Untested scripts break silently — a bad jq filter returns empty, a regex misses an edge case. But thin CLI wrappers (just calling `gh api` or `curl`) have little logic to test and mocking the whole external API produces low-confidence tests. The LLM escalation distinguishes the two cases.
-**Value**: Complex scripts get verified. Thin wrappers don't accumulate test overhead that adds no confidence.
-
 ### 1.8 — scripts must implement --help
 **What**: Every script in scripts/ must handle --help.
 **Why**: Per agentskills.io, --help is the primary way an agent discovers a script's interface. Without it, the agent must read the source code to understand flags, arguments, and behavior — wasting context window and increasing error rate. A script with good --help is self-documenting.
@@ -70,11 +65,6 @@ Why every check exists — the real-world failure mode it prevents.
 **What**: Skill instructs destructive actions (delete, overwrite, force-push, drop) without confirmation steps, dry-run options, or guardrails.
 **Why**: A skill that says "delete the old files" without "first confirm with the user" or "create a backup branch" can cause irreversible damage. The agent follows instructions literally — if the skill doesn't say "check first", the agent won't check.
 **Value**: Destructive operations have explicit safety nets. Users don't lose work.
-
-### 2.3 — MCP usage is not allowed
-**What**: Skill instructs the agent to use MCP servers or `mcp__*` tools.
-**Why**: MCP tool names, schemas, and server availability are platform-specific, so the skill silently stops being portable. They also add persistent token overhead and create another execution surface that the skill author often does not constrain well. If a workflow can be expressed with `gh`, `git`, `acli`, `curl`, or another concrete CLI/API, the portable skill should use that instead.
-**Value**: Skills stay portable, cheaper to run, and easier to audit.
 
 ### 2.4 — hardcoded user home directory paths
 **What**: Skill body or scripts contain absolute paths to a specific user's home directory (e.g., `/Users/john/`, `/home/dev/`).
@@ -113,10 +103,10 @@ Why every check exists — the real-world failure mode it prevents.
 **Why**: Claude Code's progressive disclosure model lazy-loads references by default. Explicitly instructing preload defeats this — the agent reads everything upfront, paying the full token cost regardless of whether it's needed.
 **Value**: Preserves the built-in lazy loading optimization.
 
-### 3.7 — MCP references waste tokens even before 2.3 fails the skill
-**What**: Skill still discusses or depends on MCP concepts instead of using a concrete CLI/API path.
-**Why**: Tier 2.3 already treats MCP usage as a hard failure. Even before portability and security concerns, MCP tool definitions impose ongoing token overhead that portable skills should avoid entirely.
-**Value**: Reinforces that removing MCP improves both correctness and cost.
+### 3.7 — MCP namespace policy
+**What**: Scan for `mcp__<namespace>_*` tool tokens and generic MCP prose references. Allowed namespaces (e.g. Figma, Slack) pass. Blocked namespaces (e.g. GitHub, Atlassian) with strictly better CLI alternatives are ERROR. Everything else is WARN for per-case review.
+**Why**: Some MCP servers (Figma, Slack, org-internal services) have no portable CLI alternative — banning them outright forces worse workflows. Others (GitHub, Atlassian) have strictly better, cheaper CLI tools (`gh`, `acli`). A namespace-aware policy lets the evaluator distinguish between the two. MCP lives in Tier 3 (token efficiency), not Tier 2 (security), because the concern is overhead and portability rather than safety. See [`mcp-policy.md`](mcp-policy.md) for the current namespace lists.
+**Value**: Skills can use MCP where it's the only good path, are blocked from MCP where a CLI is strictly better, and new namespaces get a WARN for human review.
 
 ## Tier 4: Effectiveness
 

@@ -1,0 +1,43 @@
+name: Skill Evaluation Tests
+
+on:
+  pull_request:
+    paths:
+      - '.claude/skills/skill-evaluation/**'
+  push:
+    branches: [main]
+    paths:
+      - '.claude/skills/skill-evaluation/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pytest
+
+      - name: Run unit and integration tests
+        run: python -m pytest .claude/skills/skill-evaluation/tests/ -q
+
+      - name: Run self-evaluation (CI mode)
+        run: |
+          # eval.py exits 0=PASS, 1=FAIL(errors), 2=WARN(warnings only)
+          # Capture output and exit code separately so warnings don't fail the build
+          set +e
+          output=$(python .claude/skills/skill-evaluation/scripts/eval.py .claude/skills/skill-evaluation --ci)
+          rc=$?
+          set -e
+          echo "$output" | python -m json.tool
+          if [ "$rc" -eq 1 ]; then
+            echo "::error::Self-evaluation found errors (exit code 1)"
+            exit 1
+          fi
+          if [ "$rc" -eq 2 ]; then
+            echo "::warning::Self-evaluation has warnings but no errors"
+          fi

@@ -107,24 +107,38 @@ def build_json_result(skill_path: Path, findings: list[Finding]) -> dict:
     }
 
 
-def _find_skill_md(root: Path) -> Path | None:
-    """Locate SKILL.md inside *root*, preferring root-level, then one level deep."""
-    candidate = root / "SKILL.md"
-    if candidate.exists():
-        return candidate
-    # Walk one level deep (e.g. copilot-review/SKILL.md inside an upload dir).
+def _find_skill_md(root: Path) -> tuple[Path | None, list[Path]]:
+    """Locate SKILL.md inside *root*, preferring root-level, then one level deep.
+
+    Returns ``(best_candidate, all_candidates)`` so callers can detect
+    multi-skill uploads (e.g. the user uploaded their entire
+    ``.claude/skills`` directory instead of a single skill folder).
+    """
+    candidates: list[Path] = []
+    top = root / "SKILL.md"
+    if top.exists():
+        candidates.append(top)
     for child in sorted(root.iterdir()):
         if child.is_dir():
             nested = child / "SKILL.md"
             if nested.exists():
-                return nested
-    return None
+                candidates.append(nested)
+    if not candidates:
+        return None, []
+    return candidates[0], candidates
 
 
 def evaluate(path: str) -> list[Finding]:
     skill_path = Path(path)
     if skill_path.is_dir():
-        found = _find_skill_md(skill_path)
+        found, all_candidates = _find_skill_md(skill_path)
+        if len(all_candidates) > 1:
+            dirs = ", ".join(str(c.parent.name) for c in all_candidates)
+            return [Finding(
+                "--", "ERROR",
+                f"multiple SKILL.md files detected ({dirs}). "
+                "Upload a single skill directory, not the entire .claude/skills folder.",
+            )]
         if found is not None:
             skill_path = found
         else:
@@ -151,7 +165,7 @@ def evaluate(path: str) -> list[Finding]:
 
     findings.extend(run_tier1_checks(fm, lines, skill_dir))
     findings.extend(run_tier2_checks(body, skill_dir))
-    findings.extend(run_tier3_checks(body, findings))
+    findings.extend(run_tier3_checks(body, skill_dir))
     findings.extend(run_tier4_checks(body, skill_dir))
     emit_progress("Collecting supporting context...")
     _ = collect_supporting_context(skill_path)
@@ -171,7 +185,7 @@ def render_human_output(resolved: Path, findings: list[Finding]) -> None:
     print_separator("DETERMINISTIC EVALUATION")
     print()
 
-    for prefix, title in (("1.", "Tier 1 — Spec Compliance (1.1-1.11)"), ("2.", "Tier 2 — Security (2.1-2.3)"), ("3.", "Tier 3 — Token Efficiency (3.1-3.7)"), ("4.", "Tier 4 — Effectiveness (4.1-4.7)")):
+    for prefix, title in (("1.", "Tier 1 — Spec Compliance (1.1-1.11)"), ("2.", "Tier 2 — Security (2.1-2.2, 2.4)"), ("3.", "Tier 3 — Token Efficiency (3.1-3.7)"), ("4.", "Tier 4 — Effectiveness (4.1-4.7)")):
         tier_findings = [finding for finding in findings if finding.check_id.startswith(prefix)]
         print_box_top(title)
         if tier_findings:

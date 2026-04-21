@@ -25,5 +25,12 @@
     "good": 85,
     "needs_work": 60,
     "poor": 45
+  },
+  "mcp_policy": {
+    "allowed_namespaces": ["mcp__figma_", "mcp__slack_"],
+    "blocked_namespaces": {
+      "mcp__github_": "the `gh` CLI or the GitHub REST API",
+      "mcp__atlassian_": "the `acli` CLI or the Atlassian REST API"
+    }
   }
 }

@@ -3,8 +3,8 @@ from __future__ import annotations
 import difflib
 import re
 
-from common import MCP_NEGATION, MCP_REFERENCE, PRELOAD_REFERENCE, SCRIPT_WORTHINESS, STANDARD_TOOL_TUTORIAL, VERBOSE_PROSE, Finding
-from extract import body_paragraphs, fenced_code_blocks, normalize_text_block
+from common import MCP_ALLOWED_NAMESPACES, MCP_BLOCKED_NAMESPACES, MCP_NEGATION, MCP_REFERENCE, PRELOAD_REFERENCE, SCRIPT_WORTHINESS, STANDARD_TOOL_TUTORIAL, VERBOSE_PROSE, Finding
+from extract import body_paragraphs, entrypoint_scripts, fenced_code_blocks, normalize_text_block, read_text_file
 
 _TEMPLATE_INDICATOR = re.compile(
     r"^\s*#{1,3}\s|"           # markdown headings inside the block
@@ -206,18 +206,85 @@ def check_3_6(body: str) -> list[Finding]:
     return findings
 
 
-def check_3_7(body: str, findings_so_far: list[Finding]) -> list[Finding]:
-    findings = []
-    tier_2_mcp = any(f.check_id == "2.3" for f in findings_so_far)
-    if tier_2_mcp:
-        return findings
-    for line_num, line in enumerate(body.splitlines(), start=1):
-        if MCP_REFERENCE.search(line) and not MCP_NEGATION.search(line):
-            findings.append(Finding("3.7", "WARN", f"line {line_num}: MCP references waste tokens and should be removed"))
+_MCP_TOOL_TOKEN = re.compile(r"(?i)\bmcp__[a-z0-9_]+")
+_CLI_FALLBACK = re.compile(
+    r"(?i)(instead\s+use|use\s+.*\s+instead|prefer\s+cli|"
+    r"fallback\s*:|alternative\s*:|"
+    r"\bacli\b|\bgh\b|\bcurl\b|\bkubectl\b|\bjq\b|\brest\s+api\b|"
+    r"command[- ]line\s+alternative|"
+    r"cli\s+(?:fallback|alternative|equivalent))"
+)
+
+
+def _namespace_status(token: str) -> tuple[str, str | None]:
+    """Classify an ``mcp__*`` token as allowed, blocked, or other."""
+    lowered = token.lower()
+    for prefix in MCP_ALLOWED_NAMESPACES:
+        if lowered.startswith(prefix):
+            return ("allowed", None)
+    for prefix, suggestion in MCP_BLOCKED_NAMESPACES.items():
+        if lowered.startswith(prefix):
+            return ("blocked", suggestion)
+    return ("other", None)
+
+
+def _scan_mcp(text: str, display_prefix: str) -> list[Finding]:
+    """Walk *text* for MCP tool tokens and generic MCP prose references."""
+    findings: list[Finding] = []
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        # Try specific mcp__<ns> token first
+        token_match = _MCP_TOOL_TOKEN.search(line)
+        if token_match:
+            token = token_match.group()
+            status, suggestion = _namespace_status(token)
+            if status == "allowed":
+                continue
+            # Check negation / CLI-fallback in ±3 lines
+            ctx_start = max(0, index - 3)
+            ctx_end = min(len(lines), index + 4)
+            context = "\n".join(lines[ctx_start:ctx_end])
+            if MCP_NEGATION.search(context) or _CLI_FALLBACK.search(context):
+                continue
+            if status == "blocked":
+                findings.append(Finding(
+                    "3.7", "ERROR",
+                    f'{display_prefix}{index + 1}: MCP tool "{token}" has a portable alternative — use {suggestion} instead',
+                ))
+            else:
+                findings.append(Finding(
+                    "3.7", "WARN",
+                    f'{display_prefix}{index + 1}: MCP tool "{token}" — review whether a CLI/API alternative exists',
+                ))
+            continue
+        # Fall back to generic MCP prose reference
+        prose_match = MCP_REFERENCE.search(line)
+        if not prose_match:
+            continue
+        ctx_start = max(0, index - 3)
+        ctx_end = min(len(lines), index + 4)
+        context = "\n".join(lines[ctx_start:ctx_end])
+        if MCP_NEGATION.search(context) or _CLI_FALLBACK.search(context):
+            continue
+        findings.append(Finding(
+            "3.7", "WARN",
+            f'{display_prefix}{index + 1}: generic MCP reference "{prose_match.group().strip()}" — review whether a CLI/API alternative exists',
+        ))
     return findings
 
 
-def run_tier3_checks(body: str, findings_so_far: list[Finding]) -> list[Finding]:
+def check_3_7(body: str, skill_dir: str) -> list[Finding]:
+    findings = _scan_mcp(body, "line ")
+    for script_path, display in entrypoint_scripts(skill_dir):
+        try:
+            content = read_text_file(script_path)
+        except (OSError, UnicodeDecodeError):
+            continue
+        findings.extend(_scan_mcp(content, f"{display}:"))
+    return findings
+
+
+def run_tier3_checks(body: str, skill_dir: str) -> list[Finding]:
     findings: list[Finding] = []
     findings.extend(check_3_1(body))
     findings.extend(check_3_2(body))
@@ -225,5 +292,5 @@ def run_tier3_checks(body: str, findings_so_far: list[Finding]) -> list[Finding]
     findings.extend(check_3_4(body))
     findings.extend(check_3_5(body))
     findings.extend(check_3_6(body))
-    findings.extend(check_3_7(body, findings_so_far + findings))
+    findings.extend(check_3_7(body, skill_dir))
     return findings

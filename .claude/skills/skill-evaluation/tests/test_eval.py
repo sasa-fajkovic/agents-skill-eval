@@ -51,35 +51,45 @@ description: Evaluate skills. Use when validating a skill package.
             (scripts_dir / script_name).write_text(script_content, encoding="utf-8")
         return skill_dir
 
-    def test_flags_mcp_instruction_in_skill_body(self) -> None:
-        skill_dir = self.make_skill_dir("Use GitHub MCP to inspect pull requests.")
+    def test_flags_blocked_mcp_namespace_as_error(self) -> None:
+        """A blocked MCP namespace (github) should produce a 3.7 ERROR with CLI suggestion."""
+        skill_dir = self.make_skill_dir("Call mcp__github_get_pull_request to fetch the PR.")
         findings = skill_eval.evaluate(str(skill_dir))
-        messages = [str(f) for f in findings if f.check_id == "2.3"]
-        self.assertTrue(any("GitHub MCP" in message for message in messages), messages)
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertTrue(any(f.severity == "ERROR" for f in mcp_findings), mcp_findings)
+        self.assertTrue(any("gh" in f.message for f in mcp_findings), mcp_findings)
 
-    def test_allows_explicit_mcp_prohibition(self) -> None:
+    def test_allows_explicit_mcp_negation(self) -> None:
+        """Negation context should suppress MCP findings."""
         skill_dir = self.make_skill_dir("Do not use MCP servers. Use gh instead.")
         findings = skill_eval.evaluate(str(skill_dir))
-        messages = [str(f) for f in findings if f.check_id == "2.3"]
-        self.assertEqual(messages, [])
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertEqual(mcp_findings, [])
+
+    def test_allows_figma_mcp_namespace(self) -> None:
+        """Allowed namespace (figma) should produce no 3.7 finding."""
+        skill_dir = self.make_skill_dir("Use mcp__figma_get_design_context to read the frame.")
+        findings = skill_eval.evaluate(str(skill_dir))
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertEqual(mcp_findings, [])
 
     def test_flags_mcp_reference_in_script(self) -> None:
         skill_dir = self.make_skill_dir(
             "Use scripts when needed.",
-            "#!/usr/bin/env python3\nif __name__ == \"__main__\":\n    print('call mcp__github__pull_request_read')\n",
+            "#!/usr/bin/env python3\nif __name__ == \"__main__\":\n    print('call mcp__github_pull_request_read')\n",
         )
         findings = skill_eval.evaluate(str(skill_dir))
-        messages = [str(f) for f in findings if f.check_id == "2.3"]
-        self.assertTrue(any("scripts/helper.py" in message for message in messages), messages)
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertTrue(any("scripts/helper.py" in f.message for f in mcp_findings), mcp_findings)
 
     def test_ignores_mcp_reference_in_non_entrypoint_helper_module(self) -> None:
         skill_dir = self.make_skill_dir(
             "Use scripts when needed.",
-            "PATTERN = 'mcp__github__pull_request_read'\n",
+            "PATTERN = 'mcp__github_pull_request_read'\n",
         )
         findings = skill_eval.evaluate(str(skill_dir))
-        messages = [str(f) for f in findings if f.check_id == "2.3"]
-        self.assertEqual(messages, [])
+        mcp_findings = [f for f in findings if f.check_id == "3.7"]
+        self.assertEqual(mcp_findings, [])
 
     def test_ci_mode_emits_single_json_object(self) -> None:
         skill_dir = self.make_skill_dir("Use when validating a skill package.")
@@ -295,7 +305,7 @@ Return a short summary.
 
 # Import individual check functions for targeted testing
 from tier4 import check_4_3, check_4_5, check_4_6, check_4_8
-from tier1 import check_1_7, check_1_8, check_1_10
+from tier1 import check_1_8, check_1_10
 from tier2 import check_2_4
 from tier3 import check_3_1
 from common import diagnose_frontmatter_failure, parse_frontmatter
@@ -531,29 +541,6 @@ class Test46SuccessCriteria(unittest.TestCase):
         self.assertTrue(any(f.check_id == "4.6" for f in findings))
 
 
-class Test17TestFileRecognition(unittest.TestCase):
-    """Tests for HIGH #9: 1.7 should recognize test files."""
-
-    def test_skips_test_prefixed_files(self) -> None:
-        """_test.py, test_*.py should not need their own test files."""
-        tmp = Path(tempfile.mkdtemp())
-        skill_dir = tmp / "test-skill"
-        skill_dir.mkdir()
-        (skill_dir / "SKILL.md").write_text(
-            "---\nname: test-skill\ndescription: Use when testing.\n---\n\nTest.\n",
-            encoding="utf-8",
-        )
-        scripts_dir = skill_dir / "scripts"
-        scripts_dir.mkdir()
-        (scripts_dir / "_format.py").write_text("def fmt(): pass\n", encoding="utf-8")
-        (scripts_dir / "_format_test.py").write_text("import unittest\n", encoding="utf-8")
-        findings = check_1_7(str(skill_dir))
-        # Neither _format.py nor _format_test.py should be flagged
-        flagged_names = [f.message for f in findings]
-        self.assertFalse(any("_format.py" in m for m in flagged_names), flagged_names)
-        self.assertFalse(any("_format_test.py" in m for m in flagged_names), flagged_names)
-
-
 class Test24HardcodedPaths(unittest.TestCase):
     """Tests for HIGH #10: detect hardcoded user paths."""
 
@@ -607,6 +594,44 @@ class Test31DocumentationExamples(unittest.TestCase):
         body = "Run this:\n```bash\n" + "".join(f"echo step{i}\n" for i in range(8)) + "```"
         findings = check_3_1(body)
         self.assertTrue(any(f.check_id == "3.1" for f in findings))
+
+
+class TestMultiSkillRejection(unittest.TestCase):
+    """Uploading an entire .claude/skills folder (multiple SKILL.md files)
+    should be rejected with a clear error rather than silently evaluating one."""
+
+    def test_rejects_multiple_skill_dirs(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        for name in ("skill-a", "skill-b"):
+            d = root / name
+            d.mkdir()
+            (d / "SKILL.md").write_text("---\nname: {}\n---\nBody.\n".format(name))
+        findings = skill_eval.evaluate(str(root))
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, "ERROR")
+        self.assertIn("multiple SKILL.md", findings[0].message)
+
+    def test_accepts_single_nested_skill(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        d = root / "my-skill"
+        d.mkdir()
+        (d / "SKILL.md").write_text(
+            "---\nname: my-skill\ndescription: Test skill. Use when testing.\n---\n\n"
+            "# Steps\n1. Do something\n"
+        )
+        findings = skill_eval.evaluate(str(root))
+        errors = [f for f in findings if f.check_id == "--"]
+        self.assertEqual(errors, [], "single nested skill should not trigger multi-skill error")
+
+    def test_accepts_root_level_skill(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        (root / "SKILL.md").write_text(
+            "---\nname: root-skill\ndescription: Test skill. Use when testing.\n---\n\n"
+            "# Steps\n1. Do something\n"
+        )
+        findings = skill_eval.evaluate(str(root))
+        errors = [f for f in findings if f.check_id == "--"]
+        self.assertEqual(errors, [], "root-level SKILL.md should not trigger multi-skill error")
 
 
 if __name__ == "__main__":

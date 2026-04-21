@@ -15,13 +15,12 @@ from common import (
     MAX_NAME_LEN,
     NAME_RE,
     NON_INTERACTIVE_FALLBACK,
-    SCRIPT_COMPLEXITY,
     STABLE_FIELDS,
     STRUCTURED_OUTPUT,
     WHEN_PHRASES,
     INTERACTIVE_PROMPT,
 )
-from extract import entrypoint_scripts, read_text_file, scripts_under, _is_library_or_test_file
+from extract import entrypoint_scripts, read_text_file
 
 METADATA_REDUNDANT_KEYS = {
     "author", "maintainer", "email", "version", "semver",
@@ -143,45 +142,6 @@ def check_1_6(lines: list[str], description: str = "") -> list[Finding]:
     return []
 
 
-def check_1_7(skill_dir: str) -> list[Finding]:
-    scripts = scripts_under(skill_dir)
-    if not scripts:
-        return []
-    tests_dir = Path(skill_dir) / "tests"
-    findings = []
-    for script_path, display in scripts:
-        stem = script_path.stem
-        # Skip library/test files themselves — they don't need their own tests
-        if _is_library_or_test_file(script_path):
-            continue
-        # Check for multiple test file naming conventions
-        candidates = []
-        if script_path.suffix == ".sh":
-            candidates = [
-                tests_dir / f"{stem}.bats",
-                tests_dir / f"test_{stem}.bats",
-            ]
-        else:
-            candidates = [
-                tests_dir / f"test_{stem}.py",
-                tests_dir / f"{stem}_test.py",
-            ]
-        if any(c.exists() for c in candidates):
-            continue
-        try:
-            content = read_text_file(script_path)
-        except (OSError, UnicodeDecodeError):
-            content = ""
-        line_count = len(content.splitlines())
-        has_complexity = bool(SCRIPT_COMPLEXITY.search(content))
-        expected = candidates[0].relative_to(Path(skill_dir))
-        if line_count > 30 or (has_complexity and line_count > 20):
-            findings.append(Finding("1.7", "WARN", f"{display} has no matching test file (expected {expected}); script is {line_count} lines with conditional/loop logic — tests are strongly recommended"))
-        else:
-            findings.append(Finding("1.7", "WARN", f"{display} has no matching test file (expected {expected})"))
-    return findings
-
-
 def check_1_8(skill_dir: str) -> list[Finding]:
     findings = []
     for script_path, display in entrypoint_scripts(skill_dir):
@@ -273,7 +233,6 @@ def run_tier1_checks(fm: dict, lines: list[str], skill_dir: str) -> list[Finding
     findings.extend(check_1_5(fm))
     desc = fm.get("description", "") if isinstance(fm.get("description"), str) else ""
     findings.extend(check_1_6(lines, desc))
-    findings.extend(check_1_7(skill_dir))
     findings.extend(check_1_8(skill_dir))
     findings.extend(check_1_9(skill_dir))
     findings.extend(check_1_10(skill_dir))

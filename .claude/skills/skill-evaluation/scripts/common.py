@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -41,8 +42,8 @@ RESET = "\033[0m" if _use_color else ""
 
 BOX_WIDTH = 60
 ALL_CHECK_IDS = [
-    "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10", "1.11",
-    "2.1", "2.2", "2.3", "2.4",
+    "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.8", "1.9", "1.10", "1.11",
+    "2.1", "2.2", "2.4",
     "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7",
     "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8",
 ]
@@ -148,6 +149,35 @@ MCP_NEGATION = re.compile(
     r"forbidden|disallow(?:ed)?|must not|ban(?:ned)?|use .* instead|prefer .* instead|"
     r"(?:are|is)\s+(?:an?\s+)?error)"
 )
+
+# --- MCP namespace policy (config-driven with defaults) ---
+
+_DEFAULT_MCP_ALLOWED_NAMESPACES = ["mcp__figma_", "mcp__slack_"]
+_DEFAULT_MCP_BLOCKED_NAMESPACES = {
+    "mcp__github_": "the `gh` CLI or the GitHub REST API",
+    "mcp__atlassian_": "the `acli` CLI or the Atlassian REST API",
+}
+
+
+def _load_mcp_policy() -> tuple[tuple[str, ...], dict[str, str]]:
+    """Load MCP namespace policy from scoring_config.json, falling back to defaults."""
+    config_path = Path(__file__).resolve().parent / "scoring_config.json"
+    allowed = list(_DEFAULT_MCP_ALLOWED_NAMESPACES)
+    blocked = dict(_DEFAULT_MCP_BLOCKED_NAMESPACES)
+    try:
+        with open(config_path, encoding="utf-8") as fh:
+            cfg = json.load(fh)
+        policy = cfg.get("mcp_policy", {})
+        if "allowed_namespaces" in policy:
+            allowed = list(policy["allowed_namespaces"])
+        if "blocked_namespaces" in policy:
+            blocked = {k: v for k, v in policy["blocked_namespaces"].items()}
+    except (OSError, json.JSONDecodeError, AttributeError):
+        pass  # use defaults
+    return tuple(allowed), blocked
+
+
+MCP_ALLOWED_NAMESPACES, MCP_BLOCKED_NAMESPACES = _load_mcp_policy()
 VERBOSE_PROSE = re.compile(
     r"(?i)\b(first,? you need to|in order to|the next step is to|to accomplish this|"
     r"you should now|it is important to)\b"
@@ -294,14 +324,12 @@ class Finding:
             "1.4": "Typed, predictable frontmatter fields keep the skill machine-readable across runtimes.",
             "1.5": "Metadata should not duplicate git history or hide runtime-specific behavior behind arbitrary keys.",
             "1.6": "Excessively long skills are harder for agents to load, inspect, and apply consistently.",
-            "1.7": "Bundled scripts need tests so the skill remains reliable when scripts change.",
             "1.8": "Agents rely on --help to learn a script's interface safely and autonomously.",
             "1.9": "Structured output is easier for agents to parse, validate, and compose than free-form text.",
             "1.10": "Interactive prompts block autonomous execution because agents cannot respond inline.",
             "1.11": "Portable skills should prefer shell and Python scripts because those runtimes are commonly available without extra setup.",
             "2.1": "Broad tool instructions make execution behavior ambiguous and harder to bound safely.",
             "2.2": "Destructive operations need explicit safeguards to avoid irreversible damage.",
-            "2.3": "MCP-specific instructions reduce portability and tie the skill to one runtime integration surface.",
             "2.4": "Hardcoded user home directory paths break portability across machines and users.",
             "3.1": "Long inline code blocks bloat the skill with tokens the agent must read on every call; moving them to scripts saves tokens and enables caching.",
             "3.2": "Large lookup tables and reference data inflate the context window; moving them to reference files allows lazy on-demand loading.",
@@ -309,7 +337,7 @@ class Finding:
             "3.4": "Duplicated content doubles the token cost for the same information and risks inconsistency when one copy is updated.",
             "3.5": "Verbose prose that could be a single sentence wastes tokens and buries the actual instruction.",
             "3.6": "Preloading all reference files defeats lazy loading, consuming tokens for data that may never be needed in a given invocation.",
-            "3.7": "MCP tool definitions add thousands of overhead tokens per API call; CLI alternatives cost a fraction and keep the skill portable.",
+            "3.7": "MCP tool definitions add thousands of overhead tokens per API call; blocked namespaces have strictly better CLI alternatives, other namespaces need per-case review.",
             "4.1": "Ambiguous instructions force the agent to guess intent, leading to inconsistent or wrong behavior across runs.",
             "4.2": "Without concrete input/output examples the agent must infer the expected format, increasing the chance of malformed output.",
             "4.3": "Negative-only instructions tell the agent what to avoid but not what to do, leaving correct behavior undefined.",
