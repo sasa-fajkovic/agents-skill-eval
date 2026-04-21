@@ -27,10 +27,17 @@ jobs:
 
       - name: Run self-evaluation (CI mode)
         run: |
+          # eval.py exits 0=PASS, 1=FAIL(errors), 2=WARN(warnings only)
+          # Capture output and exit code separately so warnings don't fail the build
+          set +e
           output=$(python .claude/skills/skill-evaluation/scripts/eval.py .claude/skills/skill-evaluation --ci)
+          rc=$?
+          set -e
           echo "$output" | python -m json.tool
-          errors=$(echo "$output" | python -c "import sys,json; print(len(json.load(sys.stdin)['findings']['error_findings']))")
-          if [ "$errors" -gt 0 ]; then
-            echo "::error::Self-evaluation found $errors error(s)"
+          if [ "$rc" -eq 1 ]; then
+            echo "::error::Self-evaluation found errors (exit code 1)"
             exit 1
+          fi
+          if [ "$rc" -eq 2 ]; then
+            echo "::warning::Self-evaluation has warnings but no errors"
           fi
