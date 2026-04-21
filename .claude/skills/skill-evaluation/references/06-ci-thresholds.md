@@ -35,7 +35,6 @@ Else → exit 0 (PASS)
 - 1.2: description missing "when" clause
 - 1.3: experimental agentskills.io field, or Claude Code extension (functional in CC but reduces portability)
 - 1.5: metadata key duplicates git history (per-key, not blanket)
-- 1.7: script has no matching test — eval.py always emits WARN; LLM escalates to ERROR for scripts >30 lines or with real logic
 - 1.9: scripts lack structured output
 - 1.11: scripts use discouraged but recognized language (e.g., JavaScript — works but Python/Bash preferred)
 - 2.1: unscoped tool usage in body

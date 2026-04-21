@@ -34,7 +34,7 @@ Use Read, Glob, Grep, and Bash tools. Do not modify any files. Bash is used only
 ### Phase 1: Deterministic evaluation
 
 4. **Run all tiers via eval.py**: Run `python3 scripts/eval.py <path>` via Bash (resolve the script path relative to this skill's directory). The script runs all four tiers deterministically:
-   - **Tier 1** (Spec Compliance 1.1-1.11): Frontmatter validation, script checks, test coverage. Check 1.7 automatically escalates to ERROR for complex untested scripts (>30 lines or conditional logic).
+   - **Tier 1** (Spec Compliance 1.1-1.6, 1.8-1.11): Frontmatter validation, script checks.
    - **Tier 2** (Security 2.1-2.2, 2.4): Tool scoping, destructive operations, hardcoded user paths.
    - **Tier 3** (Token Efficiency 3.1-3.7): Inline code, reference data, duplication, verbose prose, preload instructions, MCP namespace policy (see `references/mcp-policy.md`).
    - **Tier 4** (Effectiveness 4.1-4.8): Ambiguity, examples, negative framing, defaults, idempotency, success criteria, exit codes, minimum content gate.

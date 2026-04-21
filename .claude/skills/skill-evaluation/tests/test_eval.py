@@ -305,7 +305,7 @@ Return a short summary.
 
 # Import individual check functions for targeted testing
 from tier4 import check_4_3, check_4_5, check_4_6, check_4_8
-from tier1 import check_1_7, check_1_8, check_1_10
+from tier1 import check_1_8, check_1_10
 from tier2 import check_2_4
 from tier3 import check_3_1
 from common import diagnose_frontmatter_failure, parse_frontmatter
@@ -539,29 +539,6 @@ class Test46SuccessCriteria(unittest.TestCase):
         body = "## Process\n\n1. Read.\n2. Review.\n3. Continue."
         findings = check_4_6(body)
         self.assertTrue(any(f.check_id == "4.6" for f in findings))
-
-
-class Test17TestFileRecognition(unittest.TestCase):
-    """Tests for HIGH #9: 1.7 should recognize test files."""
-
-    def test_skips_test_prefixed_files(self) -> None:
-        """_test.py, test_*.py should not need their own test files."""
-        tmp = Path(tempfile.mkdtemp())
-        skill_dir = tmp / "test-skill"
-        skill_dir.mkdir()
-        (skill_dir / "SKILL.md").write_text(
-            "---\nname: test-skill\ndescription: Use when testing.\n---\n\nTest.\n",
-            encoding="utf-8",
-        )
-        scripts_dir = skill_dir / "scripts"
-        scripts_dir.mkdir()
-        (scripts_dir / "_format.py").write_text("def fmt(): pass\n", encoding="utf-8")
-        (scripts_dir / "_format_test.py").write_text("import unittest\n", encoding="utf-8")
-        findings = check_1_7(str(skill_dir))
-        # Neither _format.py nor _format_test.py should be flagged
-        flagged_names = [f.message for f in findings]
-        self.assertFalse(any("_format.py" in m for m in flagged_names), flagged_names)
-        self.assertFalse(any("_format_test.py" in m for m in flagged_names), flagged_names)
 
 
 class Test24HardcodedPaths(unittest.TestCase):

@@ -34,11 +34,6 @@ Why every check exists — the real-world failure mode it prevents.
 **Why**: Official skill authoring guidance recommends under 500 lines / 5000 tokens. The full SKILL.md loads when the skill activates. A 1000-line skill costs twice as much per activation and leaves less context window for actual work. Long skills also tend to contain content that belongs in references/ or scripts/.
 **Value**: Predictable context cost. Forces content into the right tier of progressive disclosure.
 
-### 1.7 — scripts without matching tests
-**What**: Each script (in `scripts/` or skill root) must have a named test file — `.sh` → `tests/<stem>.bats`, `.py` → `tests/test_<stem>.py`. eval.py always emits WARN; the LLM escalates to ERROR for scripts with real logic (>30 lines, conditionals, loops). Thin wrappers stay WARN.
-**Why**: Scripts run in production. Untested scripts break silently — a bad jq filter returns empty, a regex misses an edge case. But thin CLI wrappers (just calling `gh api` or `curl`) have little logic to test and mocking the whole external API produces low-confidence tests. The LLM escalation distinguishes the two cases.
-**Value**: Complex scripts get verified. Thin wrappers don't accumulate test overhead that adds no confidence.
-
 ### 1.8 — scripts must implement --help
 **What**: Every script in scripts/ must handle --help.
 **Why**: Per agentskills.io, --help is the primary way an agent discovers a script's interface. Without it, the agent must read the source code to understand flags, arguments, and behavior — wasting context window and increasing error rate. A script with good --help is self-documenting.

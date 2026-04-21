@@ -213,37 +213,6 @@ For each key in metadata:
 
 **Fix suggestion**: `SKILL.md is <N> lines (limit: 500). Move reference data to references/, code to scripts/, and trim verbose prose. See 3.1, 3.2, 3.5 for specific opportunities.`
 
-## 1.7: scripts without matching tests
-
-**Check (WARN — LLM may escalate to ERROR)**:
-Each script must have a matching test file. Scripts are searched in both `scripts/` and the skill root.
-
-**Expected test file per script**:
-- `scripts/foo.sh` or `foo.sh` → `tests/foo.bats` (bats-core)
-- `scripts/bar.py` or `bar.py` → `tests/test_bar.py` (pytest)
-
-**Severity**: Always emitted as WARN by eval.py. The LLM phase escalates to ERROR if the script has conditional logic, loops, non-trivial parsing, or is >30 lines. Thin wrappers (<20 lines, straight CLI calls) stay WARN.
-
-**Detection**:
-```
-Scan scripts/ directory and skill root for .sh and .py files
-For each script:
-  Compute expected test path (tests/<stem>.bats or tests/test_<stem>.py)
-  If test file missing → WARN 1.7
-```
-
-**Examples**:
-```
-# WARN (thin wrapper): jira-create.sh at root, no tests/jira-create.bats
-# ERROR (complex): yolo.sh (105 lines, loops, conditionals), no tests/yolo.bats
-
-# PASS
-├── scripts/fetch-data.sh
-└── tests/fetch-data.bats
-```
-
-**Fix suggestion**: `<script> has no matching test — expected <path> (<framework>)`
-
 ## 1.8: scripts must implement --help
 
 Per [agentskills.io best practices](https://agentskills.io/skill-creation/using-scripts#designing-scripts-for-agentic-use), `--help` output is the primary way an agent learns a script's interface.

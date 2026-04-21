@@ -42,7 +42,7 @@ RESET = "\033[0m" if _use_color else ""
 
 BOX_WIDTH = 60
 ALL_CHECK_IDS = [
-    "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "1.10", "1.11",
+    "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.8", "1.9", "1.10", "1.11",
     "2.1", "2.2", "2.4",
     "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7",
     "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8",
@@ -324,7 +324,6 @@ class Finding:
             "1.4": "Typed, predictable frontmatter fields keep the skill machine-readable across runtimes.",
             "1.5": "Metadata should not duplicate git history or hide runtime-specific behavior behind arbitrary keys.",
             "1.6": "Excessively long skills are harder for agents to load, inspect, and apply consistently.",
-            "1.7": "Bundled scripts need tests so the skill remains reliable when scripts change.",
             "1.8": "Agents rely on --help to learn a script's interface safely and autonomously.",
             "1.9": "Structured output is easier for agents to parse, validate, and compose than free-form text.",
             "1.10": "Interactive prompts block autonomous execution because agents cannot respond inline.",
