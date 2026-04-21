@@ -22,24 +22,28 @@ Else → exit 0 (PASS)
 ### ERROR (blocks merge)
 - 1.1: name format violation
 - 1.2: description missing, empty, or over 1024 chars
-- 1.3: non-standard field in frontmatter (Claude Code extension or unknown field)
+- 1.3: unrecognized field in frontmatter (not a stable, experimental, or Claude Code field)
 - 1.4: field type/value violation
 - 1.6: SKILL.md over 500 lines
 - 1.8: scripts missing --help
 - 1.10: scripts use interactive prompts
 - 1.11: scripts use unrecognized scripting language (not .py, .sh, or another known runtime)
+- 4.8: redirect/pointer skill with no actionable instructions
 
 ### WARN (reported, does not block)
 - 1.2: description missing "when" clause
-- 1.3: experimental agentskills.io field, or Claude Code extension placed in metadata
+- 1.3: experimental agentskills.io field, or Claude Code extension (functional in CC but reduces portability)
 - 1.5: metadata key duplicates git history (per-key, not blanket)
 - 1.7: script has no matching test — eval.py always emits WARN; LLM escalates to ERROR for scripts >30 lines or with real logic
 - 1.9: scripts lack structured output
 - 1.11: scripts use discouraged but recognized language (e.g., JavaScript — works but Python/Bash preferred)
 - 2.1: unscoped tool usage in body
 - 2.2: destructive operations without safeguards (suppressed when skill-level Rules section contains a global safeguard)
+- 2.3: MCP usage or references (prefer CLI or direct API alternatives)
+- 2.4: hardcoded user home directory paths
 - 3.1-3.7: all token efficiency checks
 - 4.1-4.7: all effectiveness checks
+- 4.8: thin skill body (few non-blank lines, no scripts)
 
 ## CI output format
 

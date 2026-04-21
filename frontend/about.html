@@ -243,24 +243,27 @@
           <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
         </div>
         <div class="terminal-body">{
+  "schema_version": "1.0",
   "status": "ok",
   "skill_name": "dependency-upgrade-reviewer",
   "overall_score": 92,
   "overall_tier": "excellent",
   "summary": "Clear trigger cues, complete examples, and isolated helper scripts keep the activation lean.",
-  "deterministic": {
-    "has_description": true,
-    "has_trigger_section": true,
-    "has_examples": true,
-    "has_error_handling": true,
-    "issues": []
+  "checks_overview": {
+    "checks_total": 30,
+    "checks_passed": 29,
+    "checks_failed": 1
   },
-  "llm_analysis": {
-    "provider": "anthropic",
-    "model": "claude-sonnet-4-6",
-    "quality_tier": "excellent",
-    "strengths": ["Tight trigger language", "Concrete usage examples"],
-    "suggestions": ["Keep helper scripts strictly portable"]
+  "findings": {
+    "total": 1,
+    "error_findings": [],
+    "warning_findings": [
+      {
+        "rule_id": "3.5",
+        "message": "line 42: verbose prose could likely be condensed",
+        "reason": "Verbose prose wastes tokens and buries the actual instruction."
+      }
+    ]
   }
 }</div>
       </div>

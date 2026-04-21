@@ -385,8 +385,8 @@
     "warning_cap": 30         <span class="cfg-comment">// max total deduction from warnings</span>
   },
   "blending": {
-    "deterministic_weight": 0.6, <span class="cfg-comment">// weight of deterministic score in final blend</span>
-    "llm_weight": 0.4         <span class="cfg-comment">// weight of AI review score in final blend</span>
+    "deterministic_weight": 0.7, <span class="cfg-comment">// weight of deterministic score in final blend</span>
+    "llm_weight": 0.3         <span class="cfg-comment">// weight of AI review score in final blend</span>
   },
   "tiers": [
     { "name": "excellent",  "min_score": 90 },
@@ -407,6 +407,7 @@
         <li><strong>AI review blend</strong> only applies when optional AI review is enabled. The final score is <code>deterministic_weight &times; det_score + llm_weight &times; llm_score</code>. Without AI review, the deterministic score is used directly.</li>
         <li><strong>Tiers</strong> are evaluated top-to-bottom; the first tier whose <code>min_score</code> the final score meets or exceeds becomes the quality tier.</li>
         <li><strong>LLM tier base scores</strong> convert the AI reviewer's qualitative tier label into a numeric score for blending.</li>
+        <li><strong>Score caps</strong> override the penalty formula for critical structural issues. Missing frontmatter name (1.1) or description (1.2) caps the score at 75. Redirect/stub skills (4.8) cap the score at 35.</li>
       </ul>
     </section>
   </main>

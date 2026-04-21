@@ -11,8 +11,8 @@ The evaluator must print exactly one JSON object to stdout and nothing else. No 
   "overall_tier": "good",
   "summary": "One sentence summary of the skill quality",
   "checks_overview": {
-    "checks_total": 28,
-    "checks_passed": 26,
+    "checks_total": 30,
+    "checks_passed": 28,
     "checks_failed": 2
   },
   "findings": {

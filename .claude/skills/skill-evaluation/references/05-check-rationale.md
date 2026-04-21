@@ -81,6 +81,8 @@ Why every check exists — the real-world failure mode it prevents.
 **Why**: Hardcoded user paths break portability across machines and users. The skill only works on the original author's machine. Use `$HOME`, `~`, or environment variables instead.
 **Value**: Skills work on any machine regardless of username or OS.
 
+## Tier 3: Token Efficiency
+
 ### 3.1 — inline code should be script
 **What**: Code blocks >5 lines should be in scripts/ directory.
 **Why**: Script code in SKILL.md loads into context on every activation. The same script in scripts/ only costs tokens when executed — and only the stdout enters context, not the source code. A 30-line bash script inline costs ~100 tokens/call. In scripts/, it costs 0 tokens until run, then only the output cost.
