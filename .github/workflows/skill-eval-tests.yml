@@ -1,0 +1,33 @@
+name: Skill Evaluation Tests
+
+on:
+  pull_request:
+    paths:
+      - '.claude/skills/skill-evaluation/**'
+  push:
+    branches: [main]
+    paths:
+      - '.claude/skills/skill-evaluation/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run unit and integration tests
+        run: python -m pytest .claude/skills/skill-evaluation/tests/ -q
+
+      - name: Run self-evaluation (CI mode)
+        run: |
+          output=$(python .claude/skills/skill-evaluation/scripts/eval.py .claude/skills/skill-evaluation --ci)
+          echo "$output" | python -m json.tool
+          errors=$(echo "$output" | python -c "import sys,json; print(len(json.load(sys.stdin)['findings']['error_findings']))")
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::Self-evaluation found $errors error(s)"
+            exit 1
+          fi
