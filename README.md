@@ -1,5 +1,7 @@
 # agents-skill-eval
 
+## WebApp ready here: https://agents-skill-eval.com/
+
 `agents-skill-eval` is two things in one repository:
 
 - a hosted web app for evaluating skill packages from local folders or GitHub URLs
