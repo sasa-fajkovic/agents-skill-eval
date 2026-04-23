@@ -2,12 +2,8 @@ name: Skill Evaluation Tests
 
 on:
   pull_request:
-    paths:
-      - '.claude/skills/skill-evaluation/**'
   push:
     branches: [main]
-    paths:
-      - '.claude/skills/skill-evaluation/**'
 
 jobs:
   test:
