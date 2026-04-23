@@ -42,3 +42,5 @@ docker run -d \
 
 sleep 8
 curl -fsS "http://127.0.0.1:${APP_PORT}/health" >/dev/null
+
+docker image prune -f >/dev/null
