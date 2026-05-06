@@ -8,9 +8,10 @@ Detection methods, fix suggestions, and examples.
 
 **Checks (all ERROR)**:
 1. `name` key exists in frontmatter
-2. Value is a string, 1-64 characters
-3. Matches regex (lowercase alphanumeric + hyphens, no leading/trailing/consecutive hyphens)
-4. Value matches parent directory name
+2. Value is a string, 1-50 characters
+3. Value has at most 10 hyphen-separated words
+4. Matches regex (lowercase alphanumeric + hyphens, no leading/trailing/consecutive hyphens)
+5. Value matches parent directory name
 
 **Detection**:
 ```
@@ -50,8 +51,9 @@ name: skill-eval  # in skills/helpers/skill-eval/
 **Checks**:
 1. `description` key exists (ERROR if missing)
 2. Value is non-empty string (ERROR if empty)
-3. Length <= 1024 chars (ERROR if over)
-4. Contains "when" context — heuristic: look for trigger phrases like "use when", "use for", "triggered by", "activate when", or a second sentence describing context (WARN if missing)
+3. Length <= 500 chars (ERROR if over)
+4. Length <= 350 chars (WARN if 351-500 — bloats context on every API call)
+5. Contains "when" context — heuristic: look for trigger phrases like "use when", "use for", "triggered by", "activate when", or a second sentence describing context (WARN if missing)
 
 **Detection**:
 ```
@@ -71,8 +73,11 @@ If none found and description is a single clause, WARN
 name: my-skill
 ---
 
-# ERROR: over 1024 chars
+# ERROR: over 500 chars
 description: [very long string...]
+
+# WARN: 351-500 chars (context bloat risk)
+description: [long string between 351 and 500 chars...]
 
 # WARN: no "when" context
 description: Creates pull requests from branch context.

@@ -8,8 +8,8 @@ These are the ONLY fields guaranteed to work across all platforms.
 
 | Field | Required | Type | Constraints | Portable |
 |-------|----------|------|-------------|----------|
-| `name` | Yes | string | 1-64 chars, `[a-z0-9-]`, no leading/trailing/consecutive hyphens, must match parent directory | Yes |
-| `description` | Yes | string | 1-1024 chars, non-empty | Yes |
+| `name` | Yes | string | 1-50 chars and ≤10 hyphen-separated words, `[a-z0-9-]`, no leading/trailing/consecutive hyphens, must match parent directory | Yes |
+| `description` | Yes | string | 1-500 chars, non-empty (WARN if 351-500 — context bloat) | Yes |
 | `license` | No | string | License name or reference to bundled file | Yes |
 | `compatibility` | No | string | Max 500 chars, environment requirements | Yes |
 | `metadata` | No | mapping | String-to-string key-value pairs | Yes |
