@@ -5,12 +5,12 @@ Why every check exists — the real-world failure mode it prevents.
 ## Tier 1: Specification Compliance
 
 ### 1.1 — name format
-**What**: name must be present, 1-64 chars, `[a-z0-9-]`, no leading/trailing/consecutive hyphens, match parent directory.
-**Why**: Broken name = broken discovery. Agents match skills by name. A name like `My Skill` or `mySkill` fails pattern matching. A name that doesn't match the directory means the skill can't be found by convention.
+**What**: name must be present, ≤50 chars and ≤10 hyphen-separated words, `[a-z0-9-]`, no leading/trailing/consecutive hyphens, match parent directory.
+**Why**: Broken name = broken discovery. Agents match skills by name. A name like `My Skill` or `mySkill` fails pattern matching. A name that doesn't match the directory means the skill can't be found by convention. Overly long names also bloat the catalog frontmatter that loads on every API call.
 **Value**: Skill is discoverable and activatable across all platforms.
 
 ### 1.2 — description
-**What**: Present, non-empty, max 1024 chars, describes what AND when.
+**What**: Present, non-empty, ≤500 chars (ERROR), ≤350 chars (WARN above that), describes what AND when.
 **Why**: The description is the single most important field. It determines whether an agent loads the skill at all. Agents scan descriptions to match tasks — if the description only says "what" but not "when to use it", the agent can't decide whether to activate it. Descriptions are truncated to ~250 chars in listings, so front-loading matters.
 **Value**: Skill gets activated for the right tasks, not missed or mis-triggered.
 

@@ -20,8 +20,8 @@ Else → exit 0 (PASS)
 ## Check severity mapping
 
 ### ERROR (blocks merge)
-- 1.1: name format violation
-- 1.2: description missing, empty, or over 1024 chars
+- 1.1: name format violation (includes >50 chars or >10 hyphen-separated words)
+- 1.2: description missing, empty, or over 500 chars
 - 1.3: unrecognized field in frontmatter (not a stable, experimental, or Claude Code field)
 - 1.4: field type/value violation
 - 1.6: SKILL.md over 500 lines
@@ -32,7 +32,7 @@ Else → exit 0 (PASS)
 - 4.8: redirect/pointer skill with no actionable instructions
 
 ### WARN (reported, does not block)
-- 1.2: description missing "when" clause
+- 1.2: description missing "when" clause, or 351-500 chars (context bloat risk)
 - 1.3: experimental agentskills.io field, or Claude Code extension (functional in CC but reduces portability)
 - 1.5: metadata key duplicates git history (per-key, not blanket)
 - 1.9: scripts lack structured output

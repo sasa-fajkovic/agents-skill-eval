@@ -39,6 +39,45 @@ class Tier1Tests(unittest.TestCase):
         name_findings = [f for f in findings if "hyphens" in f.message or "must be" in f.message]
         self.assertEqual(len(name_findings), 0)
 
+    def test_check_1_1_flags_too_many_words(self) -> None:
+        fm = {"name": "one-two-three-four-five-six-seven-eight-nine-ten-eleven"}
+        findings = tier1.check_1_1(fm, "/tmp/one-two-three-four-five-six-seven-eight-nine-ten-eleven")
+        self.assertTrue(any(f.check_id == "1.1" and "11 hyphen-separated words" in f.message for f in findings))
+
+    def test_check_1_1_flags_over_50_chars(self) -> None:
+        long_name = "a" + "-bcd" * 13  # 53 chars, ≤10 words
+        fm = {"name": long_name}
+        findings = tier1.check_1_1(fm, f"/tmp/{long_name}")
+        self.assertTrue(any(f.check_id == "1.1" and "max 50" in f.message for f in findings))
+
+    def test_check_1_1_passes_at_limits(self) -> None:
+        fm = {"name": "a-b-c-d-e-f-g-h-i-j"}  # 10 words, 19 chars
+        findings = tier1.check_1_1(fm, "/tmp/a-b-c-d-e-f-g-h-i-j")
+        length_findings = [f for f in findings if "max 50" in f.message or "hyphen-separated words" in f.message]
+        self.assertEqual(len(length_findings), 0)
+
+    # --- 1.2: description length thresholds ---
+
+    def test_check_1_2_warns_between_351_and_500(self) -> None:
+        desc = "Use when " + "x" * 350  # 359 chars
+        fm = {"name": "demo", "description": desc}
+        findings = tier1.check_1_2(fm)
+        warn_findings = [f for f in findings if f.check_id == "1.2" and f.severity == "WARN" and "context bloat" in f.message]
+        self.assertEqual(len(warn_findings), 1)
+
+    def test_check_1_2_errors_over_500(self) -> None:
+        desc = "Use when " + "x" * 600
+        fm = {"name": "demo", "description": desc}
+        findings = tier1.check_1_2(fm)
+        err_findings = [f for f in findings if f.check_id == "1.2" and f.severity == "ERROR" and "max 500" in f.message]
+        self.assertEqual(len(err_findings), 1)
+
+    def test_check_1_2_passes_under_350(self) -> None:
+        fm = {"name": "demo", "description": "Use when reviewing skills."}
+        findings = tier1.check_1_2(fm)
+        length_findings = [f for f in findings if "max 500" in f.message or "context bloat" in f.message]
+        self.assertEqual(len(length_findings), 0)
+
     # --- 1.3: allowed-tools is WARN not ERROR ---
 
     def test_check_1_3_allowed_tools_is_warn(self) -> None:

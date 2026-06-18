@@ -13,10 +13,12 @@ from common import (
     MAX_DESC_LEN,
     MAX_LINES,
     MAX_NAME_LEN,
+    MAX_NAME_WORDS,
     NAME_RE,
     NON_INTERACTIVE_FALLBACK,
     STABLE_FIELDS,
     STRUCTURED_OUTPUT,
+    WARN_DESC_LEN,
     WHEN_PHRASES,
     INTERACTIVE_PROMPT,
 )
@@ -43,6 +45,9 @@ def check_1_1(fm: dict, skill_dir: str) -> list[Finding]:
         return findings
     if len(name) > MAX_NAME_LEN:
         findings.append(Finding("1.1", "ERROR", f"name is {len(name)} chars (max {MAX_NAME_LEN})"))
+    word_count = len([w for w in name.split("-") if w])
+    if word_count > MAX_NAME_WORDS:
+        findings.append(Finding("1.1", "ERROR", f"name has {word_count} hyphen-separated words (max {MAX_NAME_WORDS})"))
     if "--" in name:
         findings.append(Finding("1.1", "ERROR", f'name "{name}" contains consecutive hyphens; the spec requires single hyphens as separators'))
     elif not NAME_RE.match(name):
@@ -65,6 +70,8 @@ def check_1_2(fm: dict) -> list[Finding]:
         return findings
     if len(desc) > MAX_DESC_LEN:
         findings.append(Finding("1.2", "ERROR", f"description is {len(desc)} chars (max {MAX_DESC_LEN})"))
+    elif len(desc) > WARN_DESC_LEN:
+        findings.append(Finding("1.2", "WARN", f"description is {len(desc)} chars; keep under {WARN_DESC_LEN} to avoid context bloat (hard cap {MAX_DESC_LEN})"))
     if not WHEN_PHRASES.search(desc):
         findings.append(Finding("1.2", "WARN", 'description should include a "Use when..." clause'))
     return findings
