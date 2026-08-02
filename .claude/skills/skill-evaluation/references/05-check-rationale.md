@@ -49,10 +49,11 @@ Why every check exists — the real-world failure mode it prevents.
 **Why**: Agents run in non-interactive shells. A script that blocks on interactive input hangs indefinitely with no error message. This is a hard constraint of the agent execution environment. All input must come via flags, env vars, or stdin.
 **Value**: Scripts never hang. Agents can always run scripts to completion without human intervention.
 
-### 1.11 — only Python and bash scripts
-**What**: Scripts must be .py or .sh — no JS/TS, Go, Ruby, etc.
-**Why**: Python and bash are pre-installed on every CI runner (Ubuntu, macOS) and every developer machine. Node.js, Go, Ruby, Deno, and Bun are not guaranteed. A skill with a `.ts` script silently fails when Node.js isn't installed. Restricting to Python+bash means skills work everywhere with zero setup.
-**Value**: Skills are portable. No "install Node.js first" surprises.
+### 1.11 — prefer Python and bash scripts
+**What**: Scripts should be .py or .sh. A recognized but discouraged runtime (JS/TS, Go, Ruby, PHP, Perl) is a WARN; an extension that is not a recognized scripting language is an ERROR.
+**Why**: Python and bash are available on virtually every CI runner (Ubuntu, macOS) and developer machine without extra setup. Node.js, Go, Ruby, Deno, and Bun are not guaranteed. A skill with a `.ts` script silently fails when Node.js isn't installed. Preferring Python+bash means skills work everywhere with zero setup.
+**Why WARN and not ERROR**: a `.ts` script is not broken — it works wherever Node.js is installed, which for some teams is everywhere they run. Failing it outright would tell them a working skill is invalid. A warning prices the portability cost and leaves the decision with the team. ERROR is reserved for extensions that aren't a recognized scripting language, where the file is unlikely to be executable as a script anywhere.
+**Value**: Skills are portable, and where they aren't, the trade-off is visible instead of silent. No "install Node.js first" surprises.
 
 ## Tier 2: Security
 
