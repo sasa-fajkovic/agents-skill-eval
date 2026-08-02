@@ -299,28 +299,59 @@ Scan for:
 
 **Fix suggestion**: `Interactive prompt detected. Agents cannot respond to prompts. Accept all input via command-line flags, environment variables, or stdin.`
 
-## 1.11: only Python and bash scripts allowed
+## 1.11: prefer Python and bash scripts
 
-Python and bash are pre-installed on all CI runners and macOS/Linux dev machines. Other languages (JS/TS, Go, Ruby) require additional runtimes that may not be present.
+Python and bash are available on virtually all CI runners and macOS/Linux dev machines without additional setup. Other languages (JS/TS, Go, Ruby, PHP, Perl) require runtimes that may not be present.
 
-**Check (ERROR)**:
-1. Every file in `scripts/` must have a `.py` or `.sh` extension
+A recognized runtime that merely reduces portability is a WARN, not an ERROR — the skill still works where that runtime is installed, and the team owns that trade-off. ERROR is reserved for extensions that are not a recognized scripting language at all, where the file is unlikely to be executable as a script anywhere.
+
+**Check (WARN / ERROR)**:
+1. Files in `scripts/` should have a `.py` or `.sh` extension
+2. Data and config files are not scripts and are skipped
+3. Extensionless files are skipped
+
+**Severity**:
+| Extension | Severity |
+| --- | --- |
+| `.py`, `.sh` | PASS |
+| `.js`, `.ts` | WARN — the spec lists JavaScript as common, but Python/bash are preferred |
+| `.go`, `.rb`, `.php`, `.pl` | WARN — requires an additional runtime |
+| anything else with an extension | ERROR — not a recognized scripting language |
+
+Skipped as data/config: `.json`, `.yaml`, `.yml`, `.toml`, `.txt`, `.md`, `.csv`, `.xml`, `.ini`, `.cfg`, `.conf`, `.env`
 
 **Detection**:
 ```
 For each file in scripts/:
-  If extension is not .py or .sh → ERROR
+  If it is a directory → skip
+  If extension is in the data/config set → skip
+  If extension is empty → skip
+  If extension is .py or .sh → pass
+  If extension is .js or .ts → WARN
+  If extension is in {.go, .rb, .php, .pl} → WARN
+  Otherwise → ERROR
 ```
 
 **Examples**:
 ```
-# ERROR: requires Node.js runtime
+# WARN: works, but requires a Node.js runtime
 scripts/fetch-data.js
 scripts/process.ts
+
+# WARN: works, but requires an additional runtime
+scripts/report.go
+
+# ERROR: not a recognized scripting language
+scripts/build.exe
 
 # PASS: no additional runtime needed
 scripts/fetch-data.sh
 scripts/process.py
+
+# SKIPPED: data/config, not a script
+scripts/scoring_config.json
 ```
 
-**Fix suggestion**: `Only Python (.py) and bash (.sh) scripts are allowed. Rewrite in Python or bash to avoid additional runtime dependencies.`
+**Fix suggestion**: `Python (.py) and bash (.sh) are preferred because they are available on virtually all systems without additional runtime setup. Rewrite in Python or bash to avoid an additional runtime dependency.`
+
+The discouraged extensions are also surfaced in `metadata.unsupported_script_types` in the output so a pipeline can act on them without parsing findings. See [`08-output-schema.md`](08-output-schema.md).
