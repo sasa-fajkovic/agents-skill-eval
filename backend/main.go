@@ -313,7 +313,6 @@ func main() {
 			event.User = sentry.User{}
 			event.Request = nil
 			event.ServerName = ""
-			event.Extra = map[string]any{}
 			for key := range event.Contexts {
 				if key != "runtime" && key != "os" && key != "device" && key != "trace" {
 					delete(event.Contexts, key)
