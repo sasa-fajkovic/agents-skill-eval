@@ -1,24 +1,15 @@
-FROM ubuntu:24.04
+FROM ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
 	ca-certificates \
-	curl \
-	gnupg \
-	golang-go \
 	python3 \
 	python3-pip \
-	&& mkdir -p /etc/apt/keyrings \
-	&& curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
-	&& echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
-	&& apt-get update && apt-get install -y nodejs \
-	&& npm install -g typescript \
-	&& rm -rf /var/lib/apt/lists/* /root/.cache/pip /root/.npm
+	&& rm -rf /var/lib/apt/lists/*
 
 COPY .claude/skills/skill-evaluation/requirements.txt /tmp/skill-evaluation-requirements.txt
-
-RUN pip3 install anthropic PyPDF2 python-docx -r /tmp/skill-evaluation-requirements.txt --break-system-packages
+RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/skill-evaluation-requirements.txt
 
 RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
 	&& if [ -n "$existing_user" ]; then \

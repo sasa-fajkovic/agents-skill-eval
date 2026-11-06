@@ -137,9 +137,9 @@ Description warnings above 350 characters and for missing trigger phrases are op
 
 Requirements:
 
-- Go
+- Go 1.26.10 or newer
 - Redis
-- Python 3 with dependencies from `.claude/skills/skill-evaluation/requirements.txt`
+- Python 3.10 or newer with dependencies from `.claude/skills/skill-evaluation/requirements.txt`
 
 Start locally:
 
@@ -167,7 +167,7 @@ Install prerequisites, then run everything:
 ```bash
 python3 -m venv /tmp/agents-skill-eval-venv
 source /tmp/agents-skill-eval-venv/bin/activate
-python3 -m pip install -r .claude/skills/skill-evaluation/requirements.txt
+python3 -m pip install -r .claude/skills/skill-evaluation/requirements.txt -r .claude/skills/skill-evaluation/tests/requirements.txt
 make test
 ```
 
