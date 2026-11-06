@@ -35,7 +35,7 @@ ALL_CHECK_IDS = [
     "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.8", "1.9", "1.10", "1.11",
     "2.1", "2.2", "2.4",
     "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7",
-    "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8", "4.9",
+    "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8", "4.9", "4.10",
 ]
 MAX_SUPPORTING_CONTEXT_CHARS = 12000
 MAX_FILE_EXCERPT_CHARS = 1500
@@ -318,7 +318,7 @@ class Finding:
             "1.8": "Evaluator policy: agents rely on --help to learn a script's interface safely and autonomously.",
             "1.9": "Evaluator policy: structured output is easier for agents to parse, validate, and compose than free-form text.",
             "1.10": "Evaluator policy: interactive prompts block autonomous execution because agents cannot respond inline.",
-            "1.11": "Evaluator portability policy prefers shell and Python; the specification permits script languages supported by the runtime.",
+            "1.11": "Evaluator policy prefers shell and Python and reports incomplete script/security analysis when safe bounded reads are unavailable; these warnings do not establish a specification format error.",
             "2.1": "Broad tool instructions make execution behavior ambiguous and harder to bound safely.",
             "2.2": "Destructive operations need explicit safeguards to avoid irreversible damage.",
             "2.4": "Hardcoded user home directory paths break portability across machines and users.",
@@ -338,6 +338,7 @@ class Finding:
             "4.7": "Uniform exit codes (0/1 only) prevent the agent from distinguishing failure types and choosing the right recovery strategy.",
             "4.8": "Skills with insufficient content cannot guide an agent effectively; redirect/pointer skills provide no actionable instructions.",
             "4.9": "Optional evaluator policy: labeled trigger queries must be readable before client invocation tests; static validation does not measure triggering accuracy.",
+            "4.10": "Optional output-quality fixtures must have usable test declarations and safe local input paths under evaluator policy; static validation does not measure output quality.",
         }
         return reason_map.get(self.check_id, "This issue reduces portability, clarity, or reliability of the skill definition.")
 

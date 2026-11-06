@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import sys
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -11,6 +13,8 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import tier1  # noqa: E402
+import extract
+import output_evals
 
 
 class Tier1Tests(unittest.TestCase):
@@ -198,6 +202,88 @@ class Tier1Tests(unittest.TestCase):
 
         findings = tier1.check_1_11(str(skill_dir))
         self.assertEqual(len(findings), 0)
+
+    def test_check_1_11_uninspectable_entrypoint_candidates_warn_without_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            outside = root.parent / (root.name + "-outside.py")
+            outside.write_text("PRIVATE_EXTERNAL_CONTENT", encoding="utf-8")
+            self.addCleanup(outside.unlink)
+            (scripts / "linked.py").symlink_to(outside)
+            with (root / "large.sh").open("wb") as stream:
+                stream.truncate(output_evals.MAX_INPUT_BYTES + 1)
+            with mock.patch.object(output_evals.os, "read", side_effect=AssertionError("unsafe read")):
+                findings = tier1.check_1_11(str(root))
+            self.assertEqual(len(findings), 2)
+            self.assertTrue(all(item.check_id == "1.11" and item.severity == "WARN" for item in findings))
+            self.assertTrue(all("analysis is incomplete" in item.message for item in findings))
+            self.assertNotIn("PRIVATE_EXTERNAL_CONTENT", str(findings))
+
+    def test_check_1_11_regular_scripts_file_is_neutral_and_keeps_root_checks(self) -> None:
+        import tier3
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "scripts").write_text("ordinary package data", encoding="utf-8")
+            (root / "helper.py").write_text('if __name__ == "__main__":\n    print("mcp__github_pull_request_read")\n', encoding="utf-8")
+            self.assertEqual(tier1.check_1_11(str(root)), [])
+            self.assertTrue(tier3.check_3_7("", str(root)))
+
+    def test_check_1_11_symlinked_script_directory_does_not_enumerate_external_names(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "skill"
+            outside = Path(directory) / "outside"
+            root.mkdir()
+            outside.mkdir()
+            (outside / "PRIVATE_EXTERNAL_NAME.py").write_text("PRIVATE_CONTENT", encoding="utf-8")
+            (root / "scripts").symlink_to(outside, target_is_directory=True)
+            original_scandir = os.scandir
+            external_identity = outside.stat()
+
+            def safe_scandir(descriptor):
+                info = os.fstat(descriptor)
+                self.assertNotEqual((info.st_dev, info.st_ino), (external_identity.st_dev, external_identity.st_ino))
+                return original_scandir(descriptor)
+
+            with mock.patch.object(extract.os, "scandir", side_effect=safe_scandir):
+                findings = tier1.check_1_11(str(root))
+                self.assertEqual(extract.entrypoint_scripts(str(root)), [])
+            self.assertEqual(len(findings), 1)
+            self.assertIn("scripts/", findings[0].message)
+            self.assertNotIn("PRIVATE", findings[0].message)
+
+    def test_check_1_11_unavailable_access_warns_and_known_helpers_remain_exempt(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_private.py").symlink_to(root / "missing")
+            with (root / "_large.sh").open("wb") as stream:
+                stream.truncate(output_evals.MAX_INPUT_BYTES + 1)
+            self.assertEqual(tier1.check_1_11(str(root)), [])
+            with mock.patch.dict(output_evals.os.__dict__):
+                del output_evals.os.O_NOFOLLOW
+                findings = tier1.check_1_11(str(root))
+            self.assertEqual(len(findings), 1)
+            self.assertIn("analysis is incomplete", findings[0].message)
+
+    def test_check_1_11_unreadable_script_directory_warns_without_permission_crash(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            scripts.chmod(0)
+            try:
+                try:
+                    list(scripts.iterdir())
+                except PermissionError:
+                    findings = tier1.check_1_11(str(root))
+                    self.assertEqual(len(findings), 1)
+                    self.assertIn("analysis is incomplete", findings[0].message)
+                else:
+                    self.skipTest("filesystem permissions do not restrict this process")
+            finally:
+                scripts.chmod(0o700)
 
     def test_check_1_11_other_language_is_warning_not_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

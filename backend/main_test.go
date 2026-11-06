@@ -96,6 +96,13 @@ func TestScanUploadedFile(t *testing.T) {
 		}
 	})
 
+	t.Run("scans CSV input fixtures for private keys", func(t *testing.T) {
+		path := write("sales.csv", "value\n-----BEGIN OPENSSH PRIVATE KEY-----\nsecret")
+		if err := scanUploadedFile(path); err == nil || !strings.Contains(err.Error(), "private key material") {
+			t.Fatalf("expected CSV private key rejection, got %v", err)
+		}
+	})
+
 	t.Run("allows supporting code to be analyzed without execution", func(t *testing.T) {
 		path := write("helper.py", "import os\nprint(os.getenv('ANTHROPIC_API_KEY'))\n")
 		if err := scanUploadedFile(path); err != nil {
@@ -514,6 +521,9 @@ func TestSplitGitHubBlobPath(t *testing.T) {
 }
 
 func TestAllowedHelpers(t *testing.T) {
+	if !isAllowedSupportingSkillFile("evals/files/sales.csv") {
+		t.Fatal("expected CSV eval inputs to be included in GitHub packages")
+	}
 	if !isAllowedSupportingSkillFile("notes.md") || isAllowedSupportingSkillFile("archive.zip") {
 		t.Fatal("unexpected supporting file allowlist result")
 	}
@@ -769,6 +779,9 @@ func (timeoutErr) Temporary() bool { return true }
 var _ net.Error = timeoutErr{}
 
 func TestValidateFileType(t *testing.T) {
+	if err := validateFileType("evals/files/sales.csv", "text/csv; charset=utf-8"); err != nil {
+		t.Fatalf("expected CSV fixture uploads to be allowed, got %v", err)
+	}
 	if err := validateFileType("script.sh", "text/plain"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

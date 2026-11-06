@@ -70,11 +70,13 @@ When an entrypoint prints output but lacks JSON/CSV or related format indicators
 
 Prompt patterns without nearby non-interactive fallback indicators can block unattended execution. Prefer flags, environment variables, or stdin. Static detection can need contextual review.
 
-### 1.11: script portability (WARN)
+### 1.11: script portability and readability (WARN)
 
 Evaluator policy prefers `.py` and `.sh` when those runtimes are available. Other script extensions receive portability warnings, including JavaScript, TypeScript, Go, Ruby, PHP, Perl, and extensions outside that list. No language is rejected as a specification error. Document required runtimes in `compatibility`.
 
 Data/config files (`.json`, `.yaml`, `.yml`, `.toml`, `.txt`, `.md`, `.csv`, `.xml`, `.ini`, `.cfg`, `.conf`, `.env`), directories, and extensionless files are skipped by this extension heuristic.
+
+Potential `.py`/`.sh` entrypoints that cannot be inspected under the regular-file, 5 MiB, no-symlink read policy receive an incomplete-analysis warning. Inaccessible or symlinked script directories also warn without enumerating external contents. Known library/test filenames are exempt from entrypoint readability warnings. These warnings disclose incomplete script and security analysis, not invalid skill format; no scripts are executed.
 
 `metadata.unsupported_script_types` preserves the legacy set `.js`, `.ts`, `.go`, `.rb`, `.php`, `.pl` for downstream compatibility. It is a policy signal, not a specification ban. See [output schema](08-output-schema.md).
 

@@ -1,6 +1,6 @@
-# Effectiveness checks and trigger fixtures
+# Effectiveness checks and optional eval fixtures
 
-LLM-assessed checks. These require reading and reasoning about the skill body — they cannot be purely mechanical.
+Instruction-quality checks use deterministic heuristics with optional contextual review. Fixture checks validate structure only; none measure empirical skill performance.
 
 ## 4.1: ambiguous instructions
 
@@ -160,3 +160,7 @@ If < 10 lines:
 ## 4.9: optional trigger-query fixtures (WARN)
 
 Validate provided `eval_queries.json`, `train_queries.json`, and `validation_queries.json` in the skill root or `evals/`. Each is a non-empty JSON array of objects with a non-empty `query` string and a JSON boolean `should_trigger`. Additional fields are allowed. Unreadable files, invalid structure, and files above the evaluator's 1 MB limit produce optional evaluator-policy warnings. Absence produces no finding. Counts and structure do not establish realistic labels, precision, recall, or trigger accuracy. See [description optimization](09-description-optimization.md).
+
+## 4.10: optional output-quality fixture validity
+
+Optional evaluator policy inspects `evals/evals.json` declarations and safe local input paths. Missing fixtures and assertions are neutral. Invalid supplied fixtures produce a WARN, never an Agent Skills format ERROR. Successful validation establishes fixture structure only: execution, grading, baseline improvement, timing, and output quality remain unmeasured. See `10-output-quality-evals.md` for the schema, read limits, and separate empirical workflow.

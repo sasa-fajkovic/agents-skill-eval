@@ -56,6 +56,7 @@ The evaluator must print exactly one JSON object to stdout and nothing else. No 
 - Every finding must include a `reason` so no follow-up LLM call is needed to explain it.
 - All findings arrays must always be present as `[]`, never `null`.
 - `metadata.unsupported_script_types` retains the legacy evaluator-policy set `.js`, `.ts`, `.go`, `.rb`, `.php`, and `.pl`. This field does not classify a language as invalid under the specification. Other extensions can receive 1.11 portability warnings without appearing in this legacy field.
+- `metadata.output_evals` is a static summary: `{"measurement":"not_run","files":[]}` when absent, otherwise one entry with fixed `path: "evals/evals.json"`, boolean `valid`, and integer `eval_count`, `assertion_count`, and `input_file_count`. Invalid fixtures have zero counts. Input-file counts are unique paths; assertion counts include optional `assertions` and `expectations` declarations. Prompts, expected outputs, assertions, IDs, and supplied input paths are excluded. This field never reports observed performance or authenticates supplied result files.
 
 ## Trigger-query metadata
 

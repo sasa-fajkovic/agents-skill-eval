@@ -41,8 +41,8 @@ Why every check exists — the real-world failure mode it prevents.
 **What**: ERROR for prompt patterns without nearby fallback indicators.
 **Why**: Unattended execution can hang on interactive input. This is execution quality policy, not an Agent Skills format requirement.
 
-### 1.11 — runtime portability (evaluator policy)
-**What**: Prefer `.py` and `.sh`; WARN on other script extensions, with no language ERROR.
+### 1.11 — runtime portability and readability (evaluator policy)
+**What**: Prefer `.py` and `.sh`; WARN on other script extensions or incomplete script/security analysis when potential entrypoints cannot be safely read, with no format ERROR.
 **Why**: Runtime availability depends on the environment. The specification permits supported languages. Document dependencies in compatibility rather than classifying a language as invalid. The legacy `unsupported_script_types` field preserves its existing runtime set for consumers.
 
 ## Tier 2: Security (evaluator policy)
