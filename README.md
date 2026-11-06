@@ -121,9 +121,9 @@ Default behavior is deterministic-only. Uploaded skill content is not sent to th
 
 Requirements:
 
-- Go
+- Go 1.26.10 or newer
 - Redis
-- Python 3
+- Python 3.10 or newer with dependencies from `.claude/skills/skill-evaluation/requirements.txt`
 
 Start locally:
 
@@ -146,9 +146,12 @@ make stop
 
 ## Tests
 
-Run everything:
+Install prerequisites, then run everything:
 
 ```bash
+python3 -m venv /tmp/agents-skill-eval-venv
+source /tmp/agents-skill-eval-venv/bin/activate
+python3 -m pip install -r .claude/skills/skill-evaluation/requirements.txt -r .claude/skills/skill-evaluation/tests/requirements.txt
 make test
 ```
 
