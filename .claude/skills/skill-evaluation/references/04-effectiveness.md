@@ -1,4 +1,4 @@
-# Effectiveness Checks (4.1-4.8)
+# Effectiveness checks and trigger fixtures
 
 LLM-assessed checks. These require reading and reasoning about the skill body — they cannot be purely mechanical.
 
