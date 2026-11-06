@@ -39,22 +39,31 @@ class Tier1Tests(unittest.TestCase):
         name_findings = [f for f in findings if "hyphens" in f.message or "must be" in f.message]
         self.assertEqual(len(name_findings), 0)
 
-    def test_check_1_1_flags_too_many_words(self) -> None:
-        fm = {"name": "one-two-three-four-five-six-seven-eight-nine-ten-eleven"}
-        findings = tier1.check_1_1(fm, "/tmp/one-two-three-four-five-six-seven-eight-nine-ten-eleven")
-        self.assertTrue(any(f.check_id == "1.1" and "11 hyphen-separated words" in f.message for f in findings))
+    def test_check_1_1_has_no_word_count_limit(self) -> None:
+        name = "one-two-three-four-five-six-seven-eight-nine-ten-eleven"
+        self.assertEqual(tier1.check_1_1({"name": name}, f"/tmp/{name}"), [])
 
-    def test_check_1_1_flags_over_50_chars(self) -> None:
-        long_name = "a" + "-bcd" * 13  # 53 chars, ≤10 words
-        fm = {"name": long_name}
-        findings = tier1.check_1_1(fm, f"/tmp/{long_name}")
-        self.assertTrue(any(f.check_id == "1.1" and "max 50" in f.message for f in findings))
+    def test_check_1_1_length_boundaries(self) -> None:
+        for count in (1, 50, 51, 64, 65):
+            with self.subTest(count=count):
+                name = "a" * count
+                findings = tier1.check_1_1({"name": name}, f"/tmp/{name}")
+                self.assertEqual(bool(findings), count > 64)
+        self.assertTrue(tier1.check_1_1({"name": ""}, "/tmp/demo"))
 
-    def test_check_1_1_passes_at_limits(self) -> None:
-        fm = {"name": "a-b-c-d-e-f-g-h-i-j"}  # 10 words, 19 chars
-        findings = tier1.check_1_1(fm, "/tmp/a-b-c-d-e-f-g-h-i-j")
-        length_findings = [f for f in findings if "max 50" in f.message or "hyphen-separated words" in f.message]
-        self.assertEqual(len(length_findings), 0)
+    def test_check_1_1_unicode_normalization(self) -> None:
+        for name, dirname in (("café", "cafe\u0301"), ("cafe\u0301", "café"), ("技能", "技能"), ("ｄｅｍｏ", "demo"), ("demo", "ｄｅｍｏ"), (" demo ", "demo")):
+            with self.subTest(name=name, dirname=dirname):
+                self.assertEqual(tier1.check_1_1({"name": name}, f"/tmp/{dirname}"), [])
+
+    def test_check_1_1_rejects_invalid_normalized_names(self) -> None:
+        for name in ("Demo", "Ｄｅｍｏ", "a_b", "a b", "-demo", "demo-", "demo--name", "demo😀", "é\u0301"):
+            with self.subTest(name=name):
+                self.assertTrue(tier1.check_1_1({"name": name}, f"/tmp/{name}"))
+
+    def test_check_1_1_matches_real_directory_but_skips_synthetic_upload(self) -> None:
+        self.assertTrue(tier1.check_1_1({"name": "demo"}, "/tmp/different"))
+        self.assertEqual(tier1.check_1_1({"name": "demo"}, "/tmp/eval-01234567-0123-0123-0123-0123456789ab"), [])
 
     # --- 1.2: description length thresholds ---
 
@@ -65,27 +74,38 @@ class Tier1Tests(unittest.TestCase):
         warn_findings = [f for f in findings if f.check_id == "1.2" and f.severity == "WARN" and "context bloat" in f.message]
         self.assertEqual(len(warn_findings), 1)
 
-    def test_check_1_2_errors_over_500(self) -> None:
-        desc = "Use when " + "x" * 600
+    def test_check_1_2_errors_over_1024(self) -> None:
+        desc = "Use when " + "x" * 1016
         fm = {"name": "demo", "description": desc}
         findings = tier1.check_1_2(fm)
-        err_findings = [f for f in findings if f.check_id == "1.2" and f.severity == "ERROR" and "max 500" in f.message]
+        err_findings = [f for f in findings if f.check_id == "1.2" and f.severity == "ERROR" and "max 1024" in f.message]
         self.assertEqual(len(err_findings), 1)
 
     def test_check_1_2_passes_under_350(self) -> None:
         fm = {"name": "demo", "description": "Use when reviewing skills."}
         findings = tier1.check_1_2(fm)
-        length_findings = [f for f in findings if "max 500" in f.message or "context bloat" in f.message]
+        length_findings = [f for f in findings if "max 1024" in f.message or "context bloat" in f.message]
         self.assertEqual(len(length_findings), 0)
 
-    # --- 1.3: allowed-tools is WARN not ERROR ---
+    def test_check_1_2_accepts_up_to_1024_as_spec_valid(self) -> None:
+        for count in (500, 501, 1024):
+            with self.subTest(count=count):
+                findings = tier1.check_1_2({"description": "Use when " + "x" * (count - 9)})
+                self.assertFalse(any(f.severity == "ERROR" for f in findings))
+                self.assertTrue(any(f.severity == "WARN" and "optional evaluator heuristic" in f.message for f in findings))
 
-    def test_check_1_3_allowed_tools_is_warn(self) -> None:
-        fm = {"name": "demo", "description": "test", "allowed-tools": ["Bash"]}
-        findings = tier1.check_1_3(fm)
-        at_findings = [f for f in findings if "allowed-tools" in f.message]
-        self.assertEqual(len(at_findings), 1)
-        self.assertEqual(at_findings[0].severity, "WARN")
+    def test_check_1_3_allowed_tools_strings_have_no_finding(self) -> None:
+        for value in ("Bash(git:*) Bash(jq:*) Read", ""):
+            fm = {"allowed-tools": value}
+            self.assertEqual(tier1.check_1_3(fm) + tier1.check_1_4(fm), [])
+
+    def test_check_1_4_allowed_tools_requires_string(self) -> None:
+        for value in (["Bash"], {"tool": "Bash"}, True, 12, None):
+            with self.subTest(value=value):
+                findings = tier1.check_1_3({"allowed-tools": value}) + tier1.check_1_4({"allowed-tools": value})
+                self.assertEqual(len(findings), 1)
+                self.assertEqual(findings[0].severity, "ERROR")
+                self.assertEqual(findings[0].check_id, "1.4")
 
     def test_check_1_3_claude_code_extension_is_warn(self) -> None:
         fm = {"name": "demo", "description": "test", "model": "claude-sonnet"}
@@ -96,15 +116,16 @@ class Tier1Tests(unittest.TestCase):
 
     # --- 1.4: empty value checks ---
 
-    def test_check_1_4_flags_empty_license(self) -> None:
-        fm = {"name": "demo", "description": "test", "license": ""}
-        findings = tier1.check_1_4(fm)
-        self.assertTrue(any(f.check_id == "1.4" and "empty" in f.message for f in findings))
+    def test_check_1_4_license_has_no_minimum_length(self) -> None:
+        for value in ("", "   "):
+            self.assertEqual(tier1.check_1_4({"license": value}), [])
 
-    def test_check_1_4_flags_whitespace_only_license(self) -> None:
-        fm = {"name": "demo", "description": "test", "license": "   "}
-        findings = tier1.check_1_4(fm)
-        self.assertTrue(any(f.check_id == "1.4" and "empty" in f.message for f in findings))
+    def test_check_1_4_metadata_is_arbitrary_string_mapping(self) -> None:
+        fm = {"metadata": {"author": "example-org", "version": "1.0", "model": "custom data", "tags": "ci"}}
+        self.assertEqual(tier1.check_1_3(fm) + tier1.check_1_4(fm) + tier1.check_1_5(fm), [])
+        for value in (["ci"], 1, True, None, {"nested": "value"}):
+            with self.subTest(value=value):
+                self.assertTrue(tier1.check_1_4({"metadata": {"custom": value}}))
 
     def test_check_1_4_passes_valid_license(self) -> None:
         fm = {"name": "demo", "description": "test", "license": "MIT"}
@@ -123,7 +144,7 @@ class Tier1Tests(unittest.TestCase):
 
     # --- 1.11: script language handling ---
 
-    def test_check_1_11_js_is_warn_with_spec_mention(self) -> None:
+    def test_check_1_11_js_is_policy_warning(self) -> None:
         root = Path(tempfile.mkdtemp())
         skill_dir = root / "demo"
         scripts_dir = skill_dir / "scripts"
@@ -133,7 +154,7 @@ class Tier1Tests(unittest.TestCase):
         findings = tier1.check_1_11(str(skill_dir))
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].severity, "WARN")
-        self.assertIn("spec lists JavaScript as common", findings[0].message)
+        self.assertIn("evaluator portability policy", findings[0].message)
 
     def test_check_1_11_ts_is_warn(self) -> None:
         root = Path(tempfile.mkdtemp())
@@ -156,25 +177,23 @@ class Tier1Tests(unittest.TestCase):
         findings = tier1.check_1_11(str(skill_dir))
         self.assertEqual(len(findings), 0)
 
-    # --- 1.6: reference skill line limit ---
+    def test_check_1_11_other_language_is_warning_not_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts = Path(tmp) / "scripts"
+            scripts.mkdir()
+            for ext in (".lua", ".rs", ".go"):
+                (scripts / f"runner{ext}").write_text("", encoding="utf-8")
+            findings = tier1.check_1_11(tmp)
+            self.assertEqual(len(findings), 3)
+            self.assertTrue(all(f.severity == "WARN" for f in findings))
 
-    def test_check_1_6_reference_skill_gets_higher_limit(self) -> None:
-        """Reference skills get 800-line limit instead of 500."""
-        lines = ["line"] * 600  # Over 500 but under 800
-        findings = tier1.check_1_6(lines, description="reference documentation for API endpoints")
-        self.assertEqual(len(findings), 0)
-
-    def test_check_1_6_reference_skill_over_limit(self) -> None:
-        lines = ["line"] * 850  # Over 800
-        findings = tier1.check_1_6(lines, description="knowledge base reference")
-        self.assertEqual(len(findings), 1)
-        self.assertIn("800", findings[0].message)
-
-    def test_check_1_6_normal_skill_500_limit(self) -> None:
-        lines = ["line"] * 600
-        findings = tier1.check_1_6(lines, description="Use when creating PRs")
-        self.assertEqual(len(findings), 1)
-        self.assertIn("500", findings[0].message)
+    def test_check_1_6_recommendation_applies_to_all_skills(self) -> None:
+        for description in ("Use when creating PRs", "reference documentation", "knowledge base"):
+            for count in (499, 500, 501, 800, 850):
+                with self.subTest(description=description, count=count):
+                    findings = tier1.check_1_6(["line"] * count, description)
+                    self.assertEqual(len(findings), int(count >= 500))
+                    self.assertTrue(all(f.severity == "WARN" for f in findings))
 
 
 if __name__ == "__main__":

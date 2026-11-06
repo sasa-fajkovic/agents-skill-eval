@@ -13,23 +13,13 @@ except Exception:  # pragma: no cover - defensive import fallback
 
 try:
     import yaml
-except ModuleNotFoundError:  # pragma: no cover - exercised via subprocess tests
-    class _FallbackYAMLModule:
-        class YAMLError(Exception):
-            pass
-
-        @staticmethod
-        def safe_load(text: str):
-            data = {}
-            for raw_line in text.splitlines():
-                line = raw_line.strip()
-                if not line or line.startswith("#") or ":" not in line:
-                    continue
-                key, value = line.split(":", 1)
-                data[key.strip()] = value.strip().strip('"\'')
-            return data
-
-    yaml = _FallbackYAMLModule()
+except ModuleNotFoundError as exc:
+    print(
+        "Missing required dependency PyYAML. Install it with: "
+        "python3 -m pip install -r <skill-directory>/requirements.txt",
+        file=sys.stderr,
+    )
+    raise SystemExit(3) from exc
 
 _use_color = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
 GREEN = "\033[32m" if _use_color else ""
@@ -66,21 +56,19 @@ ALLOWED_TEXT_EXTENSIONS = {
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 PDF_EXTENSIONS = {".pdf"}
 
-STABLE_FIELDS = {"name", "description", "license", "compatibility", "metadata"}
+SPEC_FIELDS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 CLAUDE_CODE_EXTENSIONS = {
-    "allowed-tools", "argument-hint", "disable-model-invocation",
+    "argument-hint", "disable-model-invocation",
     "user-invocable", "model", "effort", "context", "agent",
     "hooks", "paths", "shell",
 }
-NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-ALLOWED_SCRIPT_EXTENSIONS = {".sh", ".py"}
-DISCOURAGED_SCRIPT_EXTENSIONS = {".js", ".ts", ".go", ".rb", ".php", ".pl"}
-MAX_NAME_LEN = 50
-MAX_NAME_WORDS = 10
-MAX_DESC_LEN = 500
+PREFERRED_SCRIPT_EXTENSIONS = {".sh", ".py"}
+PORTABILITY_SCRIPT_EXTENSIONS = {".js", ".ts", ".go", ".rb", ".php", ".pl"}
+MAX_NAME_LEN = 64
+MAX_DESC_LEN = 1024
 WARN_DESC_LEN = 350
 MAX_COMPAT_LEN = 500
-MAX_LINES = 500
+RECOMMENDED_MAX_LINES = 500
 
 WHEN_PHRASES = re.compile(
     r"use when|use for|use if|use after|use before|use to|use whenever|"
@@ -324,12 +312,12 @@ class Finding:
             "1.2": "Descriptions tell an agent when the skill should activate and what it is for.",
             "1.3": "Non-standard fields reduce portability across agent runtimes that implement the open skills standard.",
             "1.4": "Typed, predictable frontmatter fields keep the skill machine-readable across runtimes.",
-            "1.5": "Metadata should not duplicate git history or hide runtime-specific behavior behind arbitrary keys.",
-            "1.6": "Excessively long skills are harder for agents to load, inspect, and apply consistently.",
-            "1.8": "Agents rely on --help to learn a script's interface safely and autonomously.",
-            "1.9": "Structured output is easier for agents to parse, validate, and compose than free-form text.",
-            "1.10": "Interactive prompts block autonomous execution because agents cannot respond inline.",
-            "1.11": "Portable skills should prefer shell and Python scripts because those runtimes are commonly available without extra setup.",
+            "1.5": "The specification permits arbitrary string-to-string metadata.",
+            "1.6": "The specification recommends keeping SKILL.md under 500 lines for progressive disclosure; this is not a validity limit.",
+            "1.8": "Evaluator policy: agents rely on --help to learn a script's interface safely and autonomously.",
+            "1.9": "Evaluator policy: structured output is easier for agents to parse, validate, and compose than free-form text.",
+            "1.10": "Evaluator policy: interactive prompts block autonomous execution because agents cannot respond inline.",
+            "1.11": "Evaluator portability policy prefers shell and Python; the specification permits script languages supported by the runtime.",
             "2.1": "Broad tool instructions make execution behavior ambiguous and harder to bound safely.",
             "2.2": "Destructive operations need explicit safeguards to avoid irreversible damage.",
             "2.4": "Hardcoded user home directory paths break portability across machines and users.",
@@ -394,6 +382,43 @@ def read_text_file(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+class _FrontmatterSafeLoader(yaml.SafeLoader):
+    def __init__(self, stream):
+        super().__init__(stream)
+        self._merged_entries = 0
+        self._active_merges = set()
+
+    def flatten_mapping(self, node):
+        marker = id(node)
+        if marker in self._active_merges:
+            raise yaml.YAMLError("recursive YAML merge exceeds parser resource limits")
+        self._active_merges.add(marker)
+        try:
+            for key_node, value_node in node.value:
+                if key_node.tag != "tag:yaml.org,2002:merge":
+                    continue
+                targets = value_node.value if isinstance(value_node, yaml.SequenceNode) else [value_node]
+                for target in targets:
+                    if not isinstance(target, yaml.MappingNode):
+                        continue
+                    self.flatten_mapping(target)
+                    self._merged_entries += len(target.value)
+                    if self._merged_entries > 10000:
+                        raise yaml.YAMLError("YAML merge expansion exceeds parser resource limit (10000 entries)")
+            super().flatten_mapping(node)
+        finally:
+            self._active_merges.remove(marker)
+
+
+def _load_frontmatter_yaml(text: str):
+    try:
+        return yaml.load(text, Loader=_FrontmatterSafeLoader)
+    except RecursionError as exc:
+        raise yaml.YAMLError("nesting exceeds the parser limit") from exc
+    except (ValueError, TypeError, AttributeError, OverflowError) as exc:
+        raise yaml.YAMLError(f"invalid scalar value ({type(exc).__name__})") from exc
+
+
 def parse_frontmatter(text: str) -> tuple[dict | None, str]:
     lines = text.splitlines(keepends=True)
     if not lines or lines[0].rstrip("\r\n") != "---":
@@ -411,7 +436,7 @@ def parse_frontmatter(text: str) -> tuple[dict | None, str]:
     fm_text = "".join(lines[1:end_line]).strip()
     body = "".join(lines[end_line + 1:]).strip()
     try:
-        fm = yaml.safe_load(fm_text)
+        fm = _load_frontmatter_yaml(fm_text)
         return fm if isinstance(fm, dict) else None, body
     except yaml.YAMLError:
         return None, body
@@ -448,7 +473,7 @@ def diagnose_frontmatter_failure(text: str) -> str:
     # Delimiters present but YAML parsing failed
     fm_text = "".join(lines[1:end_line]).strip()
     try:
-        result = yaml.safe_load(fm_text)
+        result = _load_frontmatter_yaml(fm_text)
         if not isinstance(result, dict):
             return f"YAML frontmatter parsed as {type(result).__name__} instead of a mapping; check for missing key-value pairs"
         return "no valid YAML frontmatter found"

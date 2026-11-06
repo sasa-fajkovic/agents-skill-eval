@@ -4,9 +4,9 @@ import re
 from pathlib import Path
 
 from common import (
-    ALLOWED_SCRIPT_EXTENSIONS,
+    PREFERRED_SCRIPT_EXTENSIONS,
     ALLOWED_TEXT_EXTENSIONS,
-    DISCOURAGED_SCRIPT_EXTENSIONS,
+    PORTABILITY_SCRIPT_EXTENSIONS,
     IMAGE_EXTENSIONS,
     MAX_FILE_EXCERPT_CHARS,
     MAX_SUPPORTING_CONTEXT_CHARS,
@@ -258,12 +258,12 @@ def scripts_under(skill_dir: str) -> list[tuple[Path, str]]:
     root = Path(skill_dir)
     results = []
     for file_path in sorted(root.iterdir()):
-        if file_path.is_file() and file_path.suffix in ALLOWED_SCRIPT_EXTENSIONS:
+        if file_path.is_file() and file_path.suffix in PREFERRED_SCRIPT_EXTENSIONS:
             results.append((file_path, file_path.name))
     scripts_dir = root / "scripts"
     if scripts_dir.is_dir():
         for file_path in sorted(scripts_dir.iterdir()):
-            if file_path.is_file() and file_path.suffix in ALLOWED_SCRIPT_EXTENSIONS:
+            if file_path.is_file() and file_path.suffix in PREFERRED_SCRIPT_EXTENSIONS:
                 results.append((file_path, f"scripts/{file_path.name}"))
     return results
 
@@ -301,12 +301,12 @@ def entrypoint_scripts(skill_dir: str) -> list[tuple[Path, str]]:
 def collect_metadata(skill_path: Path) -> dict:
     skill_dir = skill_path.parent
     files = [path for path in skill_dir.rglob("*") if path.is_file()]
-    script_types = sorted({path.suffix for path in files if path.suffix in ALLOWED_SCRIPT_EXTENSIONS})
-    unsupported_script_types = sorted({path.suffix for path in files if path.suffix in DISCOURAGED_SCRIPT_EXTENSIONS})
+    script_types = sorted({path.suffix for path in files if path.suffix in PREFERRED_SCRIPT_EXTENSIONS})
+    unsupported_script_types = sorted({path.suffix for path in files if path.suffix in PORTABILITY_SCRIPT_EXTENSIONS})
     return {
         "file_count": len(files),
         "line_count": len(read_text_file(skill_path).splitlines()) if skill_path.exists() else 0,
-        "has_scripts": any(path.suffix in ALLOWED_SCRIPT_EXTENSIONS or path.suffix in DISCOURAGED_SCRIPT_EXTENSIONS for path in files),
+        "has_scripts": any(path.suffix in PREFERRED_SCRIPT_EXTENSIONS or path.suffix in PORTABILITY_SCRIPT_EXTENSIONS for path in files),
         "script_types": script_types,
         "unsupported_script_types": unsupported_script_types,
     }

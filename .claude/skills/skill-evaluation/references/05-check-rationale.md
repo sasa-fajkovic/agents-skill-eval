@@ -2,64 +2,53 @@
 
 Why every check exists — the real-world failure mode it prevents.
 
-## Tier 1: Specification Compliance
+## Tier 1: Specification and evaluator policy
 
 ### 1.1 — name format
-**What**: name must be present, ≤50 chars and ≤10 hyphen-separated words, `[a-z0-9-]`, no leading/trailing/consecutive hyphens, match parent directory.
-**Why**: Broken name = broken discovery. Agents match skills by name. A name like `My Skill` or `mySkill` fails pattern matching. A name that doesn't match the directory means the skill can't be found by convention. Overly long names also bloat the catalog frontmatter that loads on every API call.
-**Value**: Skill is discoverable and activatable across all platforms.
+**What**: Required string, 1–64 characters, lowercase Unicode alphanumeric characters or single interior hyphens, matching the parent directory after NFKC normalization. No word-count limit.
+**Why**: The current specification and linked skills-ref validator define discoverable skill identifiers. Matching normalized names avoids mismatches caused by equivalent Unicode spellings.
 
 ### 1.2 — description
-**What**: Present, non-empty, ≤500 chars (ERROR), ≤350 chars (WARN above that), describes what AND when.
-**Why**: The description is the single most important field. It determines whether an agent loads the skill at all. Agents scan descriptions to match tasks — if the description only says "what" but not "when to use it", the agent can't decide whether to activate it. Descriptions are truncated to ~250 chars in listings, so front-loading matters.
-**Value**: Skill gets activated for the right tasks, not missed or mis-triggered.
+**What**: Required non-empty string, at most 1024 characters (ERROR). Optional evaluator heuristics warn above 350 characters and for missing recognized trigger phrases.
+**Why**: Descriptions help agents select skills. The optimization warnings are project heuristics, not additional specification limits or required literal wording.
 
-### 1.3 — no non-standard fields
-**What**: Only the 5 stable agentskills.io fields allowed in frontmatter.
-**Why**: Using `model: sonnet` works in Claude Code but is silently ignored by OpenCode and Codex. Using `allowed-tools: Read Grep` works in Claude Code but is experimental in the base spec and ignored by other platforms. The skill behaves differently across platforms with no error or warning. Use `compatibility:` to signal platform requirements and handle tool scoping in body prose.
-**Value**: Skill works identically on every platform that implements agentskills.io.
+### 1.3 — documented fields and extensions
+**What**: Accept all six documented fields, including experimental `allowed-tools`. Known platform extensions WARN; unknown top-level fields ERROR.
+**Why**: Experimental support can vary without making a field invalid. Runtime-specific extension behavior can reduce portability. Custom string data belongs in metadata.
 
-### 1.4 — field type/value validation
-**What**: Each of the 5 stable fields has correct type and constraints.
-**Why**: `metadata: "version 1.0"` instead of `metadata: { version: "1.0" }` silently breaks. `compatibility` over 500 chars gets truncated or rejected. Type errors surface as mysterious behavior, not clear error messages.
-**Value**: Frontmatter parses correctly on all implementations.
+### 1.4 — field types
+**What**: Validate documented field types and length constraints. `allowed-tools` is a space-separated string. Metadata is an arbitrary string-to-string mapping.
+**Why**: Safe YAML parsing preserves types so malformed structures can be diagnosed. Quote numbers, dates, and boolean-like metadata to keep them strings.
 
-### 1.5 — metadata redundant keys
-**What**: WARN per key for metadata entries that duplicate git history (`author`, `version`, `tags`, etc.). Runtime-relevant keys (`argument-hint`, custom keys) are not flagged. CC extensions placed inside metadata emit a 1.3 WARN instead.
-**Why**: Every frontmatter token loads on every API call. `author` and `version` are already in git blame and tags. `argument-hint` inside metadata is Claude Code UI sugar — it's useful but placing a CC extension inside `metadata` is a portability smell since it silently does nothing on other platforms.
-**Value**: Per-call cost stays minimal. Authors consciously justify each metadata entry rather than copying boilerplate.
+### 1.5 — metadata compatibility placeholder
+**What**: No findings; the ID remains for compatibility.
+**Why**: The specification permits arbitrary string-to-string metadata and explicitly illustrates author and version. Penalizing these keys would reject valid examples.
 
-### 1.6 — SKILL.md over 500 lines
-**What**: ERROR when file exceeds 500 lines.
-**Why**: Official skill authoring guidance recommends under 500 lines / 5000 tokens. The full SKILL.md loads when the skill activates. A 1000-line skill costs twice as much per activation and leaves less context window for actual work. Long skills also tend to contain content that belongs in references/ or scripts/.
-**Value**: Predictable context cost. Forces content into the right tier of progressive disclosure.
+### 1.6 — recommended SKILL.md length
+**What**: WARN at 500 or more lines, including reference skills.
+**Why**: The specification recommends under 500 lines for progressive disclosure. This is a recommendation, not a hard validity limit or an 800-line exception.
 
-### 1.8 — scripts must implement --help
-**What**: Every script in scripts/ must handle --help.
-**Why**: Per agentskills.io, --help is the primary way an agent discovers a script's interface. Without it, the agent must read the source code to understand flags, arguments, and behavior — wasting context window and increasing error rate. A script with good --help is self-documenting.
-**Value**: Agents can learn script interfaces without reading source code. Reduces context window usage and trial-and-error.
+### 1.8 — entrypoint help (evaluator policy)
+**What**: ERROR when entrypoint scripts lack static help indicators.
+**Why**: Help lets agents discover interfaces without reading source. This static quality heuristic is not a format requirement.
 
-### 1.9 — structured output preferred
-**What**: Scripts should output JSON/CSV/TSV rather than free-form text.
-**Why**: Structured output is composable — agents can pipe it through jq, cut, awk. Free-form text requires parsing heuristics that are fragile and model-dependent. JSON is unambiguous; "whitespace-aligned columns" is not. Structured output also enables agent-to-agent data passing.
-**Value**: Script output is reliably parseable. Agents can chain scripts and extract specific fields without guessing.
+### 1.9 — structured output (evaluator policy)
+**What**: WARN when output lacks structured-format indicators.
+**Why**: Structured output is easier to compose and validate. Human-readable output can still be intentional and specification-valid.
 
-### 1.10 — no interactive prompts
-**What**: Scripts must not block on TTY input (read -p, input(), prompt dialogs).
-**Why**: Agents run in non-interactive shells. A script that blocks on interactive input hangs indefinitely with no error message. This is a hard constraint of the agent execution environment. All input must come via flags, env vars, or stdin.
-**Value**: Scripts never hang. Agents can always run scripts to completion without human intervention.
+### 1.10 — interactive prompts (evaluator policy)
+**What**: ERROR for prompt patterns without nearby fallback indicators.
+**Why**: Unattended execution can hang on interactive input. This is execution quality policy, not an Agent Skills format requirement.
 
-### 1.11 — prefer Python and bash scripts
-**What**: Scripts should be .py or .sh. A recognized but discouraged runtime (JS/TS, Go, Ruby, PHP, Perl) is a WARN; an extension that is not a recognized scripting language is an ERROR.
-**Why**: Python and bash are available on virtually every CI runner (Ubuntu, macOS) and developer machine without extra setup. Node.js, Go, Ruby, Deno, and Bun are not guaranteed. A skill with a `.ts` script silently fails when Node.js isn't installed. Preferring Python+bash means skills work everywhere with zero setup.
-**Why WARN and not ERROR**: a `.ts` script is not broken — it works wherever Node.js is installed, which for some teams is everywhere they run. Failing it outright would tell them a working skill is invalid. A warning prices the portability cost and leaves the decision with the team. ERROR is reserved for extensions that aren't a recognized scripting language, where the file is unlikely to be executable as a script anywhere.
-**Value**: Skills are portable, and where they aren't, the trade-off is visible instead of silent. No "install Node.js first" surprises.
+### 1.11 — runtime portability (evaluator policy)
+**What**: Prefer `.py` and `.sh`; WARN on other script extensions, with no language ERROR.
+**Why**: Runtime availability depends on the environment. The specification permits supported languages. Document dependencies in compatibility rather than classifying a language as invalid. The legacy `unsupported_script_types` field preserves its existing runtime set for consumers.
 
-## Tier 2: Security
+## Tier 2: Security (evaluator policy)
 
 ### 2.1 — body references tools without scoping
 **What**: Skill body instructs the agent to use tools (Bash, shell, file operations) without specifying which operations are allowed.
-**Why**: Since `allowed-tools` is not part of the stable spec, the security boundary must come from the skill body itself. Instructions like "run any necessary commands" give the agent carte blanche. Instructions like "use only git status, git diff, and git log" constrain behavior through prose — the only portable way to scope tool access.
+**Why**: The experimental `allowed-tools` field has implementation-dependent support, so body instructions should also explain intended tool scope. Instructions like "run any necessary commands" give the agent carte blanche. Instructions like "use only git status, git diff, and git log" constrain behavior through prose across runtimes.
 **Value**: Skill limits agent capabilities regardless of platform, reducing blast radius of errors.
 
 ### 2.2 — destructive operations without safeguards
@@ -72,7 +61,7 @@ Why every check exists — the real-world failure mode it prevents.
 **Why**: Hardcoded user paths break portability across machines and users. The skill only works on the original author's machine. Use `$HOME`, `~`, or environment variables instead.
 **Value**: Skills work on any machine regardless of username or OS.
 
-## Tier 3: Token Efficiency
+## Tier 3: Token Efficiency (evaluator policy)
 
 ### 3.1 — inline code should be script
 **What**: Code blocks >5 lines should be in scripts/ directory.
@@ -109,7 +98,7 @@ Why every check exists — the real-world failure mode it prevents.
 **Why**: Some MCP servers (Figma, Slack, org-internal services) have no portable CLI alternative — banning them outright forces worse workflows. Others (GitHub, Atlassian) have strictly better, cheaper CLI tools (`gh`, `acli`). A namespace-aware policy lets the evaluator distinguish between the two. MCP lives in Tier 3 (token efficiency), not Tier 2 (security), because the concern is overhead and portability rather than safety. See [`mcp-policy.md`](mcp-policy.md) for the current namespace lists.
 **Value**: Skills can use MCP where it's the only good path, are blocked from MCP where a CLI is strictly better, and new namespaces get a WARN for human review.
 
-## Tier 4: Effectiveness
+## Tier 4: Effectiveness (evaluator policy)
 
 ### 4.1 — ambiguous instructions
 **What**: Vague terms ("appropriately", "as needed", "relevant"), context-dependent language, underspecified edge cases.
