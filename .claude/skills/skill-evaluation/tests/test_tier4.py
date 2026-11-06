@@ -154,6 +154,10 @@ class Tier4Tests(unittest.TestCase):
             "Never invoke this skill for imports; never include implementation details.",
             "Never invoke this skill for imports. Never include implementation details.",
             "Never invoke this skill without checking logs.",
+            "Never invoke this skill for imports and never edit generated files.",
+            "Never invoke this skill for imports, and never edit generated files.",
+            "Never invoke this skill for imports but never edit generated files.",
+            "Never invoke this skill for imports or never edit generated files.",
         ):
             with self.subTest(body=body):
                 self.assertTrue(tier4.check_4_3(body))

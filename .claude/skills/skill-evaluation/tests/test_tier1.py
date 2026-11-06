@@ -96,6 +96,13 @@ class Tier1Tests(unittest.TestCase):
             "Analyze tabular data. Activate this skill when the user shares a CSV.",
             "Invokes when the user needs CSV analysis.",
             "Triggers for CSV analysis requests.",
+            "Analyze CSVs. Use this when a spreadsheet needs charts.",
+            "Use it when a spreadsheet needs charts.",
+            "Analyze CSVs whenever the user asks for regional totals.",
+            "Analyze CSVs when a user needs a chart.",
+            "Analyze CSVs when users need a chart.",
+            "Triggers on CSV uploads.",
+            "Activate on CSV analysis requests.",
         ):
             with self.subTest(description=description):
                 self.assertEqual(tier1.check_1_2({"description": description}), [])

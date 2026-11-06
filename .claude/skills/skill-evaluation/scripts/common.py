@@ -70,9 +70,9 @@ MAX_COMPAT_LEN = 500
 RECOMMENDED_MAX_LINES = 500
 
 WHEN_PHRASES = re.compile(
-    r"\buse\s+(?:(?:this|the)\s+skill\s+)?(?:when|for|if|after|before|to|whenever)\b|"
-    r"\bwhen\s+(?:the\s+)?user\b|"
-    r"\b(?:triggers?|activates?|invokes?|runs?)(?:\s+(?:(?:this|the)\s+skill|this))?\s+(?:when|for|if)\b",
+    r"\buse\s+(?:(?:(?:this|the)\s+skill|this|it)\s+)?(?:when|for|if|after|before|to|whenever)\b|"
+    r"\bwhen(?:ever)?\s+(?:(?:a|the)\s+)?users?\b|"
+    r"\b(?:triggers?|activates?|invokes?|runs?)(?:\s+(?:(?:this|the)\s+skill|this))?\s+(?:when|for|if|on)\b",
     re.IGNORECASE,
 )
 UNSCOPED_TOOL = re.compile(
