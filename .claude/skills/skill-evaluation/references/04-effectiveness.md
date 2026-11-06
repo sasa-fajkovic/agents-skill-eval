@@ -1,6 +1,6 @@
-# Effectiveness Checks (4.1-4.8)
+# Effectiveness Checks (4.1-4.8, 4.10)
 
-LLM-assessed checks. These require reading and reasoning about the skill body — they cannot be purely mechanical.
+Instruction-quality checks use deterministic heuristics with optional contextual review. Fixture checks validate structure only; none measure empirical skill performance.
 
 ## 4.1: ambiguous instructions
 
@@ -151,4 +151,8 @@ If < 10 lines:
 ```
 
 **Fix suggestion**: `Expand the skill body with actionable instructions, steps, and examples. A skill should be self-contained enough to guide an agent without requiring external documentation.`
+
+## 4.10: optional output-quality fixture validity
+
+Optional evaluator policy inspects `evals/evals.json` declarations and safe local input paths. Missing fixtures and assertions are neutral. Invalid supplied fixtures produce a WARN, never an Agent Skills format ERROR. Successful validation establishes fixture structure only: execution, grading, baseline improvement, timing, and output quality remain unmeasured. See `10-output-quality-evals.md` for the schema, read limits, and separate empirical workflow.
 

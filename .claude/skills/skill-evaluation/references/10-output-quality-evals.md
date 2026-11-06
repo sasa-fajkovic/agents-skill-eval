@@ -23,6 +23,12 @@ Store an optional manifest at `evals/evals.json` inside the skill directory. Giv
 
 Start with a few varied cases and include edge cases. These are authoring recommendations, not required case counts. Absence of a manifest or assertions is neutral. Invalid supplied fixtures produce advisory rule `4.10` warnings under evaluator policy, not Agent Skills format errors.
 
+The manifest uses a non-empty `skill_name` matching the frontmatter name, a non-empty `evals` array, unique integer IDs, and non-empty prompt and expected-output strings. Optional `files`, `assertions`, and the guide-linked skill-creator alias `expectations` are arrays; empty arrays are valid. Assertion counts include declarations in both spellings. Input-file counts count unique paths.
+
+Local policy caps the strict UTF-8 manifest at 1 MiB, JSON nesting at 64 levels, and each input at 5 MiB. Inputs must be regular files within the selected skill root, with root-relative POSIX paths and no symlinks at or within that root. The selected root can be reached through ancestors outside that boundary. Safe descriptor-relative inspection requires platform support; unavailable support yields an advisory fixture warning. These are evaluator limits, separate from transport limits and format requirements.
+
+Output-eval content below `evals/` is omitted from supporting context, preserving recognized trigger-query fixtures under their separate read policy. Input paths recovered from a parseable manifest are also omitted from context. Supporting files and scripts receive bounded reads; declaring a script as input does not suppress its security checks. Public metadata contains only the fixed manifest path, validity, counts, and `measurement: "not_run"`.
+
 ## Measure in a separate runtime
 
 1. Start each run in a clean context. Provide the same prompt and inputs for the skill and its baseline: no skill, or a snapshot of the previous version.

@@ -2616,6 +2616,12 @@
       `;
     }
 
+    function renderChecklistOutput(outputEvals) {
+      const files = Array.isArray(outputEvals?.files) ? outputEvals.files : [];
+      if (!files.length) return '<p class="result-meta">Optional output-quality cases: none provided.</p>';
+      return `<ul class="checklist">${files.map(file => `<li><span>${escapeHtml(file.path)}</span><span>${file.valid ? `${escapeHtml(file.eval_count)} cases · ${escapeHtml(file.assertion_count)} assertions · ${escapeHtml(file.input_file_count)} input files` : 'Invalid fixture'}</span></li>`).join('')}</ul>`;
+    }
+
     function syntaxHighlightJson(value) {
       const json = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
       return escapeHtml(json).replace(/("(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"\s*:|"(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
@@ -2738,6 +2744,12 @@
           <article class="result-card">
             <span class="result-label">Issues</span>
             ${renderList([...(data.findings?.error_findings || []), ...(data.findings?.warning_findings || [])], 'issues')}
+          </article>
+          <article class="result-card">
+            <span class="result-label">Output quality</span>
+            <p class="result-summary">Static fixture checks only. Output quality was not measured; uploaded tasks and assertions are not executed.</p>
+            ${renderChecklistOutput(data.metadata?.output_evals)}
+            <p><a href="https://agentskills.io/skill-creation/evaluating-skills" target="_blank" rel="noreferrer">How to evaluate skill outputs</a></p>
           </article>
           <article class="result-card">
             <span class="result-label">Run mode</span>

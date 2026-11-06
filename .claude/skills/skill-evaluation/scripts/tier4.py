@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from common import (
     AMBIGUOUS_LANGUAGE,
@@ -20,6 +21,7 @@ from common import (
     Finding,
 )
 from extract import entrypoint_scripts, extract_output_section, has_nearby_example, read_text_file
+from output_evals import inspect_output_evals
 
 
 _SPECIFIC_VALUE_NEARBY = re.compile(
@@ -212,7 +214,7 @@ def check_4_8(body: str, has_scripts: bool) -> list[Finding]:
     return []
 
 
-def run_tier4_checks(body: str, skill_dir: str) -> list[Finding]:
+def run_tier4_checks(body: str, skill_dir: str, skill_name: str | None = None) -> list[Finding]:
     findings: list[Finding] = []
     findings.extend(check_4_1(body))
     findings.extend(check_4_2(body))
@@ -223,4 +225,6 @@ def run_tier4_checks(body: str, skill_dir: str) -> list[Finding]:
     findings.extend(check_4_7(skill_dir))
     has_scripts = bool(list(entrypoint_scripts(skill_dir)))
     findings.extend(check_4_8(body, has_scripts))
+    _, output_findings = inspect_output_evals(Path(skill_dir), skill_name)
+    findings.extend(output_findings)
     return findings

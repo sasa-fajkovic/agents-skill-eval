@@ -35,7 +35,7 @@ ALL_CHECK_IDS = [
     "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.8", "1.9", "1.10", "1.11",
     "2.1", "2.2", "2.4",
     "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7",
-    "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8",
+    "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8", "4.10",
 ]
 MAX_SUPPORTING_CONTEXT_CHARS = 12000
 MAX_FILE_EXCERPT_CHARS = 1500
@@ -336,6 +336,7 @@ class Finding:
             "4.6": "Without success criteria the agent cannot determine when the task is complete, risking premature exit or infinite loops.",
             "4.7": "Uniform exit codes (0/1 only) prevent the agent from distinguishing failure types and choosing the right recovery strategy.",
             "4.8": "Skills with insufficient content cannot guide an agent effectively; redirect/pointer skills provide no actionable instructions.",
+            "4.10": "Optional output-quality fixtures must have usable test declarations and safe local input paths under evaluator policy; static validation does not measure output quality.",
         }
         return reason_map.get(self.check_id, "This issue reduces portability, clarity, or reliability of the skill definition.")
 

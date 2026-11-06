@@ -166,7 +166,8 @@ def evaluate(path: str) -> list[Finding]:
     findings.extend(run_tier1_checks(fm, lines, skill_dir))
     findings.extend(run_tier2_checks(body, skill_dir))
     findings.extend(run_tier3_checks(body, skill_dir))
-    findings.extend(run_tier4_checks(body, skill_dir))
+    skill_name = fm.get("name") if isinstance(fm.get("name"), str) else None
+    findings.extend(run_tier4_checks(body, skill_dir, skill_name))
     emit_progress("Collecting supporting context...")
     _ = collect_supporting_context(skill_path)
     return findings

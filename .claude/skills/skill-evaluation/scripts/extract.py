@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from io import BytesIO
 from pathlib import Path
 
 from common import (
@@ -13,14 +14,22 @@ from common import (
     PDF_EXTENSIONS,
     PdfReader,
     parse_frontmatter,
-    read_text_file,
+    read_text_file as read_primary_text_file,
 )
+from output_evals import declared_output_inputs, inspect_output_evals, read_bounded_regular_file, validate_fixture_path
 
 
-def read_pdf_file(path: Path) -> str:
+def read_text_file(path: Path) -> str:
+    try:
+        return read_bounded_regular_file(path.parent, path.absolute()).decode("utf-8", errors="replace")
+    except ValueError as exc:
+        raise OSError("supporting file omitted by evaluator read policy") from exc
+
+
+def read_pdf_file(path: Path, root: Path | None = None) -> str:
     if PdfReader is None:
         return ""
-    reader = PdfReader(str(path))
+    reader = PdfReader(BytesIO(read_bounded_regular_file(root or path.parent, path.absolute())))
     pages = []
     for page in reader.pages:
         try:
@@ -32,6 +41,7 @@ def read_pdf_file(path: Path) -> str:
 
 def collect_supporting_context(skill_path: Path) -> str:
     root = skill_path.parent
+    output_inputs = declared_output_inputs(root)
     paths = [path for path in root.rglob("*") if path.is_file() and path != skill_path]
     inventory = []
     parts = []
@@ -51,15 +61,24 @@ def collect_supporting_context(skill_path: Path) -> str:
     for path in sorted(paths, key=sort_key):
         suffix = path.suffix.lower()
         relative = path.relative_to(root)
-        inventory.append(str(relative))
-        if suffix in ALLOWED_TEXT_EXTENSIONS:
-            content = read_text_file(path)
-        elif suffix in PDF_EXTENSIONS:
-            content = read_pdf_file(path)
-        elif suffix in IMAGE_EXTENSIONS:
-            content = "[image file omitted from text analysis]"
-        else:
+        trigger_fixture = relative.parent == Path("evals") and relative.name in {
+            "eval_queries.json", "train_queries.json", "validation_queries.json",
+        }
+        if (relative.parts[0] == "evals" and not trigger_fixture) or path.absolute() in output_inputs:
             continue
+        inventory.append(str(relative))
+        try:
+            if suffix in ALLOWED_TEXT_EXTENSIONS:
+                content = read_bounded_regular_file(root, path.absolute()).decode("utf-8", errors="replace")
+            elif suffix in PDF_EXTENSIONS:
+                content = read_pdf_file(path, root)
+            elif suffix in IMAGE_EXTENSIONS:
+                validate_fixture_path(root, relative.as_posix())
+                content = "[image file omitted from text analysis]"
+            else:
+                continue
+        except (OSError, ValueError, UnicodeError):
+            content = "[Supporting file content omitted by evaluator read policy]"
 
         stripped = content.strip()
         if not stripped:
@@ -259,11 +278,19 @@ def scripts_under(skill_dir: str) -> list[tuple[Path, str]]:
     results = []
     for file_path in sorted(root.iterdir()):
         if file_path.is_file() and file_path.suffix in PREFERRED_SCRIPT_EXTENSIONS:
+            try:
+                validate_fixture_path(root, file_path.name)
+            except ValueError:
+                continue
             results.append((file_path, file_path.name))
     scripts_dir = root / "scripts"
     if scripts_dir.is_dir():
         for file_path in sorted(scripts_dir.iterdir()):
             if file_path.is_file() and file_path.suffix in PREFERRED_SCRIPT_EXTENSIONS:
+                try:
+                    validate_fixture_path(root, f"scripts/{file_path.name}")
+                except ValueError:
+                    continue
                 results.append((file_path, f"scripts/{file_path.name}"))
     return results
 
@@ -303,12 +330,17 @@ def collect_metadata(skill_path: Path) -> dict:
     files = [path for path in skill_dir.rglob("*") if path.is_file()]
     script_types = sorted({path.suffix for path in files if path.suffix in PREFERRED_SCRIPT_EXTENSIONS})
     unsupported_script_types = sorted({path.suffix for path in files if path.suffix in PORTABILITY_SCRIPT_EXTENSIONS})
+    skill_text = read_primary_text_file(skill_path) if skill_path.exists() else ""
+    fm, _ = parse_frontmatter(skill_text)
+    skill_name = fm.get("name") if isinstance(fm, dict) and isinstance(fm.get("name"), str) else None
+    output_evals, _ = inspect_output_evals(skill_dir, skill_name)
     return {
         "file_count": len(files),
-        "line_count": len(read_text_file(skill_path).splitlines()) if skill_path.exists() else 0,
+        "line_count": len(skill_text.splitlines()),
         "has_scripts": any(path.suffix in PREFERRED_SCRIPT_EXTENSIONS or path.suffix in PORTABILITY_SCRIPT_EXTENSIONS for path in files),
         "script_types": script_types,
         "unsupported_script_types": unsupported_script_types,
+        "output_evals": output_evals,
     }
 
 

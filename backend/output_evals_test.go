@@ -45,3 +45,31 @@ func TestOutputFixtureSummary(t *testing.T) {
 		}
 	}
 }
+
+func TestOutputFixturePromptUsesOnlyValidatedStaticSummary(t *testing.T) {
+	var container evalContainerResult
+	raw := `{"metadata":{"output_evals":{"measurement":"not_run","files":[{"path":"evals/evals.json","valid":true,"eval_count":2,"assertion_count":0,"input_file_count":1,"prompt":"PRIVATE_PROMPT"}],"pass_rate":1},"private":"PRIVATE_METADATA"}}`
+	if err := json.Unmarshal([]byte(raw), &container); err != nil {
+		t.Fatal(err)
+	}
+	prompt := buildLLMPrompt(container)
+	if !strings.Contains(prompt, `"measurement":"not_run"`) || !strings.Contains(prompt, `"eval_count":2`) {
+		t.Fatalf("missing static output fixture summary: %s", prompt)
+	}
+	for _, forbidden := range []string{"PRIVATE_PROMPT", "PRIVATE_METADATA", "pass_rate"} {
+		if strings.Contains(prompt, forbidden) {
+			t.Fatalf("prompt leaked metadata field %q: %s", forbidden, prompt)
+		}
+	}
+	for _, raw := range []string{
+		`{"metadata":{"output_evals":{"measurement":"measured","files":[]}}}`,
+		`{"metadata":{"output_evals":{"measurement":"not_run","files":[{"path":"PRIVATE_PATH","valid":true,"eval_count":1,"assertion_count":0,"input_file_count":0}]}}}`,
+	} {
+		if err := json.Unmarshal([]byte(raw), &container); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(buildLLMPrompt(container), "## Output Eval Summary") {
+			t.Fatalf("accepted invalid summary: %s", raw)
+		}
+	}
+}

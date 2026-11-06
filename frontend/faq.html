@@ -39,6 +39,14 @@
       "mainEntity": [
         {
           "@type": "Question",
+          "name": "Does this measure the quality of a skill's outputs?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The hosted evaluator checks optional evals/evals.json declarations and local input paths. It does not execute uploaded tasks or assertions, compare baseline outputs, or measure output quality. Missing fixtures are neutral; invalid supplied fixtures produce advisory policy warnings. Actual output evaluation needs separate runs, evidence-based grading, timing, and human review. Uploaded result files are supplied data, not authenticated measurements."
+          }
+        },
+        {
+          "@type": "Question",
           "name": "Why agent skills over slash commands?",
           "acceptedAnswer": {
             "@type": "Answer",
@@ -301,6 +309,13 @@
     </section>
 
     <section class="faq-grid">
+      <article class="faq-card">
+        <span class="eyebrow">Question</span>
+        <h3>Does this measure the quality of a skill's outputs?</h3>
+        <p>The hosted evaluator checks optional <code>evals/evals.json</code> declarations and local input paths. It does not execute uploaded tasks or assertions, compare baseline outputs, or measure output quality. Optional AI review assesses the skill's instructions and static summaries.</p>
+        <p>Missing fixtures are neutral. Invalid supplied fixtures produce advisory policy warnings. CSV input files can travel with local or GitHub skill packages. Public metadata contains validity and counts, without test prompts or input contents.</p>
+        <p>Actual evaluation needs separate clean runs with the skill and a baseline, output grading with concrete evidence, actual token and timing data, and human review. Uploaded benchmark or grading files remain supplied data. Follow the <a href="https://agentskills.io/skill-creation/evaluating-skills">Agent Skills output evaluation guide</a>.</p>
+      </article>
       <article class="faq-card">
         <span class="eyebrow">Question</span>
         <h3>Why not just score Claude Code slash commands?</h3>

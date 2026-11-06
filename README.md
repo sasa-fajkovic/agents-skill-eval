@@ -119,6 +119,14 @@ The recommendation to keep SKILL.md under 500 lines produces a warning, includin
 
 Description warnings above 350 characters and for missing trigger phrases are optional evaluator heuristics, not specification limits. Script `--help`, structured output, interactivity, security, MCP namespace, token-efficiency, and effectiveness checks (including the minimum-body-content gate) are project quality policy. Policy errors can still make an evaluation fail; a failed quality evaluation does not necessarily mean invalid Agent Skills format. The specification places no body-format restrictions on SKILL.md.
 
+## Optional output-quality evals
+
+Optional output-quality test cases follow the [Agent Skills evaluation guide](https://agentskills.io/skill-creation/evaluating-skills). Put declarations in `evals/evals.json` with `skill_name`, an `evals` array of unique integer IDs, prompts, and expected outputs, plus optional local input `files` and `assertions`. The guide-linked skill-creator spelling `expectations` is accepted too. Input paths are relative to the skill root; CSV inputs are supported for folder uploads and GitHub packages.
+
+Rule `4.10` is advisory evaluator policy for invalid supplied fixtures; missing fixtures and assertions are neutral. `metadata.output_evals` exposes fixed-path validity and counts with `measurement: "not_run"`. The hosted app does not execute uploaded tasks or assertions, grade outputs, compare a baseline, or authenticate uploaded result files. Separate runtime evaluation and human review are described in the [package's output-quality guide](.claude/skills/skill-evaluation/references/10-output-quality-evals.md).
+
+Local fixture policy limits manifests to 1 MiB of strict UTF-8 JSON with nesting depth 64 and inputs to regular files up to 5 MiB each. Paths must stay inside the selected skill root; symlinks at or within that root are rejected. Supporting file and script reads are bounded too. Output-eval content under `evals/` and parseable manifest-declared inputs are omitted from optional AI context; recognized trigger-query fixtures retain their separate bounded review path. These limits are distinct from upload transport limits and Agent Skills format requirements.
+
 ## Main Parts
 
 - `frontend/`

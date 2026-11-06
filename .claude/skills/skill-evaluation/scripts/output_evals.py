@@ -154,6 +154,35 @@ def _nonempty_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def _load_manifest(root: Path) -> object:
+    text = _read_relative(root, MANIFEST_PATH, MAX_MANIFEST_BYTES).decode("utf-8", errors="strict")
+    _check_json_depth(text)
+    return json.loads(text, object_pairs_hook=_unique_object, parse_constant=_reject_constant, parse_float=_finite_float)
+
+
+def declared_output_inputs(skill_dir: Path) -> set[Path]:
+    """Identify input paths for context omission without trusting fixture validity."""
+    paths = set()
+    try:
+        data = _load_manifest(skill_dir)
+        cases = data.get("evals", []) if isinstance(data, dict) else []
+        if not isinstance(cases, list):
+            return paths
+        for case in cases:
+            files = case.get("files", []) if isinstance(case, dict) else []
+            if not isinstance(files, list):
+                continue
+            for relative in files:
+                try:
+                    _relative_parts(relative)
+                except ValueError:
+                    continue
+                paths.add((skill_dir / relative).absolute())
+    except (OSError, ValueError, TypeError, UnicodeError, RecursionError, OverflowError, NotImplementedError):
+        pass
+    return paths
+
+
 def _manifest_counts(root: Path, data: object, skill_name: str | None) -> tuple[int, int, int]:
     if not isinstance(data, dict) or not _nonempty_string(data.get("skill_name")):
         raise ValueError(INVALID_FIXTURE_MESSAGE)

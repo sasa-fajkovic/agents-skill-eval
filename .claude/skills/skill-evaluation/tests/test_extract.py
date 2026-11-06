@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,9 +15,49 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import extract  # noqa: E402
+from output_evals import MAX_INPUT_BYTES
 
 
 class ExtractTests(unittest.TestCase):
+    def test_declared_inputs_outside_evals_are_omitted_even_from_invalid_cases(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill = root / "SKILL.md"
+            skill.write_text("# Example", encoding="utf-8")
+            (root / "evals").mkdir()
+            (root / "references").mkdir()
+            (root / "references/input.md").write_text("PRIVATE_INPUT_CONTENT", encoding="utf-8")
+            (root / "references/guide.md").write_text("Public guidance", encoding="utf-8")
+            (root / "evals/evals.json").write_text(json.dumps({"evals": [
+                {"files": ["references/input.md", "../outside.md", None]},
+            ]}), encoding="utf-8")
+            context = extract.collect_supporting_context(skill)
+            self.assertNotIn("PRIVATE_INPUT_CONTENT", context)
+            self.assertNotIn("references/input.md", context)
+            self.assertIn("Public guidance", context)
+
+    def test_supporting_reads_and_scripts_enforce_limits_and_symlink_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "skill"
+            scripts = root / "scripts"
+            scripts.mkdir(parents=True)
+            skill = root / "SKILL.md"
+            skill.write_text("# Example", encoding="utf-8")
+            outside = root.parent / "outside.py"
+            outside.write_text('if __name__ == "__main__":\n    print("PRIVATE_EXTERNAL_CONTENT")', encoding="utf-8")
+            (scripts / "linked.py").symlink_to(outside)
+            oversized = scripts / "large.py"
+            with oversized.open("wb") as stream:
+                stream.write(b'if __name__ == "__main__":\n    print("PRIVATE_LARGE_CONTENT")')
+                stream.truncate(MAX_INPUT_BYTES + 1)
+            context = extract.collect_supporting_context(skill)
+            self.assertNotIn("PRIVATE_EXTERNAL_CONTENT", context)
+            self.assertNotIn("PRIVATE_LARGE_CONTENT", context)
+            self.assertEqual(extract.entrypoint_scripts(str(root)), [])
+            for candidate in (scripts / "linked.py", oversized):
+                with self.assertRaises(OSError):
+                    extract.read_text_file(candidate)
+
     def test_pdf_text_is_included_in_supporting_context(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
