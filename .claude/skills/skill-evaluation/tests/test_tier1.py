@@ -52,7 +52,7 @@ class Tier1Tests(unittest.TestCase):
         self.assertTrue(tier1.check_1_1({"name": ""}, "/tmp/demo"))
 
     def test_check_1_1_unicode_normalization(self) -> None:
-        for name, dirname in (("café", "cafe\u0301"), ("cafe\u0301", "café"), ("技能", "技能"), ("ｄｅｍｏ", "demo"), ("demo", "ｄｅｍｏ")):
+        for name, dirname in (("café", "cafe\u0301"), ("cafe\u0301", "café"), ("技能", "技能"), ("ｄｅｍｏ", "demo"), ("demo", "ｄｅｍｏ"), (" demo ", "demo")):
             with self.subTest(name=name, dirname=dirname):
                 self.assertEqual(tier1.check_1_1({"name": name}, f"/tmp/{dirname}"), [])
 

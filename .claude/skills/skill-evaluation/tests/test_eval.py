@@ -44,8 +44,14 @@ class FrontmatterIntegrationTests(unittest.TestCase):
             ("? [a, b]\n: value", "YAML parse error"),
             ("- name: demo", "instead of a mapping"),
             ("name: demo\ndescription: [Use when testing]", "description must be"),
+            ("name: 2048\ndescription: Use when testing.", "quote YAML scalar values"),
+            ("name: yes\ndescription: Use when testing.", "quote YAML scalar values"),
             ("name: demo\ndescription: Use when testing.\nallowed-tools: [Read]", "allowed-tools must be"),
             ("name: demo\ndescription: Use when testing.\nmetadata:\n  version: 1.0", "both key and value must be strings"),
+            ("metadata: {date: 2026-13-01}", "invalid scalar value"),
+            ("metadata: {date: !!timestamp nope}", "invalid scalar value"),
+            ("metadata: {value: !!float nope}", "invalid scalar value"),
+            ("metadata: {value: !!int nope}", "invalid scalar value"),
             ("!!python/object/apply:os.system ['echo unsafe']", "YAML parse error"),
         )
         for frontmatter, expected in cases:
@@ -58,11 +64,30 @@ class FrontmatterIntegrationTests(unittest.TestCase):
 
     def test_missing_pyyaml_fails_with_install_instruction(self) -> None:
         result = self.run_skill("name: demo\ndescription: Use when testing.", no_site=True)
-        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.returncode, 3)
         self.assertEqual(result.stdout, "")
         self.assertIn("Missing required dependency PyYAML", result.stderr)
         self.assertIn("requirements.txt", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
+
+    def test_deeply_nested_yaml_returns_structured_error(self) -> None:
+        result = self.run_skill("name: demo\ndescription: Use when testing.\nmetadata: " + "[" * 600 + "x" + "]" * 600)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        errors = json.loads(result.stdout)["findings"]["error_findings"]
+        self.assertTrue(any("nesting exceeds the parser limit" in finding["message"] for finding in errors))
+
+    def test_yaml_aliases_do_not_expand_in_diagnostics(self) -> None:
+        lines = ["name: demo", "description: Use when testing.", "metadata:", "  a0: &a0 [x]"]
+        for level in range(1, 10):
+            lines.append(f"  a{level}: &a{level} [" + ", ".join([f"*a{level - 1}"] * 10) + "]")
+        result = self.run_skill("\n".join(lines))
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        self.assertLess(len(result.stdout), 10000)
+        errors = json.loads(result.stdout)["findings"]["error_findings"]
+        self.assertEqual(len(errors), 10)
+        self.assertTrue(all(finding["rule_id"] == "1.4" for finding in errors))
 
 
 class EvalMCPTests(unittest.TestCase):

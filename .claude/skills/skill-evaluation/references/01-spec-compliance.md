@@ -4,7 +4,7 @@ Source: [current Agent Skills specification](https://agentskills.io/specificatio
 
 ## 1.1: name (ERROR)
 
-The required name is a string of 1–64 characters, with no word-count limit. Following skills-ref, normalize the name with Unicode NFKC, require lowercase, and allow only Unicode alphanumeric characters or hyphens. Leading, trailing, and consecutive hyphens are invalid. Compare the normalized name with the NFKC-normalized parent directory name. Synthetic flat-upload directories named `eval-<uuid>` skip only the directory comparison.
+The required name is a string of 1–64 characters, with no word-count limit. Following skills-ref, trim surrounding whitespace, normalize the name with Unicode NFKC, require lowercase, and allow only Unicode alphanumeric characters or hyphens. Leading, trailing, and consecutive hyphens are invalid. Compare the normalized name with the NFKC-normalized parent directory name. Synthetic flat-upload directories named `eval-<uuid>` skip only the directory comparison. Quote numeric or boolean-like string fields, such as `name: "2048"` or `name: "yes"`.
 
 Valid examples include `skill-eval`, `café`, and `技能`. Uppercase `My-Skill`, `my--skill`, and `-skill` fail. A decomposed directory spelling of `café` matches its composed name after normalization.
 
@@ -44,7 +44,7 @@ metadata:
 
 PyYAML's safe loader parses YAML rather than approximating it. Folded strings, quoted colons and hashes, and nested string-to-string metadata work. Malformed YAML and non-mapping frontmatter fail. YAML numbers, booleans, dates, sequences, and mappings are not strings: quote metadata versions, dates, and boolean-like values. Unsafe Python object tags are rejected.
 
-## 1.5: compatibility placeholder
+## 1.5: metadata (retired, no findings)
 
 This check ID is retained without findings. Arbitrary string-to-string metadata is specification-valid, including author, version, tags, and keys named like platform extensions. Metadata names do not create top-level extension behavior.
 

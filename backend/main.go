@@ -1559,7 +1559,7 @@ Use this schema exactly:
 
 Keep each array to 3-6 items. Be specific — reference actual content from the skill.
 Base the quality_tier on overall spec alignment: excellent means production-ready with strong portability and clarity; poor means fundamental issues that prevent reliable agent use.
-Respect deterministic format findings. Treat policy and heuristic findings as observations that may need contextual review; identify any justified exception explicitly.`)
+Hard format findings are ERRORs under rule IDs 1.1–1.4. WARNs under 1.2 and 1.3 are evaluator heuristics or portability policy; 1.6 is a specification recommendation. All remaining rule IDs are evaluator quality policy, including the 3.7 MCP and 4.8 content-gate ERRORs. Respect deterministic format findings. Treat policy and heuristic findings as observations that may need contextual review; identify any justified exception explicitly.`)
 }
 
 func buildLLMPrompt(container evalContainerResult) string {

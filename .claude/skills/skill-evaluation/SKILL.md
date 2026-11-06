@@ -4,7 +4,7 @@ description: >
   Evaluate a SKILL.md against the agentskills.io open standard for spec
   compliance, security, token efficiency, and effectiveness. Use when
   reviewing or validating a skill for cross-platform portability.
-compatibility: Designed for Claude Code. Uses Read, Glob, Grep, and Bash tools.
+compatibility: Requires Python 3 and PyYAML. Designed for Claude Code with Read, Glob, Grep, and Bash tools.
 ---
 
 # Skill Evaluator
@@ -13,7 +13,7 @@ Validate a SKILL.md against the current [Agent Skills specification](https://age
 
 ## Requirements and policy
 
-Install `requirements.txt` with `python3 -m pip install -r <skill-directory>/requirements.txt` before running the evaluator. PyYAML's safe loader parses frontmatter; YAML scalar types are validated, so quote metadata values that would otherwise become numbers, booleans, or dates.
+The user must install `requirements.txt` with `python3 -m pip install -r <skill-directory>/requirements.txt` before invoking this read-only skill. PyYAML's safe loader parses frontmatter; YAML scalar types are validated, so quote string fields (including names and descriptions) and metadata values that would otherwise become numbers, booleans, or dates.
 
 Names allow 1–64 characters with no hyphen-word limit; Unicode NFKC normalization follows the linked skills-ref validator for validation and parent-directory comparison. Descriptions have a hard cap of 1024 characters. Arbitrary string-to-string metadata, including author and version, is valid. Under 500 lines is a specification recommendation (WARN), with no reference-skill exception.
 

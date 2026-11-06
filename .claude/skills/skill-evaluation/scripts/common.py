@@ -14,10 +14,12 @@ except Exception:  # pragma: no cover - defensive import fallback
 try:
     import yaml
 except ModuleNotFoundError as exc:
-    raise SystemExit(
+    print(
         "Missing required dependency PyYAML. Install it with: "
-        "python3 -m pip install -r <skill-directory>/requirements.txt"
-    ) from exc
+        "python3 -m pip install -r <skill-directory>/requirements.txt",
+        file=sys.stderr,
+    )
+    raise SystemExit(3) from exc
 
 _use_color = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
 GREEN = "\033[32m" if _use_color else ""
@@ -380,6 +382,15 @@ def read_text_file(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def _load_frontmatter_yaml(text: str):
+    try:
+        return yaml.safe_load(text)
+    except RecursionError as exc:
+        raise yaml.YAMLError("nesting exceeds the parser limit") from exc
+    except (ValueError, TypeError, AttributeError, OverflowError) as exc:
+        raise yaml.YAMLError(f"invalid scalar value ({type(exc).__name__})") from exc
+
+
 def parse_frontmatter(text: str) -> tuple[dict | None, str]:
     lines = text.splitlines(keepends=True)
     if not lines or lines[0].rstrip("\r\n") != "---":
@@ -397,7 +408,7 @@ def parse_frontmatter(text: str) -> tuple[dict | None, str]:
     fm_text = "".join(lines[1:end_line]).strip()
     body = "".join(lines[end_line + 1:]).strip()
     try:
-        fm = yaml.safe_load(fm_text)
+        fm = _load_frontmatter_yaml(fm_text)
         return fm if isinstance(fm, dict) else None, body
     except yaml.YAMLError:
         return None, body
@@ -434,7 +445,7 @@ def diagnose_frontmatter_failure(text: str) -> str:
     # Delimiters present but YAML parsing failed
     fm_text = "".join(lines[1:end_line]).strip()
     try:
-        result = yaml.safe_load(fm_text)
+        result = _load_frontmatter_yaml(fm_text)
         if not isinstance(result, dict):
             return f"YAML frontmatter parsed as {type(result).__name__} instead of a mapping; check for missing key-value pairs"
         return "no valid YAML frontmatter found"

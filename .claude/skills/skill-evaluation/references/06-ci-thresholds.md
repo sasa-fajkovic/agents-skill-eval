@@ -8,6 +8,7 @@ Severity-to-CI-behavior mapping for the `--ci` output mode.
 |----------|-------------|-----------|---------|
 | ERROR | Fail | 1 | Format violation or evaluator policy error. |
 | WARN | Warn | 2 | Quality/efficiency/portability issue. Should fix, won't block. |
+| Dependency error | Fail | 3 | Required PyYAML is missing; no skill evaluation was performed. |
 
 ## Exit code logic
 

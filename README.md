@@ -31,7 +31,7 @@ Install the evaluator's required YAML parser before running it:
 python3 -m pip install -r .claude/skills/skill-evaluation/requirements.txt
 ```
 
-The same Python evaluator (`scripts/eval.py`) is what the web app bundles and executes in production. Frontmatter is parsed with PyYAML's safe loader; YAML scalar types are validated rather than coerced to strings. Quote metadata versions, dates, and boolean-like values when they should be strings.
+The same Python evaluator (`scripts/eval.py`) is what the web app bundles and executes in production. Frontmatter is parsed with PyYAML's safe loader; YAML scalar types are validated rather than coerced to strings. Quote string fields (including names and descriptions) and metadata values that resemble numbers, dates, or booleans. For example, write `name: "2048"` and `name: "yes"`. A missing required YAML parser exits with code 3 and installation instructions; no skill evaluation is performed.
 
 ## Run with Docker
 

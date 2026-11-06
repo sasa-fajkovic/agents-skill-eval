@@ -32,11 +32,11 @@ def check_1_1(fm: dict, skill_dir: str) -> list[Finding]:
         return findings
     name = fm["name"]
     if not isinstance(name, str):
-        findings.append(Finding("1.1", "ERROR", f"name must be a string, got {type(name).__name__}"))
+        findings.append(Finding("1.1", "ERROR", f"name must be a string, got {type(name).__name__}; quote YAML scalar values interpreted as numbers or booleans"))
         return findings
-    name = unicodedata.normalize("NFKC", name)
+    name = unicodedata.normalize("NFKC", name.strip())
     if not 1 <= len(name) <= MAX_NAME_LEN:
-        findings.append(Finding("1.1", "ERROR", f"name is {len(name)} chars (must be 1-{MAX_NAME_LEN}, max {MAX_NAME_LEN})"))
+        findings.append(Finding("1.1", "ERROR", f"name is {len(name)} chars (must be 1-{MAX_NAME_LEN})"))
     if "--" in name:
         findings.append(Finding("1.1", "ERROR", f'name "{name}" contains consecutive hyphens; the spec requires single hyphens as separators'))
     elif name != name.lower() or name.startswith("-") or name.endswith("-") or not all(char.isalnum() or char == "-" for char in name):
@@ -55,7 +55,7 @@ def check_1_2(fm: dict) -> list[Finding]:
         return findings
     desc = fm["description"]
     if not isinstance(desc, str) or not desc.strip():
-        findings.append(Finding("1.2", "ERROR", "description must be a non-empty string"))
+        findings.append(Finding("1.2", "ERROR", "description must be a non-empty string; quote YAML scalar values interpreted as numbers or booleans"))
         return findings
     if len(desc) > MAX_DESC_LEN:
         findings.append(Finding("1.2", "ERROR", f"description is {len(desc)} chars (max {MAX_DESC_LEN})"))
@@ -99,7 +99,7 @@ def check_1_4(fm: dict) -> list[Finding]:
         else:
             for key, value in meta.items():
                 if not isinstance(key, str) or not isinstance(value, str):
-                    findings.append(Finding("1.4", "ERROR", f"metadata entry {key!r}: {value!r} — both key and value must be strings"))
+                    findings.append(Finding("1.4", "ERROR", f"metadata entry has key type {type(key).__name__} and value type {type(value).__name__} — both key and value must be strings"))
     return findings
 
 
