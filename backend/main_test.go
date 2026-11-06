@@ -826,6 +826,39 @@ func TestFinalizeEvaluation(t *testing.T) {
 	}
 }
 
+func TestTriggerFixtureMetadataSurvivesFinalizationAndHTTPResponse(t *testing.T) {
+	ctx := context.Background()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	app := &application{rdb: rdb, cfg: testConfig()}
+	raw := `{"status":"ok","skill_name":"demo","skill_content":"PRIVATE_SKILL_BODY","supporting_context":"PRIVATE_QUERY_BODY","metadata":{"trigger_evals":{"measurement":"not_run","files":[{"path":"evals/train_queries.json","valid":true,"query_count":2,"should_trigger_count":1,"should_not_trigger_count":1}]}}}`
+	result, _, err := app.finalizeEvaluation(ctx, evalJob{JobID: "trigger-http"}, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rdb.Set(ctx, redisResultKey("trigger-http"), result, time.Minute).Err(); err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	app.handleResult(recorder, httptest.NewRequest(http.MethodGet, "/result/trigger-http", nil))
+	var response struct {
+		Metadata struct {
+			TriggerEvals triggerFixtureSummary `json:"trigger_evals"`
+		} `json:"metadata"`
+	}
+	if recorder.Code != http.StatusOK || json.Unmarshal(recorder.Body.Bytes(), &response) != nil {
+		t.Fatalf("unexpected HTTP result: %d %s", recorder.Code, recorder.Body.String())
+	}
+	summary := response.Metadata.TriggerEvals
+	if summary.Measurement != "not_run" || len(summary.Files) != 1 || summary.Files[0].Path != "evals/train_queries.json" || summary.Files[0].QueryCount != 2 || summary.Files[0].ShouldTriggerCount != 1 || summary.Files[0].ShouldNotTriggerCount != 1 {
+		t.Fatalf("fixture metadata lost in API response: %s", recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "PRIVATE_") {
+		t.Fatalf("internal review content reached API response: %s", recorder.Body.String())
+	}
+}
+
 func TestFinalizeEvaluationWithOptionalLLM(t *testing.T) {
 	script, workDir := scoringScriptPath(t)
 	old := os.Getenv("ANTHROPIC_API_KEY")

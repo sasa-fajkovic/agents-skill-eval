@@ -1607,7 +1607,7 @@ The following quality criteria include evaluator policy and optional heuristics:
 ### 4. Clarity & Completeness
 - Are instructions specific and actionable (not ambiguous like "handle appropriately")?
 - Are there concrete examples for input/output formats?
-- Do operational negative instructions ("don't do X") define the desired behavior where needed? Trigger exclusions and safety prohibitions can stand alone.
+- Do operational negative instructions ("don't do X") define the desired behavior where needed? Trigger exclusions and security prohibitions, such as never disclosing credentials, can stand alone.
 - Are default behaviors defined for optional flags and parameters?
 - Are success/completion criteria stated so the agent knows when it's done?
 

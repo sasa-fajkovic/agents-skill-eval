@@ -71,10 +71,16 @@ def check_4_2(body: str) -> list[Finding]:
 
 _BOLD_ONLY_LINE = re.compile(r"^\s*\*\*[^*]+\*\*\s*:?\s*$")
 _TRIGGER_EXCLUSION = re.compile(
-    r"(?i)\b(?:do\s+not|don't|never)\s+(?:use|load|invoke|activate|trigger)"
-    r"\s+(?:(?:this|the)\s+)?skill\b|"
-    r"\b(?:this\s+)?skill\s+(?:should|must)\s+not\s+(?:trigger|activate)\b"
+    r"(?i)\b(?:(?:do\s+not|don't|never)\s+(?:use|load|invoke|activate|trigger)|"
+    r"avoid\s+(?:using|loading|invoking|activating|triggering))"
+    r"\s+(?:(?:this|the)\s+)?skill\s+(?:for|when|if|on)\b|"
+    r"\b(?:this\s+)?skill\s+(?:should|must)\s+not\s+(?:trigger|activate)\s+(?:for|when|if|on)\b"
 )
+
+
+def _without_trigger_exclusions(text: str) -> str:
+    clauses = re.split(r"[;.!?]\s+|,\s*(?=(?:do not|don't|never|avoid|must not)\b)", text, flags=re.IGNORECASE)
+    return " ".join(clause for clause in clauses if not _TRIGGER_EXCLUSION.search(clause))
 
 
 def check_4_3(body: str) -> list[Finding]:
@@ -89,8 +95,7 @@ def check_4_3(body: str) -> list[Finding]:
         # Skip lines inside fenced code blocks (code comments, wrong-pattern examples)
         if in_fence:
             continue
-        if _TRIGGER_EXCLUSION.search(line):
-            continue
+        line = _without_trigger_exclusions(line)
         if not NEGATIVE_ONLY.search(line):
             continue
         # Skip bold-only section headers like "**Do NOT:**"
@@ -103,7 +108,7 @@ def check_4_3(body: str) -> list[Finding]:
         if SECURITY_PROHIBITION.search(line):
             continue
         # Widen context window to ±4 lines for positive alternative search
-        context = "\n".join(lines[max(0, index - 4):index + 5])
+        context = "\n".join(_without_trigger_exclusions(candidate) for candidate in lines[max(0, index - 4):index + 5])
         if not POSITIVE_ALTERNATIVE.search(context):
             findings.append(Finding("4.3", "WARN", f"line {index + 1}: negative-only instruction does not say what to do instead"))
     return findings

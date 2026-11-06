@@ -31,6 +31,8 @@ def read_pdf_file(path: Path) -> str:
 
 
 def collect_supporting_context(skill_path: Path) -> str:
+    from trigger_evals import QUERY_FILENAMES, read_trigger_fixture
+
     root = skill_path.parent
     paths = [path for path in root.rglob("*") if path.is_file() and path != skill_path]
     inventory = []
@@ -52,7 +54,12 @@ def collect_supporting_context(skill_path: Path) -> str:
         suffix = path.suffix.lower()
         relative = path.relative_to(root)
         inventory.append(str(relative))
-        if suffix in ALLOWED_TEXT_EXTENSIONS:
+        if path.name in QUERY_FILENAMES and path.parent in (root, root / "evals"):
+            try:
+                content = read_trigger_fixture(path)
+            except (OSError, UnicodeError, ValueError):
+                content = "[Trigger fixture content omitted by evaluator read policy]"
+        elif suffix in ALLOWED_TEXT_EXTENSIONS:
             content = read_text_file(path)
         elif suffix in PDF_EXTENSIONS:
             content = read_pdf_file(path)

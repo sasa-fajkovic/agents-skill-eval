@@ -10,6 +10,20 @@ QUERY_FILENAMES = ("eval_queries.json", "train_queries.json", "validation_querie
 MAX_QUERY_FILE_BYTES = 1_000_000
 
 
+def read_trigger_fixture(path: Path) -> str:
+    if path.is_symlink() or path.parent.is_symlink():
+        raise ValueError("symlinked query fixtures are not read by evaluator policy")
+    if not path.is_file():
+        raise ValueError("expected a regular query file")
+    if path.stat().st_size > MAX_QUERY_FILE_BYTES:
+        raise ValueError("exceeds evaluator's 1 MB query-file limit")
+    with path.open("rb") as stream:
+        content = stream.read(MAX_QUERY_FILE_BYTES + 1)
+    if len(content) > MAX_QUERY_FILE_BYTES:
+        raise ValueError("exceeds evaluator's 1 MB query-file limit")
+    return content.decode("utf-8")
+
+
 def inspect_trigger_evals(skill_dir: Path) -> tuple[dict, list[Finding]]:
     files = []
     findings = []
@@ -28,13 +42,7 @@ def inspect_trigger_evals(skill_dir: Path) -> tuple[dict, list[Finding]]:
             }
             files.append(entry)
             try:
-                if path.is_symlink() or directory.is_symlink():
-                    raise ValueError("symlinked query fixtures are not read by evaluator policy")
-                if not path.is_file():
-                    raise ValueError("expected a regular query file")
-                if path.stat().st_size > MAX_QUERY_FILE_BYTES:
-                    raise ValueError("exceeds evaluator's 1 MB query-file limit")
-                queries = json.loads(path.read_text(encoding="utf-8"))
+                queries = json.loads(read_trigger_fixture(path))
                 if not isinstance(queries, list) or not queries:
                     raise ValueError("expected a non-empty JSON array")
                 invalid = []

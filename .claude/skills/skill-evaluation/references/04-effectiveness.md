@@ -52,7 +52,7 @@ LLM-assessed checks. These require reading and reasoning about the skill body â€
 
 **Acceptable negative framing**:
 - Trigger exclusions such as "Do not use this skill for database imports" define scope and need no positive alternative.
-- Safety prohibitions may stand alone.
+- Security prohibitions, such as never disclosing credentials, may stand alone.
 
 **Positive counterparts**:
 - "Use 1-2 sentence summaries, not paragraphs" (positive first, negative as contrast)

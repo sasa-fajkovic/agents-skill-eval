@@ -82,6 +82,22 @@ class TriggerEvalTests(unittest.TestCase):
         metadata, findings = inspect_trigger_evals(self.root)
         self.assertFalse(metadata["files"][0]["valid"])
         self.assertIn("symlink", findings[0].message)
+        result = evaluator.build_json_result(self.root / "SKILL.md", findings)
+        self.assertNotIn("private", result["supporting_context"])
+        self.assertIn("content omitted", result["supporting_context"])
+
+    def test_oversized_fixture_is_omitted_from_supporting_context(self) -> None:
+        path = self.root / "eval_queries.json"
+        path.write_text("PRIVATE_SENTINEL" + " " * MAX_QUERY_FILE_BYTES)
+        result = evaluator.build_json_result(self.root / "SKILL.md", evaluator.evaluate(str(self.root)))
+        self.assertNotIn("PRIVATE_SENTINEL", result["supporting_context"])
+        self.assertIn("content omitted", result["supporting_context"])
+
+    def test_valid_fixture_remains_available_for_optional_content_review(self) -> None:
+        self.fixture([{"query": "REALISTIC_QUERY", "should_trigger": True}])
+        result = evaluator.build_json_result(self.root / "SKILL.md", evaluator.evaluate(str(self.root)))
+        self.assertIn("REALISTIC_QUERY", result["supporting_context"])
+        self.assertNotIn("REALISTIC_QUERY", json.dumps(result["metadata"]))
 
     def test_non_regular_query_file_warns(self) -> None:
         (self.root / "eval_queries.json").mkdir()
