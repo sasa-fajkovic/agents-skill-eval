@@ -382,9 +382,37 @@ def read_text_file(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+class _FrontmatterSafeLoader(yaml.SafeLoader):
+    def __init__(self, stream):
+        super().__init__(stream)
+        self._merged_entries = 0
+        self._active_merges = set()
+
+    def flatten_mapping(self, node):
+        marker = id(node)
+        if marker in self._active_merges:
+            raise yaml.YAMLError("recursive YAML merge exceeds parser resource limits")
+        self._active_merges.add(marker)
+        try:
+            for key_node, value_node in node.value:
+                if key_node.tag != "tag:yaml.org,2002:merge":
+                    continue
+                targets = value_node.value if isinstance(value_node, yaml.SequenceNode) else [value_node]
+                for target in targets:
+                    if not isinstance(target, yaml.MappingNode):
+                        continue
+                    self.flatten_mapping(target)
+                    self._merged_entries += len(target.value)
+                    if self._merged_entries > 10000:
+                        raise yaml.YAMLError("YAML merge expansion exceeds parser resource limit (10000 entries)")
+            super().flatten_mapping(node)
+        finally:
+            self._active_merges.remove(marker)
+
+
 def _load_frontmatter_yaml(text: str):
     try:
-        return yaml.safe_load(text)
+        return yaml.load(text, Loader=_FrontmatterSafeLoader)
     except RecursionError as exc:
         raise yaml.YAMLError("nesting exceeds the parser limit") from exc
     except (ValueError, TypeError, AttributeError, OverflowError) as exc:

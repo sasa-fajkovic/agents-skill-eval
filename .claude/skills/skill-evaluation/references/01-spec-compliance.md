@@ -44,6 +44,8 @@ metadata:
 
 PyYAML's safe loader parses YAML rather than approximating it. Folded strings, quoted colons and hashes, and nested string-to-string metadata work. Malformed YAML and non-mapping frontmatter fail. YAML numbers, booleans, dates, sequences, and mappings are not strings: quote metadata versions, dates, and boolean-like values. Unsafe Python object tags are rejected.
 
+Evaluator parser resource policy rejects excessive nesting, recursive merges, and merge expansion above 10,000 inherited mapping entries before construction. Benign YAML merges remain supported. Invalid scalar constructors produce structured errors, and metadata diagnostics report types without expanding alias-backed values.
+
 ## 1.5: metadata (retired, no findings)
 
 This check ID is retained without findings. Arbitrary string-to-string metadata is specification-valid, including author, version, tags, and keys named like platform extensions. Metadata names do not create top-level extension behavior.

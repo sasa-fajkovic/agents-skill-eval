@@ -28,7 +28,7 @@ class FrontmatterIntegrationTests(unittest.TestCase):
             command = [sys.executable]
             if no_site:
                 command.append("-S")
-            return subprocess.run(command + [str(MODULE_PATH), str(skill_dir), "--ci"], capture_output=True, text=True, check=False)
+            return subprocess.run(command + [str(MODULE_PATH), str(skill_dir), "--ci"], capture_output=True, text=True, check=False, timeout=5)
 
     def test_ci_valid_folded_description_and_nested_metadata(self) -> None:
         result = self.run_skill('name: demo\ndescription: >-\n  Use when parsing YAML:\n  preserve a # character.\nlicense: "MIT: custom # note"\nmetadata:\n  author: example-org\n  version: "1.0"\n  note: "a: b # c"\nallowed-tools: Bash(git:*) Bash(jq:*) Read')
@@ -79,15 +79,38 @@ class FrontmatterIntegrationTests(unittest.TestCase):
 
     def test_yaml_aliases_do_not_expand_in_diagnostics(self) -> None:
         lines = ["name: demo", "description: Use when testing.", "metadata:", "  a0: &a0 [x]"]
-        for level in range(1, 10):
+        for level in range(1, 6):
             lines.append(f"  a{level}: &a{level} [" + ", ".join([f"*a{level - 1}"] * 10) + "]")
         result = self.run_skill("\n".join(lines))
         self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stderr, "")
         self.assertLess(len(result.stdout), 10000)
         errors = json.loads(result.stdout)["findings"]["error_findings"]
-        self.assertEqual(len(errors), 10)
+        self.assertEqual(len(errors), 6)
         self.assertTrue(all(finding["rule_id"] == "1.4" for finding in errors))
+
+    def test_yaml_merge_expansion_is_bounded_before_construction(self) -> None:
+        lines = ["name: demo", "description: Use when testing.", "metadata:", "  a0: &a0 {x: y}"]
+        for level in range(1, 6):
+            lines.append(f"  a{level}: &a{level} {{<<: [" + ", ".join([f"*a{level - 1}"] * 10) + "]}")
+        result = self.run_skill("\n".join(lines))
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        self.assertLess(len(result.stdout), 10000)
+        errors = json.loads(result.stdout)["findings"]["error_findings"]
+        self.assertTrue(any("merge expansion exceeds parser resource limit" in finding["message"] for finding in errors))
+
+    def test_benign_yaml_metadata_merge_remains_valid(self) -> None:
+        result = self.run_skill('name: demo\ndescription: Use when testing.\nmetadata:\n  <<: {author: example-org, version: "1.0"}\n  note: custom')
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(json.loads(result.stdout)["findings"]["error_findings"], [])
+
+    def test_recursive_yaml_merge_returns_structured_error(self) -> None:
+        result = self.run_skill("name: demo\ndescription: Use when testing.\nmetadata: &meta {<<: *meta}")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        errors = json.loads(result.stdout)["findings"]["error_findings"]
+        self.assertTrue(any("recursive YAML merge" in finding["message"] for finding in errors))
 
 
 class EvalMCPTests(unittest.TestCase):
