@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 try:
-    from PyPDF2 import PdfReader
+    from pypdf import PdfReader
 except Exception:  # pragma: no cover - defensive import fallback
     PdfReader = None
 
