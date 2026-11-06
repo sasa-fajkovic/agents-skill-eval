@@ -9,14 +9,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install pytest
+        run: python -m pip install -r .claude/skills/skill-evaluation/requirements.txt -r .claude/skills/skill-evaluation/tests/requirements.txt
 
       - name: Run unit and integration tests
         run: python -m pytest .claude/skills/skill-evaluation/tests/ -q
@@ -37,3 +37,26 @@ jobs:
           if [ "$rc" -eq 2 ]; then
             echo "::warning::Self-evaluation has warnings but no errors"
           fi
+
+  go-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install evaluator dependencies
+        run: python -m pip install -r ../.claude/skills/skill-evaluation/requirements.txt
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Run Go tests
+        run: go test ./...

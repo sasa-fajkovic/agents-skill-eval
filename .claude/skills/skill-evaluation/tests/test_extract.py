@@ -5,6 +5,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -14,6 +17,32 @@ import extract  # noqa: E402
 
 
 class ExtractTests(unittest.TestCase):
+    def test_pdf_text_is_included_in_supporting_context(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill_path = root / "SKILL.md"
+            skill_path.write_text("# Example", encoding="utf-8")
+            pdf_path = root / "reference.pdf"
+            writer = PdfWriter()
+            page = writer.add_blank_page(width=612, height=792)
+            font = DictionaryObject({
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Helvetica"),
+            })
+            page[NameObject("/Resources")] = DictionaryObject({
+                NameObject("/Font"): DictionaryObject({NameObject("/F1"): font}),
+            })
+            content = DecodedStreamObject()
+            content.set_data(b"BT /F1 12 Tf 72 720 Td (Dependency migration PDF text) Tj ET")
+            page[NameObject("/Contents")] = content
+            writer.write(pdf_path)
+
+            self.assertIn("Dependency migration PDF text", extract.read_pdf_file(pdf_path))
+            context = extract.collect_supporting_context(skill_path)
+            self.assertIn("--- FILE: reference.pdf ---", context)
+            self.assertIn("Dependency migration PDF text", context)
+
     def test_entrypoint_scripts_ignores_helper_module_without_main(self) -> None:
         root = Path(tempfile.mkdtemp())
         skill_dir = root / "demo"

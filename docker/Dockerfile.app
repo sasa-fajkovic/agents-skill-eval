@@ -1,4 +1,4 @@
-FROM golang:1.25-bookworm AS backend-build
+FROM golang:1.26.10-bookworm@sha256:5de7c99eb78ca5e515a4c340235d0955ec5964a5071c492c15503d7c267da473 AS backend-build
 
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
@@ -9,7 +9,7 @@ ARG APP_VERSION=dev
 ARG APP_COMMIT=dev
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-X main.buildVersion=${APP_VERSION} -X main.buildCommit=${APP_COMMIT}" -o /out/app .
 
-FROM python:3.12-slim AS runtime
+FROM python:3.12.16-slim-trixie@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54 AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -20,7 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     redis-server \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir anthropic openai PyPDF2 python-docx
+COPY .claude/skills/skill-evaluation/requirements.txt /tmp/skill-evaluation-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/skill-evaluation-requirements.txt
 
 WORKDIR /app
 COPY --from=backend-build /out/app /app/bin/app
