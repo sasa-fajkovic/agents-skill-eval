@@ -33,6 +33,6 @@ USER evaluser
 
 WORKDIR /input
 
-COPY --chown=evaluser:evaluser eval/run_eval.py /app/run_eval.py
+COPY --chown=evaluser:evaluser .claude/skills/skill-evaluation /app/skill-evaluation
 
-ENTRYPOINT ["python3", "/app/run_eval.py"]
+ENTRYPOINT ["python3", "/app/skill-evaluation/scripts/eval.py"]
