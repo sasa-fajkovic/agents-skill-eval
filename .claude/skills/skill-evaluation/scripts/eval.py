@@ -121,7 +121,11 @@ def _find_skill_md(root: Path) -> tuple[Path | None, list[Path]]:
     for child in sorted(root.iterdir()):
         if child.is_dir():
             nested = child / "SKILL.md"
-            if nested.exists():
+            try:
+                exists = nested.exists()
+            except PermissionError:
+                continue
+            if exists:
                 candidates.append(nested)
     if not candidates:
         return None, []
