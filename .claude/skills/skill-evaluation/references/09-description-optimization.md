@@ -21,7 +21,7 @@ Use realistic prompts labeled with whether the skill should activate. The evalua
 
 These labels illustrate a CSV analysis skill, not this evaluator. Adapt them to the target skill. Mix direct and indirect positives, terse and detailed requests, casual phrasing, and workflows where the relevant step is embedded in a larger task. Negatives should include plausible near misses with shared vocabulary but a different intent. Around 20 balanced queries is a starting point, not a quota.
 
-Rule 4.9 checks only structure: a non-empty array, non-empty `query` strings, and JSON boolean `should_trigger` labels. Extra fields are allowed. Missing fixtures are unpenalized. Malformed provided files warn as optional evaluator policy. Counts cannot establish label correctness, realistic coverage, or successful activation.
+Rule 4.9 checks only structure: a non-empty array, non-empty `query` strings, and JSON boolean `should_trigger` labels. Extra fields are allowed. Missing fixtures are unpenalized. Malformed provided files warn as optional evaluator policy. Structural validation does not verify label correctness, near-miss quality, train/validation disjointness, or observed performance. Supporting query excerpts may be truncated or omitted; review only visible queries and disclose insufficient coverage rather than inferring unseen content from counts.
 
 ## Measure in the target client
 

@@ -103,12 +103,14 @@ class Tier1Tests(unittest.TestCase):
             "Analyze CSVs when users need a chart.",
             "Triggers on CSV uploads.",
             "Activate on CSV analysis requests.",
+            "Run when reviewing CSV data.",
+            "Run this when reviewing CSV data.",
         ):
             with self.subTest(description=description):
                 self.assertEqual(tier1.check_1_2({"description": description}), [])
 
     def test_check_1_2_does_not_mistake_trigger_nouns_for_activation(self) -> None:
-        for description in ("Create database triggers from SQL.", "Deactivate inactive users."):
+        for description in ("Create database triggers from SQL.", "Deactivate inactive users.", "Formats SQL. Runs on Python 3.11 and requires sqlfluff.", "Formats SQL. Runs for each commit."):
             findings = tier1.check_1_2({"description": description})
             self.assertEqual(len(findings), 1)
             self.assertEqual(findings[0].severity, "WARN")
