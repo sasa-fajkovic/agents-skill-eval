@@ -2616,6 +2616,12 @@
       `;
     }
 
+    function renderChecklistTrigger(triggerEvals) {
+      const files = Array.isArray(triggerEvals?.files) ? triggerEvals.files : [];
+      if (!files.length) return '<p class="result-meta">Optional trigger-query fixtures: none provided.</p>';
+      return `<ul class="checklist">${files.map(file => `<li><span>${escapeHtml(file.path)}</span><span>${file.valid ? `${escapeHtml(file.query_count)} queries (${escapeHtml(file.should_trigger_count)} positive, ${escapeHtml(file.should_not_trigger_count)} negative)` : 'Invalid fixture'}</span></li>`).join('')}</ul>`;
+    }
+
     function syntaxHighlightJson(value) {
       const json = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
       return escapeHtml(json).replace(/("(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"\s*:|"(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
@@ -2738,6 +2744,12 @@
           <article class="result-card">
             <span class="result-label">Issues</span>
             ${renderList([...(data.findings?.error_findings || []), ...(data.findings?.warning_findings || [])], 'issues')}
+          </article>
+          <article class="result-card">
+            <span class="result-label">Description triggering</span>
+            <p class="result-summary">Static review only. Trigger accuracy was not measured; uploaded skills are not invoked.</p>
+            ${renderChecklistTrigger(data.metadata?.trigger_evals)}
+            <p><a href="https://agentskills.io/skill-creation/optimizing-descriptions" target="_blank" rel="noreferrer">How to test and optimize descriptions</a></p>
           </article>
           <article class="result-card">
             <span class="result-label">Run mode</span>

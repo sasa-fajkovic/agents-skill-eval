@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from common import (
     AMBIGUOUS_LANGUAGE,
@@ -20,6 +21,7 @@ from common import (
     Finding,
 )
 from extract import entrypoint_scripts, extract_output_section, has_nearby_example, read_text_file
+from trigger_evals import inspect_trigger_evals
 
 
 _SPECIFIC_VALUE_NEARBY = re.compile(
@@ -68,6 +70,11 @@ def check_4_2(body: str) -> list[Finding]:
 
 
 _BOLD_ONLY_LINE = re.compile(r"^\s*\*\*[^*]+\*\*\s*:?\s*$")
+_TRIGGER_EXCLUSION = re.compile(
+    r"(?i)\b(?:do\s+not|don't|never)\s+(?:use|load|invoke|activate|trigger)"
+    r"\s+(?:(?:this|the)\s+)?skill\b|"
+    r"\b(?:this\s+)?skill\s+(?:should|must)\s+not\s+(?:trigger|activate)\b"
+)
 
 
 def check_4_3(body: str) -> list[Finding]:
@@ -81,6 +88,8 @@ def check_4_3(body: str) -> list[Finding]:
             continue
         # Skip lines inside fenced code blocks (code comments, wrong-pattern examples)
         if in_fence:
+            continue
+        if _TRIGGER_EXCLUSION.search(line):
             continue
         if not NEGATIVE_ONLY.search(line):
             continue
@@ -221,6 +230,8 @@ def run_tier4_checks(body: str, skill_dir: str) -> list[Finding]:
     findings.extend(check_4_5(body))
     findings.extend(check_4_6(body))
     findings.extend(check_4_7(skill_dir))
+    _trigger_metadata, trigger_findings = inspect_trigger_evals(Path(skill_dir))
+    findings.extend(trigger_findings)
     has_scripts = bool(list(entrypoint_scripts(skill_dir)))
     findings.extend(check_4_8(body, has_scripts))
     return findings

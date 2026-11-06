@@ -67,13 +67,6 @@ class Tier1Tests(unittest.TestCase):
 
     # --- 1.2: description length thresholds ---
 
-    def test_check_1_2_warns_between_351_and_500(self) -> None:
-        desc = "Use when " + "x" * 350  # 359 chars
-        fm = {"name": "demo", "description": desc}
-        findings = tier1.check_1_2(fm)
-        warn_findings = [f for f in findings if f.check_id == "1.2" and f.severity == "WARN" and "context bloat" in f.message]
-        self.assertEqual(len(warn_findings), 1)
-
     def test_check_1_2_errors_over_1024(self) -> None:
         desc = "Use when " + "x" * 1016
         fm = {"name": "demo", "description": desc}
@@ -81,7 +74,7 @@ class Tier1Tests(unittest.TestCase):
         err_findings = [f for f in findings if f.check_id == "1.2" and f.severity == "ERROR" and "max 1024" in f.message]
         self.assertEqual(len(err_findings), 1)
 
-    def test_check_1_2_passes_under_350(self) -> None:
+    def test_check_1_2_passes_short_description(self) -> None:
         fm = {"name": "demo", "description": "Use when reviewing skills."}
         findings = tier1.check_1_2(fm)
         length_findings = [f for f in findings if "max 1024" in f.message or "context bloat" in f.message]
@@ -92,7 +85,24 @@ class Tier1Tests(unittest.TestCase):
             with self.subTest(count=count):
                 findings = tier1.check_1_2({"description": "Use when " + "x" * (count - 9)})
                 self.assertFalse(any(f.severity == "ERROR" for f in findings))
-                self.assertTrue(any(f.severity == "WARN" and "optional evaluator heuristic" in f.message for f in findings))
+                self.assertEqual(findings, [])
+
+    def test_check_1_2_accepts_varied_activation_context(self) -> None:
+        for description in (
+            "Use this skill when the user wants a CSV chart.",
+            "Use the skill for charting CSV files.",
+            "When the user needs a chart from tabular data, analyze the file.",
+            "Activate when a tabular data analysis workflow needs custom grouping.",
+        ):
+            with self.subTest(description=description):
+                self.assertEqual(tier1.check_1_2({"description": description}), [])
+
+    def test_check_1_2_does_not_mistake_trigger_nouns_for_activation(self) -> None:
+        for description in ("Create database triggers from SQL.", "Deactivate inactive users."):
+            findings = tier1.check_1_2({"description": description})
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0].severity, "WARN")
+            self.assertIn("heuristic", findings[0].message)
 
     def test_check_1_3_allowed_tools_strings_have_no_finding(self) -> None:
         for value in ("Bash(git:*) Bash(jq:*) Read", ""):

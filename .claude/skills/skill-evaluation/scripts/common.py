@@ -35,7 +35,7 @@ ALL_CHECK_IDS = [
     "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.8", "1.9", "1.10", "1.11",
     "2.1", "2.2", "2.4",
     "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7",
-    "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8",
+    "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7", "4.8", "4.9",
 ]
 MAX_SUPPORTING_CONTEXT_CHARS = 12000
 MAX_FILE_EXCERPT_CHARS = 1500
@@ -66,13 +66,13 @@ PREFERRED_SCRIPT_EXTENSIONS = {".sh", ".py"}
 PORTABILITY_SCRIPT_EXTENSIONS = {".js", ".ts", ".go", ".rb", ".php", ".pl"}
 MAX_NAME_LEN = 64
 MAX_DESC_LEN = 1024
-WARN_DESC_LEN = 350
 MAX_COMPAT_LEN = 500
 RECOMMENDED_MAX_LINES = 500
 
 WHEN_PHRASES = re.compile(
-    r"use when|use for|use if|use after|use before|use to|use whenever|"
-    r"trigger|activate|invoke when|run when|run this when",
+    r"\buse\s+(?:(?:this|the)\s+skill\s+)?(?:when|for|if|after|before|to|whenever)\b|"
+    r"\bwhen\s+(?:the\s+)?user\b|"
+    r"\b(?:trigger|activate|invoke|run)(?:\s+this)?\s+(?:when|for|if)\b",
     re.IGNORECASE,
 )
 UNSCOPED_TOOL = re.compile(
@@ -336,6 +336,7 @@ class Finding:
             "4.6": "Without success criteria the agent cannot determine when the task is complete, risking premature exit or infinite loops.",
             "4.7": "Uniform exit codes (0/1 only) prevent the agent from distinguishing failure types and choosing the right recovery strategy.",
             "4.8": "Skills with insufficient content cannot guide an agent effectively; redirect/pointer skills provide no actionable instructions.",
+            "4.9": "Optional evaluator policy: labeled trigger queries must be readable before client invocation tests; static validation does not measure triggering accuracy.",
         }
         return reason_map.get(self.check_id, "This issue reduces portability, clarity, or reliability of the skill definition.")
 

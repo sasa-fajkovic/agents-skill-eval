@@ -139,6 +139,18 @@ class Tier4Tests(unittest.TestCase):
         findings = tier4.check_4_3(body)
         self.assertEqual(len([f for f in findings if f.check_id == "4.3"]), 0)
 
+    def test_check_4_3_accepts_trigger_exclusions(self) -> None:
+        for body in (
+            "Never invoke this skill for database imports.",
+            "This skill should not trigger for spreadsheet editing.",
+            "Do not activate the skill for database migrations.",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(tier4.check_4_3(body), [])
+
+    def test_check_4_3_still_flags_operational_negative(self) -> None:
+        self.assertTrue(tier4.check_4_3("Never include implementation details."))
+
     def test_check_4_3_flags_pure_negative(self) -> None:
         body = "Never push to main branch."
         findings = tier4.check_4_3(body)

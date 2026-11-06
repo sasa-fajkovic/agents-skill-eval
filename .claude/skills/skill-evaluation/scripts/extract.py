@@ -303,7 +303,11 @@ def collect_metadata(skill_path: Path) -> dict:
     files = [path for path in skill_dir.rglob("*") if path.is_file()]
     script_types = sorted({path.suffix for path in files if path.suffix in PREFERRED_SCRIPT_EXTENSIONS})
     unsupported_script_types = sorted({path.suffix for path in files if path.suffix in PORTABILITY_SCRIPT_EXTENSIONS})
+    from trigger_evals import inspect_trigger_evals
+
+    trigger_evals, _findings = inspect_trigger_evals(skill_dir)
     return {
+        "trigger_evals": trigger_evals,
         "file_count": len(files),
         "line_count": len(read_text_file(skill_path).splitlines()) if skill_path.exists() else 0,
         "has_scripts": any(path.suffix in PREFERRED_SCRIPT_EXTENSIONS or path.suffix in PORTABILITY_SCRIPT_EXTENSIONS for path in files),
