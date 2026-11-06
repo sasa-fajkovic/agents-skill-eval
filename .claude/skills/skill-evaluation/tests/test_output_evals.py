@@ -64,6 +64,11 @@ class OutputEvalsTests(unittest.TestCase):
                 self.assertEqual(output_evals.inspect_output_evals(root),
                                  ({"measurement": "not_run", "files": []}, []))
 
+    def test_regular_file_named_evals_confirms_manifest_absence(self) -> None:
+        (self.root / "evals").write_text("ordinary package data", encoding="utf-8")
+        self.assertEqual(output_evals.inspect_output_evals(self.root),
+                         ({"measurement": "not_run", "files": []}, []))
+
     def test_unknown_manifest_presence_warns_and_dangling_manifest_is_supplied(self) -> None:
         with mock.patch.object(output_evals.os, "lstat", side_effect=PermissionError("PRIVATE")):
             self.assert_invalid()

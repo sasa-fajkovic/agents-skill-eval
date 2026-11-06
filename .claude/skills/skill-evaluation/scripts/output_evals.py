@@ -174,6 +174,12 @@ def fixture_file_identity(root: Path, relative: str) -> tuple[int, int]:
         return info.st_dev, info.st_ino
 
 
+def fixture_directory_identity(root: Path, relative: str) -> tuple[int, int]:
+    with _directory(root, _relative_parts(relative)) as descriptor:
+        info = os.fstat(descriptor)
+        return info.st_dev, info.st_ino
+
+
 def declared_output_inputs(skill_dir: Path) -> tuple[set[Path], set[tuple[int, int]]]:
     """Identify input paths for context omission without trusting fixture validity."""
     paths = set()
@@ -247,7 +253,7 @@ def inspect_output_evals(skill_dir: Path, skill_name: str | None = None) -> tupl
     entry = {"path": MANIFEST_PATH, "valid": False, "eval_count": 0, "assertion_count": 0, "input_file_count": 0}
     try:
         os.lstat(skill_dir / MANIFEST_PATH)
-    except FileNotFoundError:
+    except (FileNotFoundError, NotADirectoryError):
         return metadata, []
     except (OSError, ValueError, UnicodeError, NotImplementedError):
         metadata["files"].append(entry)

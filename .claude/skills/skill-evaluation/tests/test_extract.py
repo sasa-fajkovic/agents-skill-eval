@@ -6,6 +6,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
@@ -16,7 +17,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import extract  # noqa: E402
-from output_evals import MAX_INPUT_BYTES
+from output_evals import MAX_INPUT_BYTES, inspect_output_evals
 
 
 class ExtractTests(unittest.TestCase):
@@ -120,6 +121,69 @@ class ExtractTests(unittest.TestCase):
             self.assertNotIn("mcp__github", extract.collect_supporting_context(skill))
             self.assertTrue(tier1.check_1_8(str(root)))
             self.assertTrue(tier3.check_3_7("", str(root)))
+
+    def test_case_variant_evals_directory_and_query_names_follow_filesystem_roles(self) -> None:
+        from trigger_evals import MAX_QUERY_FILE_BYTES, QUERY_FILENAMES
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill = root / "SKILL.md"
+            skill.write_text("# Example", encoding="utf-8")
+            actual_evals = root / "Evals"
+            actual_evals.mkdir()
+            (actual_evals / "evals.json").write_text(json.dumps({
+                "skill_name": "example", "evals": [{"id": 1, "prompt": "PRIVATE_MANIFEST_CANARY",
+                "expected_output": "Example"}],
+            }), encoding="utf-8")
+            (actual_evals / "private.md").write_text("PRIVATE_PAYLOAD_CANARY", encoding="utf-8")
+            aliases_resolve = (root / "evals").exists()
+            if not aliases_resolve:
+                (root / "evals").mkdir()
+                (root / "evals/hidden.md").write_text("CANONICAL_HIDDEN_CANARY", encoding="utf-8")
+            queries = []
+            for parent in (root, actual_evals):
+                for name in QUERY_FILENAMES:
+                    path = parent / name.upper()
+                    marker = f"VISIBLE_QUERY_{len(queries)}"
+                    path.write_text(json.dumps([{"query": marker, "should_trigger": True}]), encoding="utf-8")
+                    queries.append((path, marker))
+            with mock.patch.object(extract, "read_bounded_regular_file", wraps=extract.read_bounded_regular_file) as read:
+                context = extract.collect_supporting_context(skill)
+            if aliases_resolve:
+                self.assertTrue(inspect_output_evals(root)[0]["files"][0]["valid"])
+                self.assertNotIn("PRIVATE_", context)
+                query_calls = [call for call in read.call_args_list if call.args[1] in {path for path, _ in queries}]
+                self.assertEqual(len(query_calls), 6)
+                self.assertTrue(all(call.args[2] == MAX_QUERY_FILE_BYTES for call in query_calls))
+            else:
+                self.assertIn("PRIVATE_MANIFEST_CANARY", context)
+                self.assertIn("PRIVATE_PAYLOAD_CANARY", context)
+                self.assertNotIn("CANONICAL_HIDDEN_CANARY", context)
+            self.assertTrue(all(marker in context for _path, marker in queries))
+            oversized = queries[0][0]
+            oversized.write_text("OVERSIZED_QUERY_CANARY" + " " * MAX_QUERY_FILE_BYTES, encoding="utf-8")
+            context = extract.collect_supporting_context(skill)
+            if aliases_resolve:
+                self.assertNotIn("OVERSIZED_QUERY_CANARY", context)
+            else:
+                self.assertIn("OVERSIZED_QUERY_CANARY", context)
+
+    def test_case_variant_scripts_directory_keeps_blocked_mcp_checks(self) -> None:
+        import tier3
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            actual_scripts = root / "Scripts"
+            actual_scripts.mkdir()
+            (actual_scripts / "run.py").write_text('if __name__ == "__main__":\n    print("mcp__github_pull_request_read")\n', encoding="utf-8")
+            candidates, issues = extract.script_inventory(str(root))
+            self.assertEqual(issues, [])
+            if (root / "scripts").exists():
+                self.assertEqual([display for _path, display in candidates], ["scripts/run.py"])
+                self.assertTrue(tier3.check_3_7("", str(root)))
+            else:
+                self.assertEqual(candidates, [])
+                self.assertEqual(tier3.check_3_7("", str(root)), [])
 
     def test_pdf_text_is_included_in_supporting_context(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

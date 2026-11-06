@@ -18,7 +18,7 @@ from common import (
     parse_frontmatter,
     read_text_file as read_primary_text_file,
 )
-from output_evals import _directory, declared_output_inputs, fixture_file_identity, inspect_output_evals, read_bounded_regular_file, validate_fixture_path
+from output_evals import _directory, declared_output_inputs, fixture_directory_identity, fixture_file_identity, inspect_output_evals, read_bounded_regular_file, validate_fixture_path
 
 
 def read_text_file(path: Path) -> str:
@@ -46,6 +46,18 @@ def collect_supporting_context(skill_path: Path) -> str:
 
     root = skill_path.parent
     output_inputs, output_identities = declared_output_inputs(root)
+    try:
+        evals_identity = fixture_directory_identity(root, "evals")
+    except (OSError, ValueError, UnicodeError, NotImplementedError):
+        evals_identity = None
+    directory_identities = {}
+    query_paths = {f"{prefix}{name}" for prefix in ("", "evals/") for name in QUERY_FILENAMES}
+    query_identities = set()
+    for relative in query_paths:
+        try:
+            query_identities.add(fixture_file_identity(root, relative))
+        except (OSError, ValueError, UnicodeError, NotImplementedError):
+            pass
     paths = [path for path in root.rglob("*") if path.is_file() and path != skill_path]
     inventory = []
     parts = []
@@ -65,15 +77,27 @@ def collect_supporting_context(skill_path: Path) -> str:
     for path in sorted(paths, key=sort_key):
         suffix = path.suffix.lower()
         relative = path.relative_to(root)
-        trigger_fixture = path.name in QUERY_FILENAMES and path.parent in (root, root / "evals")
-        if path.absolute() in output_inputs or (not trigger_fixture and relative.parts[0] == "evals"):
+        if path.absolute() in output_inputs:
             continue
-        if output_identities:
+        identity = None
+        if output_identities or query_identities:
             try:
-                if fixture_file_identity(root, relative.as_posix()) in output_identities:
-                    continue
+                identity = fixture_file_identity(root, relative.as_posix())
             except (OSError, ValueError, UnicodeError, NotImplementedError):
                 pass
+        if identity in output_identities:
+            continue
+        trigger_fixture = relative.as_posix() in query_paths or identity in query_identities
+        first = relative.parts[0]
+        if evals_identity is not None and len(relative.parts) > 1 and first not in directory_identities:
+            try:
+                directory_identities[first] = fixture_directory_identity(root, first)
+            except (OSError, ValueError, UnicodeError, NotImplementedError):
+                directory_identities[first] = None
+        if not trigger_fixture and (first == "evals" or (
+            evals_identity is not None and directory_identities.get(first) == evals_identity
+        )):
+            continue
         inventory.append(str(relative))
         try:
             if trigger_fixture:
@@ -296,15 +320,19 @@ def script_inventory(skill_dir: str) -> tuple[list[tuple[Path, str]], list[str]]
                 if path.suffix in PREFERRED_SCRIPT_EXTENSIONS:
                     if not stat.S_ISDIR(os.stat(name, dir_fd=descriptor, follow_symlinks=False).st_mode):
                         results.append((path, name))
-            if "scripts" in names:
-                try:
-                    with _directory(root, ("scripts",)) as scripts_descriptor:
-                        with os.scandir(scripts_descriptor) as entries:
-                            for entry in sorted(entries, key=lambda item: item.name):
-                                if not entry.is_dir(follow_symlinks=False):
-                                    results.append((root / "scripts" / entry.name, f"scripts/{entry.name}"))
-                except (OSError, ValueError, UnicodeError, NotImplementedError):
-                    issues.append("scripts/")
+            try:
+                info = os.stat("scripts", dir_fd=descriptor, follow_symlinks=False)
+                if not stat.S_ISDIR(info.st_mode):
+                    raise ValueError("script directory cannot be inspected safely")
+                with _directory(root, ("scripts",)) as scripts_descriptor:
+                    with os.scandir(scripts_descriptor) as entries:
+                        for entry in sorted(entries, key=lambda item: item.name):
+                            if not entry.is_dir(follow_symlinks=False):
+                                results.append((root / "scripts" / entry.name, f"scripts/{entry.name}"))
+            except FileNotFoundError:
+                pass
+            except (OSError, ValueError, UnicodeError, NotImplementedError):
+                issues.append("scripts/")
     except (OSError, ValueError, UnicodeError, NotImplementedError):
         issues.append("skill root")
     return results, issues

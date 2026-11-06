@@ -164,4 +164,3 @@ Validate provided `eval_queries.json`, `train_queries.json`, and `validation_que
 ## 4.10: optional output-quality fixture validity
 
 Optional evaluator policy inspects `evals/evals.json` declarations and safe local input paths. Missing fixtures and assertions are neutral. Invalid supplied fixtures produce a WARN, never an Agent Skills format ERROR. Successful validation establishes fixture structure only: execution, grading, baseline improvement, timing, and output quality remain unmeasured. See `10-output-quality-evals.md` for the schema, read limits, and separate empirical workflow.
-
