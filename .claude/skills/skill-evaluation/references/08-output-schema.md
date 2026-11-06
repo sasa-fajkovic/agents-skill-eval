@@ -56,3 +56,7 @@ The evaluator must print exactly one JSON object to stdout and nothing else. No 
 - Every finding must include a `reason` so no follow-up LLM call is needed to explain it.
 - All findings arrays must always be present as `[]`, never `null`.
 - `metadata.unsupported_script_types` retains the legacy evaluator-policy set `.js`, `.ts`, `.go`, `.rb`, `.php`, and `.pl`. This field does not classify a language as invalid under the specification. Other extensions can receive 1.11 portability warnings without appearing in this legacy field.
+
+## Trigger-query metadata
+
+`metadata.trigger_evals` contains `measurement: "not_run"` and a `files` array. Each recognized file has `path`, `valid`, `query_count`, `should_trigger_count`, and `should_not_trigger_count`. Invalid files retain zero counts and emit rule 4.9 warnings when Tier 4 runs; malformed frontmatter stops evaluation before that tier, while metadata still reports fixture structure. With no discovered fixtures, `files` is empty. An inaccessible fixture location produces a 4.9 warning without inventing file records. Counts describe valid fixture structure only; the evaluator does not install or invoke uploaded skills, inspect client invocation logs, or calculate trigger rates. This is separate from output-quality test cases.

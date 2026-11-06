@@ -27,4 +27,4 @@ Use `compatibility` to describe environment and runtime dependencies. The specif
 
 ## Recommendations and heuristics
 
-Under 500 SKILL.md lines is a specification recommendation, producing WARN without a reference-skill exception. Description warnings above 350 characters and for missing trigger phrases are optional evaluator heuristics; the hard description limit is 1024. Script interfaces, output style, interactivity, security, MCP, token efficiency, and effectiveness checks are quality policy rather than format requirements. Valid Agent Skills format does not guarantee a passing quality score.
+Under 500 SKILL.md lines is a specification recommendation, producing WARN without a reference-skill exception. Missing recognized activation context is an optional description heuristic with flexible wording; the hard description limit is 1024, with no shorter length penalty. Script interfaces, output style, interactivity, security, MCP, token efficiency, and effectiveness checks are quality policy rather than format requirements. Valid Agent Skills format does not guarantee a passing quality score.

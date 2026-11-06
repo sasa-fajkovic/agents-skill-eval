@@ -12,7 +12,7 @@ Valid examples include `skill-eval`, `café`, and `技能`. Uppercase `My-Skill`
 
 The required description must be a non-empty string of at most 1024 characters (ERROR otherwise). It should explain what the skill does and when to use it.
 
-The evaluator additionally warns above 350 characters and when no recognized trigger phrase such as "Use when" is present. These are optional evaluator heuristics, not format limits or a required literal phrase. Descriptions of 351–1024 characters remain valid under the specification.
+The evaluator optionally warns when no recognized activation context is present. Phrasing is flexible: "Use this skill when", "Use for", and "When the user" are examples, not required syntax. This heuristic can miss valid wording; review intent before changing text. There is no extra length penalty below the 1024-character format limit. See [description optimization](09-description-optimization.md) for scope, boundaries, and empirical trigger testing.
 
 ```yaml
 description: >

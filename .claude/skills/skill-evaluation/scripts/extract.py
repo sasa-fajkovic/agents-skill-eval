@@ -31,6 +31,8 @@ def read_pdf_file(path: Path) -> str:
 
 
 def collect_supporting_context(skill_path: Path) -> str:
+    from trigger_evals import QUERY_FILENAMES, read_trigger_fixture
+
     root = skill_path.parent
     paths = [path for path in root.rglob("*") if path.is_file() and path != skill_path]
     inventory = []
@@ -52,7 +54,12 @@ def collect_supporting_context(skill_path: Path) -> str:
         suffix = path.suffix.lower()
         relative = path.relative_to(root)
         inventory.append(str(relative))
-        if suffix in ALLOWED_TEXT_EXTENSIONS:
+        if path.name in QUERY_FILENAMES and path.parent in (root, root / "evals"):
+            try:
+                content = read_trigger_fixture(path)
+            except (OSError, UnicodeError, ValueError):
+                content = "[Trigger fixture content omitted by evaluator read policy]"
+        elif suffix in ALLOWED_TEXT_EXTENSIONS:
             content = read_text_file(path)
         elif suffix in PDF_EXTENSIONS:
             content = read_pdf_file(path)
@@ -303,7 +310,11 @@ def collect_metadata(skill_path: Path) -> dict:
     files = [path for path in skill_dir.rglob("*") if path.is_file()]
     script_types = sorted({path.suffix for path in files if path.suffix in PREFERRED_SCRIPT_EXTENSIONS})
     unsupported_script_types = sorted({path.suffix for path in files if path.suffix in PORTABILITY_SCRIPT_EXTENSIONS})
+    from trigger_evals import inspect_trigger_evals
+
+    trigger_evals, _findings = inspect_trigger_evals(skill_dir)
     return {
+        "trigger_evals": trigger_evals,
         "file_count": len(files),
         "line_count": len(read_text_file(skill_path).splitlines()) if skill_path.exists() else 0,
         "has_scripts": any(path.suffix in PREFERRED_SCRIPT_EXTENSIONS or path.suffix in PORTABILITY_SCRIPT_EXTENSIONS for path in files),
