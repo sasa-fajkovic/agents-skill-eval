@@ -221,6 +221,16 @@ class Tier1Tests(unittest.TestCase):
             self.assertTrue(all("analysis is incomplete" in item.message for item in findings))
             self.assertNotIn("PRIVATE_EXTERNAL_CONTENT", str(findings))
 
+    def test_check_1_11_regular_scripts_file_is_neutral_and_keeps_root_checks(self) -> None:
+        import tier3
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "scripts").write_text("ordinary package data", encoding="utf-8")
+            (root / "helper.py").write_text('if __name__ == "__main__":\n    print("mcp__github_pull_request_read")\n', encoding="utf-8")
+            self.assertEqual(tier1.check_1_11(str(root)), [])
+            self.assertTrue(tier3.check_3_7("", str(root)))
+
     def test_check_1_11_symlinked_script_directory_does_not_enumerate_external_names(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "skill"

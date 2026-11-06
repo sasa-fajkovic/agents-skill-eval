@@ -322,6 +322,8 @@ def script_inventory(skill_dir: str) -> tuple[list[tuple[Path, str]], list[str]]
                         results.append((path, name))
             try:
                 info = os.stat("scripts", dir_fd=descriptor, follow_symlinks=False)
+                if stat.S_ISREG(info.st_mode):
+                    return results, issues
                 if not stat.S_ISDIR(info.st_mode):
                     raise ValueError("script directory cannot be inspected safely")
                 with _directory(root, ("scripts",)) as scripts_descriptor:
