@@ -722,6 +722,36 @@ class TestMultiSkillRejection(unittest.TestCase):
     """Uploading an entire .claude/skills folder (multiple SKILL.md files)
     should be rejected with a clear error rather than silently evaluating one."""
 
+    def test_ci_wrapper_uses_real_skill_root_for_identity_and_output_evals(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill = root / "wrapped-skill"
+            (skill / "evals/files").mkdir(parents=True)
+            (skill / "SKILL.md").write_text(
+                "---\nname: wrapped-skill\ndescription: Use when checking fixtures.\n---\n\n## Output\nReturn JSON.\n",
+                encoding="utf-8",
+            )
+            (skill / "evals/files/input.csv").write_text("month,revenue\nJanuary,4\n", encoding="utf-8")
+            (skill / "evals/evals.json").write_text(json.dumps({"skill_name": "wrapped-skill", "evals": [
+                {"id": 1, "prompt": "Summarize revenue.", "expected_output": "A summary.", "files": ["evals/files/input.csv"]},
+            ]}), encoding="utf-8")
+            command = [sys.executable, str(MODULE_PATH), str(root), "--ci"]
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertIn(result.returncode, (0, 2), result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["skill_name"], "wrapped-skill")
+            self.assertEqual(payload["metadata"]["file_count"], 3)
+            self.assertEqual(payload["metadata"]["output_evals"]["files"][0], {
+                "path": "evals/evals.json", "valid": True, "eval_count": 1, "assertion_count": 0, "input_file_count": 1,
+            })
+            duplicate = root / "other-skill"
+            duplicate.mkdir()
+            (duplicate / "SKILL.md").write_text("---\nname: other-skill\ndescription: Use when testing.\n---\nBody.", encoding="utf-8")
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            payload = json.loads(result.stdout)
+            self.assertTrue(any("multiple SKILL.md" in item["message"] for item in payload["findings"]["error_findings"]))
+
     def test_rejects_multiple_skill_dirs(self) -> None:
         root = Path(tempfile.mkdtemp())
         for name in ("skill-a", "skill-b"):

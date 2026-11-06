@@ -263,6 +263,10 @@ def main() -> None:
     path = sys.argv[1]
     ci_mode = "--ci" in sys.argv
     resolved = Path(path) / "SKILL.md" if Path(path).is_dir() else Path(path)
+    if Path(path).is_dir():
+        candidate, _ = _find_skill_md(Path(path))
+        if candidate is not None:
+            resolved = candidate
     findings = evaluate(path)
     errors = [finding for finding in findings if finding.severity == "ERROR"]
     warnings = [finding for finding in findings if finding.severity == "WARN"]

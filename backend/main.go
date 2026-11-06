@@ -998,7 +998,11 @@ success:
 }
 
 func saveValidatedFile(rootDir string, header *multipart.FileHeader) error {
-	relPath, err := sanitizeRelativeUploadPath(header.Filename)
+	disposition, parameters, err := mime.ParseMediaType(header.Header.Get("Content-Disposition"))
+	if err != nil || disposition != "form-data" || parameters["filename"] == "" {
+		return errors.New("invalid multipart file metadata")
+	}
+	relPath, err := sanitizeRelativeUploadPath(parameters["filename"])
 	if err != nil {
 		return err
 	}
@@ -1034,8 +1038,11 @@ func saveValidatedFile(rootDir string, header *multipart.FileHeader) error {
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return fmt.Errorf("failed to prepare %s", relPath)
 	}
-	out, err := os.Create(destination)
+	out, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("duplicate upload path: %s", relPath)
+		}
 		return fmt.Errorf("failed to save %s", filename)
 	}
 	defer out.Close()
