@@ -1,35 +1,26 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from pathlib import Path
 
 from common import (
-    ALLOWED_SCRIPT_EXTENSIONS,
+    PREFERRED_SCRIPT_EXTENSIONS,
     CLAUDE_CODE_EXTENSIONS,
-    DISCOURAGED_SCRIPT_EXTENSIONS,
     Finding,
     HELP_PATTERNS,
     MAX_COMPAT_LEN,
     MAX_DESC_LEN,
-    MAX_LINES,
+    RECOMMENDED_MAX_LINES,
     MAX_NAME_LEN,
-    MAX_NAME_WORDS,
-    NAME_RE,
     NON_INTERACTIVE_FALLBACK,
-    STABLE_FIELDS,
+    SPEC_FIELDS,
     STRUCTURED_OUTPUT,
     WARN_DESC_LEN,
     WHEN_PHRASES,
     INTERACTIVE_PROMPT,
 )
 from extract import entrypoint_scripts, read_text_file
-
-METADATA_REDUNDANT_KEYS = {
-    "author", "maintainer", "email", "version", "semver",
-    "created", "updated", "date", "last-modified", "last_modified",
-    "tags", "tag", "category", "topic",
-}
-
 
 _TEMP_DIR_RE = re.compile(r"^eval-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
@@ -43,18 +34,16 @@ def check_1_1(fm: dict, skill_dir: str) -> list[Finding]:
     if not isinstance(name, str):
         findings.append(Finding("1.1", "ERROR", f"name must be a string, got {type(name).__name__}"))
         return findings
-    if len(name) > MAX_NAME_LEN:
-        findings.append(Finding("1.1", "ERROR", f"name is {len(name)} chars (max {MAX_NAME_LEN})"))
-    word_count = len([w for w in name.split("-") if w])
-    if word_count > MAX_NAME_WORDS:
-        findings.append(Finding("1.1", "ERROR", f"name has {word_count} hyphen-separated words (max {MAX_NAME_WORDS})"))
+    name = unicodedata.normalize("NFKC", name)
+    if not 1 <= len(name) <= MAX_NAME_LEN:
+        findings.append(Finding("1.1", "ERROR", f"name is {len(name)} chars (must be 1-{MAX_NAME_LEN}, max {MAX_NAME_LEN})"))
     if "--" in name:
         findings.append(Finding("1.1", "ERROR", f'name "{name}" contains consecutive hyphens; the spec requires single hyphens as separators'))
-    elif not NAME_RE.match(name):
+    elif name != name.lower() or name.startswith("-") or name.endswith("-") or not all(char.isalnum() or char == "-" for char in name):
         findings.append(Finding("1.1", "ERROR", f'name "{name}" must be lowercase alphanumeric + hyphens, no leading/trailing/consecutive hyphens'))
     dirname = Path(skill_dir).name
     # Skip directory-name comparison for synthetic upload directories (e.g. /tmp/eval-<uuid>).
-    if not _TEMP_DIR_RE.match(dirname) and name != dirname:
+    if not _TEMP_DIR_RE.match(dirname) and name != unicodedata.normalize("NFKC", dirname):
         findings.append(Finding("1.1", "ERROR", f'name "{name}" does not match directory "{dirname}"'))
     return findings
 
@@ -71,21 +60,19 @@ def check_1_2(fm: dict) -> list[Finding]:
     if len(desc) > MAX_DESC_LEN:
         findings.append(Finding("1.2", "ERROR", f"description is {len(desc)} chars (max {MAX_DESC_LEN})"))
     elif len(desc) > WARN_DESC_LEN:
-        findings.append(Finding("1.2", "WARN", f"description is {len(desc)} chars; keep under {WARN_DESC_LEN} to avoid context bloat (hard cap {MAX_DESC_LEN})"))
+        findings.append(Finding("1.2", "WARN", f"optional evaluator heuristic: description is {len(desc)} chars; keep under {WARN_DESC_LEN} to avoid context bloat (hard cap {MAX_DESC_LEN})"))
     if not WHEN_PHRASES.search(desc):
-        findings.append(Finding("1.2", "WARN", 'description should include a "Use when..." clause'))
+        findings.append(Finding("1.2", "WARN", 'optional evaluator heuristic: description should include a "Use when..." clause'))
     return findings
 
 
 def check_1_3(fm: dict) -> list[Finding]:
     findings = []
     for key in fm:
-        if key in STABLE_FIELDS:
+        if key in SPEC_FIELDS:
             continue
-        if key == "allowed-tools":
-            findings.append(Finding("1.3", "WARN", f'"{key}" is a recognized but experimental agentskills.io field — may not be supported by all runtimes yet'))
-        elif key in CLAUDE_CODE_EXTENSIONS:
-            findings.append(Finding("1.3", "WARN", f'"{key}" is a Claude Code extension (not in agentskills.io stable spec) — functional in CC but reduces cross-platform portability'))
+        if key in CLAUDE_CODE_EXTENSIONS:
+            findings.append(Finding("1.3", "WARN", f'"{key}" is a Claude Code extension (not in the agentskills.io specification) — functional in CC but reduces cross-platform portability'))
         else:
             findings.append(Finding("1.3", "ERROR", f'"{key}" is not a recognized agentskills.io field (move to metadata: if needed)'))
     return findings
@@ -96,8 +83,6 @@ def check_1_4(fm: dict) -> list[Finding]:
     if "license" in fm:
         if not isinstance(fm["license"], str):
             findings.append(Finding("1.4", "ERROR", f"license must be a string, got {type(fm['license']).__name__}"))
-        elif not fm["license"].strip():
-            findings.append(Finding("1.4", "ERROR", "license is present but empty"))
     if "compatibility" in fm:
         if not isinstance(fm["compatibility"], str):
             findings.append(Finding("1.4", "ERROR", f"compatibility must be a string, got {type(fm['compatibility']).__name__}"))
@@ -105,6 +90,8 @@ def check_1_4(fm: dict) -> list[Finding]:
             findings.append(Finding("1.4", "ERROR", "compatibility is present but empty"))
         elif len(fm["compatibility"]) > MAX_COMPAT_LEN:
             findings.append(Finding("1.4", "ERROR", f"compatibility is {len(fm['compatibility'])} chars (max {MAX_COMPAT_LEN})"))
+    if "allowed-tools" in fm and not isinstance(fm["allowed-tools"], str):
+        findings.append(Finding("1.4", "ERROR", f"allowed-tools must be a space-separated string, got {type(fm['allowed-tools']).__name__}"))
     if "metadata" in fm:
         meta = fm["metadata"]
         if not isinstance(meta, dict):
@@ -117,35 +104,13 @@ def check_1_4(fm: dict) -> list[Finding]:
 
 
 def check_1_5(fm: dict) -> list[Finding]:
-    if "metadata" not in fm:
-        return []
-    meta = fm["metadata"]
-    if not isinstance(meta, dict):
-        return []
-    findings = []
-    for key in meta:
-        if key in METADATA_REDUNDANT_KEYS:
-            findings.append(Finding("1.5", "WARN", f'metadata key "{key}" duplicates git history — remove it; metadata loads on every API call'))
-        elif key in CLAUDE_CODE_EXTENSIONS:
-            findings.append(Finding("1.3", "WARN", f'metadata key "{key}" is a Claude Code extension — placing it in metadata hides it from portability checks but has no effect on non-CC platforms'))
-    return findings
-
-
-_REFERENCE_SKILL = re.compile(
-    r"(?i)(reference|knowledge|lookup|glossary|catalog|inventory|"
-    r"documentation|cheat\s*sheet|playbook|runbook|handbook)"
-)
-
-MAX_LINES_REFERENCE = 800
+    return []
 
 
 def check_1_6(lines: list[str], description: str = "") -> list[Finding]:
     count = len(lines)
-    # Reference/knowledge skills get a higher line limit
-    limit = MAX_LINES_REFERENCE if _REFERENCE_SKILL.search(description) else MAX_LINES
-    if count > limit:
-        suffix = " (reference skill)" if limit == MAX_LINES_REFERENCE else ""
-        return [Finding("1.6", "ERROR", f"SKILL.md is {count} lines (max {limit}{suffix})")]
+    if count >= RECOMMENDED_MAX_LINES:
+        return [Finding("1.6", "WARN", f"SKILL.md is {count} lines; the spec recommends under {RECOMMENDED_MAX_LINES} lines (not a hard limit)")]
     return []
 
 
@@ -158,7 +123,7 @@ def check_1_8(skill_dir: str) -> list[Finding]:
             continue
         has_help = any(pattern.search(content) for pattern in HELP_PATTERNS)
         if not has_help:
-            findings.append(Finding("1.8", "ERROR", f"{display} does not implement --help — agents rely on --help to learn a script's interface"))
+            findings.append(Finding("1.8", "ERROR", f"evaluator policy: {display} does not implement --help — agents rely on --help to learn a script's interface"))
     return findings
 
 
@@ -172,7 +137,7 @@ def check_1_9(skill_dir: str) -> list[Finding]:
         has_output = any(token in content for token in ("print", "echo", "console.log", "printf"))
         has_structured = bool(STRUCTURED_OUTPUT.search(content))
         if has_output and not has_structured:
-            findings.append(Finding("1.9", "WARN", f"{display} — consider using structured output (JSON/CSV) instead of free-form text for agent composability"))
+            findings.append(Finding("1.9", "WARN", f"evaluator policy: {display} — consider using structured output (JSON/CSV) instead of free-form text for agent composability"))
     return findings
 
 
@@ -203,11 +168,10 @@ def check_1_10(skill_dir: str) -> list[Finding]:
                 context = "\n".join(lines[ctx_start:ctx_end])
                 if NON_INTERACTIVE_FALLBACK.search(context):
                     continue
-            findings.append(Finding("1.10", "ERROR", f'{display}:{line_num} — interactive prompt detected ("{match.group().strip()}"). Agents cannot respond to prompts; use flags or env vars instead'))
+            findings.append(Finding("1.10", "ERROR", f'evaluator policy: {display}:{line_num} — interactive prompt detected ("{match.group().strip()}"). Agents cannot respond to prompts; use flags or env vars instead'))
     return findings
 
 
-_JS_EXTENSIONS = {".js", ".ts"}
 _DATA_EXTENSIONS = {".json", ".yaml", ".yml", ".toml", ".txt", ".md", ".csv", ".xml", ".ini", ".cfg", ".conf", ".env"}
 
 
@@ -221,13 +185,8 @@ def check_1_11(skill_dir: str) -> list[Finding]:
             # Skip data/config files — they aren't scripts
             if file_path.suffix in _DATA_EXTENSIONS:
                 continue
-            if file_path.suffix and file_path.suffix not in ALLOWED_SCRIPT_EXTENSIONS:
-                if file_path.suffix in _JS_EXTENSIONS:
-                    findings.append(Finding("1.11", "WARN", f"scripts/{file_path.name} — the spec lists JavaScript as common, but Python (.py) and Bash (.sh) are preferred because they are available on virtually all systems without additional runtime setup"))
-                elif file_path.suffix in DISCOURAGED_SCRIPT_EXTENSIONS:
-                    findings.append(Finding("1.11", "WARN", f"scripts/{file_path.name} — Python (.py) and Bash (.sh) are preferred because they are available on virtually all systems without additional runtime setup; {file_path.suffix} requires an additional runtime"))
-                else:
-                    findings.append(Finding("1.11", "ERROR", f"scripts/{file_path.name} — Python (.py) and Bash (.sh) are preferred because they are available on virtually all systems; {file_path.suffix} is not a recognized scripting language"))
+            if file_path.suffix and file_path.suffix not in PREFERRED_SCRIPT_EXTENSIONS:
+                findings.append(Finding("1.11", "WARN", f"evaluator portability policy: scripts/{file_path.name} uses {file_path.suffix}; prefer Python (.py) or Bash (.sh) when available, or document the required runtime in compatibility. The spec permits runtime-supported languages"))
     return findings
 
 

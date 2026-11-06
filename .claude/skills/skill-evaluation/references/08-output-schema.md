@@ -55,4 +55,4 @@ The evaluator must print exactly one JSON object to stdout and nothing else. No 
 - `rule_id` uses numeric check IDs (e.g., `"1.3"`, `"4.6"`).
 - Every finding must include a `reason` so no follow-up LLM call is needed to explain it.
 - All findings arrays must always be present as `[]`, never `null`.
-- `metadata.unsupported_script_types` must flag non-portable runtimes such as `.js`, `.ts`, or `.go`.
+- `metadata.unsupported_script_types` retains the legacy evaluator-policy set `.js`, `.ts`, `.go`, `.rb`, `.php`, and `.pl`. This field does not classify a language as invalid under the specification. Other extensions can receive 1.11 portability warnings without appearing in this legacy field.

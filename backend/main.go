@@ -1503,12 +1503,16 @@ func llmSystemPrompt() string {
 
 ## Evaluation Framework
 
-Evaluate the uploaded SKILL.md package against these criteria derived from the agentskills.io specification:
+Evaluate the uploaded SKILL.md package against the current agentskills.io specification plus the evaluator's project quality policy. Distinguish hard format requirements from recommendations and policy heuristics; a policy failure does not necessarily mean invalid Agent Skills format.
+
+Specification facts: name is 1–64 characters with no word-count limit; follow skills-ref Unicode NFKC normalization, lowercase and alphanumeric-or-hyphen validation, and normalized parent-directory matching. Description is a non-empty string with a 1024-character hard cap. Arbitrary string-to-string metadata, including author and version, is valid. All six documented fields are recognized; experimental allowed-tools is a space-separated string and is valid without a finding, though runtime support may vary. Known platform extensions are portability warnings. Under 500 SKILL.md lines is a recommendation (WARN), with no reference-skill exception. Script languages depend on runtime support, not a format allowlist. The specification imposes no body-format restrictions.
+
+The following quality criteria include evaluator policy and optional heuristics:
 
 ### 1. Portability (cross-platform compatibility)
 - Does the skill work across agent runtimes (Claude Code, Copilot, Cursor, Windsurf, etc.)?
-- Does it avoid runtime-specific extensions in stable frontmatter fields?
-- Are scripts written in universally available languages (Python, Bash preferred; JavaScript acceptable)?
+- Does it document runtime-specific extension requirements and experimental field support?
+- Evaluator portability policy prefers Python and Bash when available; other languages are valid with the required runtime. Are runtime dependencies documented?
 - Does it avoid MCP-specific instructions that tie it to one integration surface?
 
 ### 2. Progressive Disclosure & Token Efficiency
@@ -1519,7 +1523,7 @@ Evaluate the uploaded SKILL.md package against these criteria derived from the a
 - Is there duplicated content that inflates token cost?
 
 ### 3. Description & Triggering
-- Does the description include a "Use when..." clause so agents know when to activate the skill?
+- Optional evaluator heuristic: does the description convey activation context? A literal "Use when..." clause is not a specification requirement; warnings above 350 characters are also optimization policy, not the 1024-character hard cap.
 - Is the description specific enough to avoid false triggering on unrelated tasks?
 
 ### 4. Clarity & Completeness
@@ -1529,7 +1533,7 @@ Evaluate the uploaded SKILL.md package against these criteria derived from the a
 - Are default behaviors defined for optional flags and parameters?
 - Are success/completion criteria stated so the agent knows when it's done?
 
-### 5. Script Design (if scripts/ are present)
+### 5. Script Design (evaluator policy, if scripts/ are present)
 - Do entrypoint scripts implement --help for autonomous discovery?
 - Do scripts produce structured output (JSON/CSV) for composability?
 - Are scripts idempotent or guarded against duplicate execution?
@@ -1555,14 +1559,14 @@ Use this schema exactly:
 
 Keep each array to 3-6 items. Be specific — reference actual content from the skill.
 Base the quality_tier on overall spec alignment: excellent means production-ready with strong portability and clarity; poor means fundamental issues that prevent reliable agent use.
-Use the deterministic findings as hard constraints — do not contradict them.`)
+Respect deterministic format findings. Treat policy and heuristic findings as observations that may need contextual review; identify any justified exception explicitly.`)
 }
 
 func buildLLMPrompt(container evalContainerResult) string {
 	findingsJSON, _ := json.Marshal(container.Findings)
 	skillContent := truncateForLLM(container.SkillContent, 40000)
 	supporting := truncateForLLM(container.SupportingContext, 12000)
-	return strings.TrimSpace("Evaluate this skill package against the agentskills.io specification.\n\n## Deterministic Findings (treat as ground truth)\n" + string(findingsJSON) + "\n\n## Primary SKILL.md Content\n" + skillContent + "\n\n## Supporting Context (scripts, references, tests)\n" + supporting)
+	return strings.TrimSpace("Evaluate this skill package against the agentskills.io specification.\n\n## Deterministic Findings (format requirements plus policy heuristics)\n" + string(findingsJSON) + "\n\n## Primary SKILL.md Content\n" + skillContent + "\n\n## Supporting Context (scripts, references, tests)\n" + supporting)
 }
 
 func parseAnthropicAnalysis(body []byte) (llmAnalysis, error) {

@@ -1,6 +1,6 @@
 # Security Checks (2.1-2.2, 2.4)
 
-Detection methods and examples. Since `allowed-tools` is not part of the stable agentskills.io spec, security scoping must come from the skill body prose.
+Evaluator security policy: detection methods and examples, not Agent Skills format requirements. The documented experimental `allowed-tools` field is valid, but runtime support varies; body prose should also explain intended tool scope.
 
 ## 2.1: body references tools without scoping
 

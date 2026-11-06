@@ -9,7 +9,15 @@ compatibility: Designed for Claude Code. Uses Read, Glob, Grep, and Bash tools.
 
 # Skill Evaluator
 
-Validate a SKILL.md against the agentskills.io stable spec (5 fields only). Non-standard fields, experimental fields, and platform-specific extensions are an error. MCP usage is evaluated per the namespace policy in `references/mcp-policy.md`.
+Validate a SKILL.md against the current [Agent Skills specification](https://agentskills.io/specification), alongside evaluator quality policy. All six documented fields are recognized, including experimental `allowed-tools` as a space-separated string; a valid string produces no finding. Runtime support for that field may vary. Known platform extensions produce portability warnings; unknown top-level fields produce errors. MCP usage is evaluated per the namespace policy in `references/mcp-policy.md`.
+
+## Requirements and policy
+
+Install `requirements.txt` with `python3 -m pip install -r <skill-directory>/requirements.txt` before running the evaluator. PyYAML's safe loader parses frontmatter; YAML scalar types are validated, so quote metadata values that would otherwise become numbers, booleans, or dates.
+
+Names allow 1–64 characters with no hyphen-word limit; Unicode NFKC normalization follows the linked skills-ref validator for validation and parent-directory comparison. Descriptions have a hard cap of 1024 characters. Arbitrary string-to-string metadata, including author and version, is valid. Under 500 lines is a specification recommendation (WARN), with no reference-skill exception.
+
+Warnings above 350 description characters and for missing trigger phrases are optional evaluator heuristics. Script interface, output, interactivity, language preference, security, MCP, token-efficiency, and effectiveness checks are evaluator policy, not hard format requirements. The specification permits runtime-supported script languages and imposes no SKILL.md body-format restrictions; the minimum-content gate is evaluator policy. Policy errors can still fail an evaluation.
 
 ## Tool constraints
 
@@ -34,7 +42,7 @@ Use Read, Glob, Grep, and Bash tools. Do not modify any files. Bash is used only
 ### Phase 1: Deterministic evaluation
 
 4. **Run all tiers via eval.py**: Run `python3 scripts/eval.py <path>` via Bash (resolve the script path relative to this skill's directory). The script runs all four tiers deterministically:
-   - **Tier 1** (Spec Compliance 1.1-1.6, 1.8-1.11): Frontmatter validation, script checks.
+   - **Tier 1** (Spec and evaluator policy 1.1-1.6, 1.8-1.11): Frontmatter validation, script checks.
    - **Tier 2** (Security 2.1-2.2, 2.4): Tool scoping, destructive operations, hardcoded user paths.
    - **Tier 3** (Token Efficiency 3.1-3.7): Inline code, reference data, duplication, verbose prose, preload instructions, MCP namespace policy (see `references/mcp-policy.md`).
    - **Tier 4** (Effectiveness 4.1-4.8): Ambiguity, examples, negative framing, defaults, idempotency, success criteria, exit codes, minimum content gate.
@@ -63,7 +71,7 @@ Constraints:
 - `rule_id` uses numeric check IDs (e.g., `"1.3"`, `"4.6"`).
 - Every finding must include a `reason` so no follow-up LLM call is needed to explain it.
 - All findings arrays must always be present as `[]`, never `null`.
-- `metadata.unsupported_script_types` must flag non-portable runtimes such as `.js`, `.ts`, or `.go`.
+- `metadata.unsupported_script_types` retains its legacy evaluator-policy set: `.js`, `.ts`, `.go`, `.rb`, `.php`, and `.pl`. It does not indicate a specification violation.
 
 ### Human mode (default)
 
@@ -80,4 +88,4 @@ All tier output comes from eval.py (already formatted with boxes). The LLM adds 
 3. Do not nitpick formatting or markdown style — focus on spec compliance, security, tokens, and effectiveness.
 4. Load reference files on demand, not upfront. Read only the reference file relevant to the current tier being evaluated.
 5. Apply the MCP namespace policy from `references/mcp-policy.md`: allowed namespaces pass, blocked namespaces are ERRORs with a suggested CLI, everything else is a WARN needing per-case review.
-6. Prefer `.sh` and `.py` for bundled scripts. Treat `.js`, `.ts`, `.go`, and similar runtime-dependent script types as portability warnings and surface them in `metadata.unsupported_script_types`.
+6. Evaluator portability policy prefers `.sh` and `.py`. Other script extensions produce portability warnings. Keep the legacy runtime set in `metadata.unsupported_script_types`; describe runtime requirements in `compatibility`.
