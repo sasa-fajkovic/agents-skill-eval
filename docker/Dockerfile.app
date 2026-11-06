@@ -1,4 +1,4 @@
-FROM golang:1.26.10-bookworm@sha256:5de7c99eb78ca5e515a4c340235d0955ec5964a5071c492c15503d7c267da473 AS backend-build
+FROM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS backend-build
 
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
