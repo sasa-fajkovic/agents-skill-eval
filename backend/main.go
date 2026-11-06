@@ -55,6 +55,7 @@ const (
 var (
 	allowedMimeTypes = map[string]bool{
 		"text/plain":         true,
+		"text/csv":           true,
 		"text/markdown":      true,
 		"text/html":          true,
 		"text/xml":           true,
@@ -1093,7 +1094,7 @@ func scanUploadedFile(path string) error {
 
 func isScannableTextFile(name string) bool {
 	switch strings.ToLower(filepath.Ext(name)) {
-	case ".md", ".markdown", ".txt", ".json", ".py", ".sh", ".js", ".yaml", ".yml":
+	case ".md", ".markdown", ".txt", ".json", ".csv", ".py", ".sh", ".js", ".yaml", ".yml":
 		return true
 	default:
 		return false
@@ -2212,7 +2213,7 @@ func gitHubHTTPError(statusCode int, status string) error {
 func isAllowedSupportingSkillFile(name string) bool {
 	ext := strings.ToLower(filepath.Ext(name))
 	switch ext {
-	case ".md", ".markdown", ".txt", ".json", ".py", ".sh", ".js", ".yaml", ".yml", ".pdf", ".png", ".jpg", ".jpeg", ".html", ".xml", ".xsd":
+	case ".md", ".markdown", ".txt", ".json", ".csv", ".py", ".sh", ".js", ".yaml", ".yml", ".pdf", ".png", ".jpg", ".jpeg", ".html", ".xml", ".xsd":
 		return true
 	default:
 		return false
