@@ -318,7 +318,7 @@ class Finding:
             "1.8": "Evaluator policy: agents rely on --help to learn a script's interface safely and autonomously.",
             "1.9": "Evaluator policy: structured output is easier for agents to parse, validate, and compose than free-form text.",
             "1.10": "Evaluator policy: interactive prompts block autonomous execution because agents cannot respond inline.",
-            "1.11": "Evaluator portability policy prefers shell and Python; the specification permits script languages supported by the runtime.",
+            "1.11": "Evaluator policy prefers shell and Python and reports incomplete script/security analysis when safe bounded reads are unavailable; these warnings do not establish a specification format error.",
             "2.1": "Broad tool instructions make execution behavior ambiguous and harder to bound safely.",
             "2.2": "Destructive operations need explicit safeguards to avoid irreversible damage.",
             "2.4": "Hardcoded user home directory paths break portability across machines and users.",

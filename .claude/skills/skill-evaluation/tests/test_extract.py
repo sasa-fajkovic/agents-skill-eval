@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -57,6 +58,68 @@ class ExtractTests(unittest.TestCase):
             for candidate in (scripts / "linked.py", oversized):
                 with self.assertRaises(OSError):
                     extract.read_text_file(candidate)
+
+    def test_declared_input_hardlinks_and_query_fixtures_are_omitted(self) -> None:
+        from trigger_evals import QUERY_FILENAMES
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill = root / "SKILL.md"
+            skill.write_text("# Example", encoding="utf-8")
+            (root / "evals").mkdir()
+            source = root / "private.md"
+            source.write_text("PRIVATE_INPUT_CANARY", encoding="utf-8")
+            os.link(source, root / "alias.md")
+            files = ["private.md"]
+            for parent in (root, root / "evals"):
+                for name in QUERY_FILENAMES:
+                    path = parent / name
+                    path.write_text("PRIVATE_QUERY_CANARY", encoding="utf-8")
+                    files.append(path.relative_to(root).as_posix())
+            (root / "evals/evals.json").write_text(json.dumps({"evals": [{"files": files}]}), encoding="utf-8")
+            context = extract.collect_supporting_context(skill)
+            self.assertNotIn("PRIVATE_", context)
+            self.assertNotIn("alias.md", context)
+            self.assertNotIn("private.md", context)
+            self.assertFalse(any(name in context for name in QUERY_FILENAMES))
+
+    def test_case_variant_input_omission_follows_filesystem_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill = root / "SKILL.md"
+            skill.write_text("# Example", encoding="utf-8")
+            (root / "evals").mkdir()
+            (root / "references").mkdir()
+            source = root / "references/input.md"
+            source.write_text("PRIVATE_INPUT_CANARY", encoding="utf-8")
+            alias = root / "References/Input.md"
+            if not alias.exists():
+                alias.parent.mkdir()
+                alias.write_text("PUBLIC_DISTINCT_CASE_FILE", encoding="utf-8")
+                declared = "references/input.md"
+            else:
+                declared = "References/Input.md"
+            (root / "evals/evals.json").write_text(json.dumps({"evals": [{"files": [declared]}]}), encoding="utf-8")
+            context = extract.collect_supporting_context(skill)
+            self.assertNotIn("PRIVATE_INPUT_CANARY", context)
+            if not source.samefile(alias):
+                self.assertIn("PUBLIC_DISTINCT_CASE_FILE", context)
+
+    def test_declared_script_still_receives_security_analysis(self) -> None:
+        import tier1
+        import tier3
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill = root / "SKILL.md"
+            skill.write_text("# Example", encoding="utf-8")
+            (root / "evals").mkdir()
+            (root / "scripts").mkdir()
+            (root / "scripts/run.py").write_text('if __name__ == "__main__":\n    print("mcp__github_pull_request_read")\n', encoding="utf-8")
+            (root / "evals/evals.json").write_text(json.dumps({"evals": [{"files": ["scripts/run.py"]}]}), encoding="utf-8")
+            self.assertNotIn("mcp__github", extract.collect_supporting_context(skill))
+            self.assertTrue(tier1.check_1_8(str(root)))
+            self.assertTrue(tier3.check_3_7("", str(root)))
 
     def test_pdf_text_is_included_in_supporting_context(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

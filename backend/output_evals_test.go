@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"mime"
 	"mime/multipart"
 	"net/http/httptest"
 	"net/textproto"
@@ -11,6 +12,75 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestOfficeMIMECSVIsNarrowlyValidatedAndScanned(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		filename   string
+		mimeType   string
+		content    []byte
+		wantErr    bool
+		wantSecret bool
+	}{
+		{name: "plain CSV", filename: "quality/evals/files/sales.csv", mimeType: "application/vnd.ms-excel", content: []byte("month,revenue\nJanuary,4\n")},
+		{name: "Unicode CSV", filename: "quality/evals/files/sales.csv", mimeType: "application/vnd.ms-excel; charset=utf-8", content: []byte("month,revenue\nMärz,4\n")},
+		{name: "binary Excel", filename: "quality/evals/files/sales.csv", mimeType: "application/vnd.ms-excel", content: []byte{0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1}, wantErr: true},
+		{name: "binary beyond sniff", filename: "quality/evals/files/sales.csv", mimeType: "application/vnd.ms-excel", content: append(bytes.Repeat([]byte("a"), 512), 0), wantErr: true},
+		{name: "control beyond sniff", filename: "quality/evals/files/sales.csv", mimeType: "application/vnd.ms-excel", content: append(bytes.Repeat([]byte("a"), 512), 0x7f), wantErr: true},
+		{name: "invalid UTF8 beyond sniff", filename: "quality/evals/files/sales.csv", mimeType: "application/vnd.ms-excel", content: append(bytes.Repeat([]byte("a"), 512), 0xff), wantErr: true},
+		{name: "oversized text", filename: "quality/evals/files/sales.csv", mimeType: "application/vnd.ms-excel", content: bytes.Repeat([]byte("a"), maxUploadSize+1), wantErr: true},
+		{name: "other extension", filename: "quality/evals/files/sales.xls", mimeType: "application/vnd.ms-excel", content: []byte("month,revenue\nJanuary,4\n"), wantErr: true},
+		{name: "other Office type", filename: "quality/evals/files/sales.csv", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", content: []byte("month,revenue\nJanuary,4\n"), wantErr: true},
+		{name: "secret scan retained", filename: "quality/evals/files/sales.csv", mimeType: "application/vnd.ms-excel", content: []byte("value\n-----BEGIN OPENSSH PRIVATE KEY-----\nsecret"), wantSecret: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var body bytes.Buffer
+			writer := multipart.NewWriter(&body)
+			part, err := writer.CreatePart(textproto.MIMEHeader{
+				"Content-Disposition": []string{mime.FormatMediaType("form-data", map[string]string{"name": "files", "filename": test.filename})},
+				"Content-Type":        []string{test.mimeType},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := part.Write(test.content); err != nil {
+				t.Fatal(err)
+			}
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			request := httptest.NewRequest("POST", "/upload", &body)
+			request.Header.Set("Content-Type", writer.FormDataContentType())
+			if err := request.ParseMultipartForm(5 << 20); err != nil {
+				t.Fatal(err)
+			}
+			defer request.MultipartForm.RemoveAll()
+			root := t.TempDir()
+			err = saveValidatedFile(root, request.MultipartForm.File["files"][0])
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("accepted unsupported or binary Office CSV")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			stored, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(test.filename)))
+			if err != nil || !bytes.Equal(stored, test.content) {
+				t.Fatalf("CSV upload contents were not preserved: %v", err)
+			}
+			err = scanUploadedPackage(root)
+			if test.wantSecret {
+				if err == nil || !strings.Contains(err.Error(), "private key material") {
+					t.Fatalf("expected CSV secret scan rejection, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 func TestMultipartFixturePathsArePreservedAndValidated(t *testing.T) {
 	for _, filename := range []string{"quality-smoke/SKILL.md", "quality-smoke/evals/evals.json", "quality-smoke/evals/files/sales.csv", `quality-smoke\evals\files\sales.csv`, "../escape.csv", "quality-smoke/../escape.csv"} {

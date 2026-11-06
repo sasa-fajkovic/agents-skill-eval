@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/redis/go-redis/v9"
@@ -1025,6 +1026,23 @@ func saveValidatedFile(rootDir string, header *multipart.FileHeader) error {
 		if parsed, _, parseErr := mime.ParseMediaType(contentType); parseErr == nil && parsed != "application/octet-stream" {
 			mimeType = parsed
 		}
+	}
+	if strings.EqualFold(filepath.Ext(filename), ".csv") && mimeType == "application/vnd.ms-excel" {
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("failed to inspect %s", filename)
+		}
+		content, err := io.ReadAll(io.LimitReader(file, maxUploadSize+1))
+		textContent := utf8.Valid(content)
+		for _, value := range content {
+			if value == 0x7f || (value < 0x20 && value != '\t' && value != '\n' && value != '\r') {
+				textContent = false
+				break
+			}
+		}
+		if err != nil || len(content) > maxUploadSize || !textContent || !strings.HasPrefix(http.DetectContentType(content), "text/plain") {
+			return fmt.Errorf("%s is not a UTF-8 text CSV upload", filename)
+		}
+		mimeType = "text/csv"
 	}
 	if err := validateFileType(filename, mimeType); err != nil {
 		return err

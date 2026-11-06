@@ -55,6 +55,33 @@ class OutputEvalsTests(unittest.TestCase):
                              ({"measurement": "not_run", "files": []}, []))
             self.manifest.parent.mkdir(exist_ok=True)
 
+    def test_absence_is_neutral_before_root_or_platform_safe_access_checks(self) -> None:
+        alias = self.root.parent / "alias"
+        alias.symlink_to(self.root, target_is_directory=True)
+        for root in (self.root, alias):
+            with self.subTest(root=root), mock.patch.dict(output_evals.os.__dict__):
+                del output_evals.os.O_NOFOLLOW
+                self.assertEqual(output_evals.inspect_output_evals(root),
+                                 ({"measurement": "not_run", "files": []}, []))
+
+    def test_unknown_manifest_presence_warns_and_dangling_manifest_is_supplied(self) -> None:
+        with mock.patch.object(output_evals.os, "lstat", side_effect=PermissionError("PRIVATE")):
+            self.assert_invalid()
+        self.manifest.parent.mkdir()
+        self.manifest.symlink_to(self.root / "missing.json")
+        self.assert_invalid()
+
+    def test_unreadable_manifest_parent_warns_instead_of_claiming_absence(self) -> None:
+        self.manifest.parent.mkdir()
+        self.manifest.parent.chmod(0)
+        self.addCleanup(self.manifest.parent.chmod, 0o700)
+        try:
+            os.lstat(self.manifest)
+        except PermissionError:
+            self.assert_invalid()
+        else:
+            self.skipTest("filesystem permissions do not restrict this process")
+
     def test_guide_csv_example_and_unique_input_counts_without_reading_inputs(self) -> None:
         data = {
             "skill_name": "csv-analyzer",
@@ -199,6 +226,7 @@ class OutputEvalsTests(unittest.TestCase):
         self.assert_invalid()
         self.manifest.unlink()
         self.manifest.parent.rmdir()
+        (self.root / "evals.json").write_text(json.dumps(self.base), encoding="utf-8")
         self.manifest.parent.symlink_to(self.root, target_is_directory=True)
         self.assert_invalid()
 
@@ -215,6 +243,23 @@ class OutputEvalsTests(unittest.TestCase):
         with path.open("ab") as handle:
             handle.write(b"x")
         self.assert_invalid()
+
+    def test_declared_input_identities_do_not_read_input_content(self) -> None:
+        path = self.root / "private.txt"
+        path.write_text("PRIVATE_INPUT", encoding="utf-8")
+        self.write_manifest({"evals": [{"files": ["private.txt", "missing.txt"]}]})
+        original_read = os.read
+        identity = path.stat()
+
+        def read_manifest_only(descriptor, count):
+            info = os.fstat(descriptor)
+            self.assertNotEqual((info.st_dev, info.st_ino), (identity.st_dev, identity.st_ino))
+            return original_read(descriptor, count)
+
+        with mock.patch.object(output_evals.os, "read", side_effect=read_manifest_only):
+            paths, identities = output_evals.declared_output_inputs(self.root)
+        self.assertEqual(paths, {path.absolute(), (self.root / "missing.txt").absolute()})
+        self.assertEqual(identities, {(identity.st_dev, identity.st_ino)})
 
     def test_manifest_size_utf8_and_json_syntax_are_bounded(self) -> None:
         self.manifest.parent.mkdir()

@@ -35,7 +35,7 @@ Else → exit 0 (PASS)
 - 1.3: known platform extension (portability policy); a valid experimental allowed-tools string produces no finding
 - 1.6: SKILL.md at 500 or more lines (specification recommendation, including reference skills)
 - 1.9: scripts lack structured-output indicators (evaluator policy)
-- 1.11: other script extensions than .py/.sh (portability policy, no language ERROR)
+- 1.11: other script extensions than .py/.sh, or incomplete script/security analysis under the safe bounded read policy (no format ERROR)
 - 2.1: unscoped tool usage in body
 - 2.2: destructive operations without safeguards (suppressed when skill-level Rules section contains a global safeguard)
 - 2.4: hardcoded user home directory paths

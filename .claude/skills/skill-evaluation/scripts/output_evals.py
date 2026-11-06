@@ -37,29 +37,37 @@ def _check_regular(info: os.stat_result, max_bytes: int) -> None:
 
 
 @contextmanager
-def _regular_file(root: Path, relative: str, max_bytes: int) -> Iterator[int]:
-    if type(max_bytes) is not int or max_bytes < 0:
-        raise ValueError(INVALID_FIXTURE_MESSAGE)
+def _directory(root: Path, parts: tuple[str, ...] = ()) -> Iterator[int]:
     if not all(hasattr(os, flag) for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")):
         raise ValueError(INVALID_FIXTURE_MESSAGE)
-    parts = _relative_parts(relative)
     descriptors = []
     try:
         directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         directory = os.open(root.absolute(), directory_flags)
         descriptors.append(directory)
-        for part in parts[:-1]:
+        for part in parts:
             directory = os.open(part, directory_flags, dir_fd=directory)
             descriptors.append(directory)
+        yield directory
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+@contextmanager
+def _regular_file(root: Path, relative: str, max_bytes: int) -> Iterator[int]:
+    if type(max_bytes) is not int or max_bytes < 0:
+        raise ValueError(INVALID_FIXTURE_MESSAGE)
+    parts = _relative_parts(relative)
+    with _directory(root, parts[:-1]) as directory:
         _check_regular(os.stat(parts[-1], dir_fd=directory, follow_symlinks=False), max_bytes)
         descriptor = os.open(
             parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory,
         )
-        descriptors.append(descriptor)
-        _check_regular(os.fstat(descriptor), max_bytes)
-        yield descriptor
-    finally:
-        for descriptor in reversed(descriptors):
+        try:
+            _check_regular(os.fstat(descriptor), max_bytes)
+            yield descriptor
+        finally:
             os.close(descriptor)
 
 
@@ -160,14 +168,21 @@ def _load_manifest(root: Path) -> object:
     return json.loads(text, object_pairs_hook=_unique_object, parse_constant=_reject_constant, parse_float=_finite_float)
 
 
-def declared_output_inputs(skill_dir: Path) -> set[Path]:
+def fixture_file_identity(root: Path, relative: str) -> tuple[int, int]:
+    with _regular_file(root, relative, MAX_INPUT_BYTES) as descriptor:
+        info = os.fstat(descriptor)
+        return info.st_dev, info.st_ino
+
+
+def declared_output_inputs(skill_dir: Path) -> tuple[set[Path], set[tuple[int, int]]]:
     """Identify input paths for context omission without trusting fixture validity."""
     paths = set()
+    identities = set()
     try:
         data = _load_manifest(skill_dir)
         cases = data.get("evals", []) if isinstance(data, dict) else []
         if not isinstance(cases, list):
-            return paths
+            return paths, identities
         for case in cases:
             files = case.get("files", []) if isinstance(case, dict) else []
             if not isinstance(files, list):
@@ -178,9 +193,13 @@ def declared_output_inputs(skill_dir: Path) -> set[Path]:
                 except ValueError:
                     continue
                 paths.add((skill_dir / relative).absolute())
+                try:
+                    identities.add(fixture_file_identity(skill_dir, relative))
+                except (OSError, ValueError, UnicodeError, NotImplementedError):
+                    pass
     except (OSError, ValueError, TypeError, UnicodeError, RecursionError, OverflowError, NotImplementedError):
         pass
-    return paths
+    return paths, identities
 
 
 def _manifest_counts(root: Path, data: object, skill_name: str | None) -> tuple[int, int, int]:
@@ -226,6 +245,13 @@ def inspect_output_evals(skill_dir: Path, skill_name: str | None = None) -> tupl
     """
     metadata = {"measurement": "not_run", "files": []}
     entry = {"path": MANIFEST_PATH, "valid": False, "eval_count": 0, "assertion_count": 0, "input_file_count": 0}
+    try:
+        os.lstat(skill_dir / MANIFEST_PATH)
+    except FileNotFoundError:
+        return metadata, []
+    except (OSError, ValueError, UnicodeError, NotImplementedError):
+        metadata["files"].append(entry)
+        return metadata, [Finding("4.10", "WARN", INVALID_MESSAGE)]
     try:
         raw = _read_relative(skill_dir, MANIFEST_PATH, MAX_MANIFEST_BYTES)
     except FileNotFoundError:

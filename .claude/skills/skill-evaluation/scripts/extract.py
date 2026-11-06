@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import os
+import stat
 from io import BytesIO
 from pathlib import Path
 
@@ -16,7 +18,7 @@ from common import (
     parse_frontmatter,
     read_text_file as read_primary_text_file,
 )
-from output_evals import declared_output_inputs, inspect_output_evals, read_bounded_regular_file, validate_fixture_path
+from output_evals import _directory, declared_output_inputs, fixture_file_identity, inspect_output_evals, read_bounded_regular_file, validate_fixture_path
 
 
 def read_text_file(path: Path) -> str:
@@ -43,7 +45,7 @@ def collect_supporting_context(skill_path: Path) -> str:
     from trigger_evals import MAX_QUERY_FILE_BYTES, QUERY_FILENAMES
 
     root = skill_path.parent
-    output_inputs = declared_output_inputs(root)
+    output_inputs, output_identities = declared_output_inputs(root)
     paths = [path for path in root.rglob("*") if path.is_file() and path != skill_path]
     inventory = []
     parts = []
@@ -64,8 +66,14 @@ def collect_supporting_context(skill_path: Path) -> str:
         suffix = path.suffix.lower()
         relative = path.relative_to(root)
         trigger_fixture = path.name in QUERY_FILENAMES and path.parent in (root, root / "evals")
-        if not trigger_fixture and (relative.parts[0] == "evals" or path.absolute() in output_inputs):
+        if path.absolute() in output_inputs or (not trigger_fixture and relative.parts[0] == "evals"):
             continue
+        if output_identities:
+            try:
+                if fixture_file_identity(root, relative.as_posix()) in output_identities:
+                    continue
+            except (OSError, ValueError, UnicodeError, NotImplementedError):
+                pass
         inventory.append(str(relative))
         try:
             if trigger_fixture:
@@ -275,26 +283,57 @@ def body_paragraphs(body: str) -> list[tuple[int, str]]:
     return paragraphs
 
 
-def scripts_under(skill_dir: str) -> list[tuple[Path, str]]:
+def script_inventory(skill_dir: str) -> tuple[list[tuple[Path, str]], list[str]]:
     root = Path(skill_dir)
     results = []
-    for file_path in sorted(root.iterdir()):
-        if file_path.is_file() and file_path.suffix in PREFERRED_SCRIPT_EXTENSIONS:
-            try:
-                validate_fixture_path(root, file_path.name)
-            except ValueError:
-                continue
-            results.append((file_path, file_path.name))
-    scripts_dir = root / "scripts"
-    if scripts_dir.is_dir():
-        for file_path in sorted(scripts_dir.iterdir()):
-            if file_path.is_file() and file_path.suffix in PREFERRED_SCRIPT_EXTENSIONS:
+    issues = []
+    try:
+        with _directory(root) as descriptor:
+            with os.scandir(descriptor) as entries:
+                names = sorted(entry.name for entry in entries)
+            for name in names:
+                path = root / name
+                if path.suffix in PREFERRED_SCRIPT_EXTENSIONS:
+                    if not stat.S_ISDIR(os.stat(name, dir_fd=descriptor, follow_symlinks=False).st_mode):
+                        results.append((path, name))
+            if "scripts" in names:
                 try:
-                    validate_fixture_path(root, f"scripts/{file_path.name}")
-                except ValueError:
-                    continue
-                results.append((file_path, f"scripts/{file_path.name}"))
+                    with _directory(root, ("scripts",)) as scripts_descriptor:
+                        with os.scandir(scripts_descriptor) as entries:
+                            for entry in sorted(entries, key=lambda item: item.name):
+                                if not entry.is_dir(follow_symlinks=False):
+                                    results.append((root / "scripts" / entry.name, f"scripts/{entry.name}"))
+                except (OSError, ValueError, UnicodeError, NotImplementedError):
+                    issues.append("scripts/")
+    except (OSError, ValueError, UnicodeError, NotImplementedError):
+        issues.append("skill root")
+    return results, issues
+
+
+def scripts_under(skill_dir: str) -> list[tuple[Path, str]]:
+    results = []
+    candidates, _issues = script_inventory(skill_dir)
+    for file_path, display in candidates:
+        if file_path.suffix not in PREFERRED_SCRIPT_EXTENSIONS:
+            continue
+        try:
+            validate_fixture_path(Path(skill_dir), display)
+        except ValueError:
+            continue
+        results.append((file_path, display))
     return results
+
+
+def script_analysis_issues(skill_dir: str) -> list[str]:
+    candidates, issues = script_inventory(skill_dir)
+    for file_path, display in candidates:
+        if file_path.suffix not in PREFERRED_SCRIPT_EXTENSIONS or _is_library_or_test_file(file_path):
+            continue
+        try:
+            read_bounded_regular_file(Path(skill_dir), file_path.absolute())
+        except (OSError, ValueError, UnicodeError, NotImplementedError):
+            issues.append(display)
+    return issues
 
 
 _TEST_FILE_RE = re.compile(r"^(test_|_).*|.*_test\.(py|sh)$|.*\.bats$", re.IGNORECASE)
