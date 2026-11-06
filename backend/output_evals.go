@@ -2,24 +2,6 @@ package main
 
 import "encoding/json"
 
-type llmReviewMetadata struct {
-	OutputEvals *outputFixtureSummary
-}
-
-func (metadata *llmReviewMetadata) UnmarshalJSON(data []byte) error {
-	*metadata = llmReviewMetadata{}
-	if len(data) > 16<<10 {
-		return nil
-	}
-	var envelope struct {
-		OutputEvals json.RawMessage `json:"output_evals"`
-	}
-	if json.Unmarshal(data, &envelope) == nil {
-		metadata.OutputEvals = parseOutputFixtureSummary(envelope.OutputEvals)
-	}
-	return nil
-}
-
 type outputFixtureSummary struct {
 	Measurement string              `json:"measurement"`
 	Files       []outputFixtureFile `json:"files"`

@@ -117,7 +117,15 @@ The six documented fields include experimental `allowed-tools`, a space-separate
 
 The recommendation to keep SKILL.md under 500 lines produces a warning, including for reference skills. Script languages depend on the runtime; preferring `.py` and `.sh` is evaluator policy, and other script extensions produce portability warnings rather than specification errors. The legacy `metadata.unsupported_script_types` output tracks the existing `.js`, `.ts`, `.go`, `.rb`, `.php`, and `.pl` policy set; it does not mean those languages are prohibited by the specification.
 
-Description warnings above 350 characters and for missing trigger phrases are optional evaluator heuristics, not specification limits. Script `--help`, structured output, interactivity, security, MCP namespace, token-efficiency, and effectiveness checks (including the minimum-body-content gate) are project quality policy. Policy errors can still make an evaluation fail; a failed quality evaluation does not necessarily mean invalid Agent Skills format. The specification places no body-format restrictions on SKILL.md.
+Missing recognized activation context is an optional evaluator heuristic, not a required phrase or additional description-length limit. Script `--help`, structured output, interactivity, security, MCP namespace, token-efficiency, and effectiveness checks (including the minimum-body-content gate) are project quality policy. Policy errors can still make an evaluation fail; a failed quality evaluation does not necessarily mean invalid Agent Skills format. The specification places no body-format restrictions on SKILL.md.
+
+## Description triggering
+
+The evaluator follows the [official description optimization guide](https://agentskills.io/skill-creation/optimizing-descriptions): describe user intent and activation contexts, include useful boundaries, and keep descriptions concise within the 1024-character format limit. A particular "Use when" phrase is not required.
+
+Optional `eval_queries.json`, `train_queries.json`, and `validation_queries.json` in the skill root or `evals/` receive structural validation under rule 4.9. Each contains an array of `{"query": "realistic user prompt", "should_trigger": true}` objects. Missing files are unpenalized; malformed supplied files warn. Reports show fixture counts and explicitly mark trigger measurement as not run.
+
+Actual trigger accuracy requires installing the skill in the target client, running varied positive and near-miss negative prompts repeatedly, and observing whether the client loads the skill. Train/validation splits help avoid overfitting. The hosted evaluator does not invoke uploaded skills or calculate empirical trigger rates. See the skill's [description guidance](.claude/skills/skill-evaluation/references/09-description-optimization.md).
 
 ## Optional output-quality evals
 

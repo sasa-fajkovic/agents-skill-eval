@@ -16,7 +16,6 @@ from common import (
     NON_INTERACTIVE_FALLBACK,
     SPEC_FIELDS,
     STRUCTURED_OUTPUT,
-    WARN_DESC_LEN,
     WHEN_PHRASES,
     INTERACTIVE_PROMPT,
 )
@@ -59,10 +58,8 @@ def check_1_2(fm: dict) -> list[Finding]:
         return findings
     if len(desc) > MAX_DESC_LEN:
         findings.append(Finding("1.2", "ERROR", f"description is {len(desc)} chars (max {MAX_DESC_LEN})"))
-    elif len(desc) > WARN_DESC_LEN:
-        findings.append(Finding("1.2", "WARN", f"optional evaluator heuristic: description is {len(desc)} chars; keep under {WARN_DESC_LEN} to avoid context bloat (hard cap {MAX_DESC_LEN})"))
     if not WHEN_PHRASES.search(desc):
-        findings.append(Finding("1.2", "WARN", 'optional evaluator heuristic: description should include a "Use when..." clause'))
+        findings.append(Finding("1.2", "WARN", 'optional evaluator heuristic: no recognized activation context; describe when the skill helps (wording is flexible)'))
     return findings
 
 

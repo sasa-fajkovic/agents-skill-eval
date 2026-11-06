@@ -31,7 +31,7 @@ Else → exit 0 (PASS)
 - 4.8: redirect/pointer skill with no actionable instructions (evaluator policy; body format is unrestricted by the specification)
 
 ### WARN (exit 2)
-- 1.2: description missing recognized trigger phrases or 351–1024 characters (optional evaluator heuristics)
+- 1.2: description missing recognized activation context (optional evaluator heuristic; flexible wording)
 - 1.3: known platform extension (portability policy); a valid experimental allowed-tools string produces no finding
 - 1.6: SKILL.md at 500 or more lines (specification recommendation, including reference skills)
 - 1.9: scripts lack structured-output indicators (evaluator policy)
@@ -43,6 +43,7 @@ Else → exit 0 (PASS)
 - 3.7: MCP tool from an unknown namespace or generic MCP prose (per-case review; see [`mcp-policy.md`](mcp-policy.md))
 - 4.1-4.7: all effectiveness checks
 - 4.8: thin skill body (few non-blank lines, no scripts)
+- 4.9: malformed provided trigger-query fixtures (optional evaluator policy; absence is unpenalized)
 
 ## CI output format
 

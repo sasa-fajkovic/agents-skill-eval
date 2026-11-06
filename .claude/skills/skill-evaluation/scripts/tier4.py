@@ -22,6 +22,7 @@ from common import (
 )
 from extract import entrypoint_scripts, extract_output_section, has_nearby_example, read_text_file
 from output_evals import inspect_output_evals
+from trigger_evals import inspect_trigger_evals
 
 
 _SPECIFIC_VALUE_NEARBY = re.compile(
@@ -70,6 +71,18 @@ def check_4_2(body: str) -> list[Finding]:
 
 
 _BOLD_ONLY_LINE = re.compile(r"^\s*\*\*[^*]+\*\*\s*:?\s*$")
+_TRIGGER_EXCLUSION = re.compile(
+    r"(?i)\b(?:(?:do\s+not|don't|never)\s+(?:use|load|invoke|activate|trigger)|"
+    r"avoid\s+(?:using|loading|invoking|activating|triggering))"
+    r"\s+(?:(?:this|the)\s+)?skill\s+(?:for|when|if|on)\b|"
+    r"\b(?:this\s+)?skill\s+(?:should|must)\s+not\s+(?:trigger|activate)\s+(?:for|when|if|on)\b"
+)
+
+
+def _without_trigger_exclusions(text: str) -> str:
+    clauses = re.split(r"[;.!?]\s+|,\s*(?=(?:do not|don't|never|avoid|must not)\b)|\b(?:and|but|or)\s+(?=(?:do not|don't|never|avoid|must not)\b)", text, flags=re.IGNORECASE)
+    remaining = [clause for clause in clauses if not _TRIGGER_EXCLUSION.search(clause)]
+    return text if len(remaining) == len(clauses) else ". ".join(remaining)
 
 
 def check_4_3(body: str) -> list[Finding]:
@@ -84,6 +97,7 @@ def check_4_3(body: str) -> list[Finding]:
         # Skip lines inside fenced code blocks (code comments, wrong-pattern examples)
         if in_fence:
             continue
+        line = _without_trigger_exclusions(line)
         if not NEGATIVE_ONLY.search(line):
             continue
         # Skip bold-only section headers like "**Do NOT:**"
@@ -96,7 +110,7 @@ def check_4_3(body: str) -> list[Finding]:
         if SECURITY_PROHIBITION.search(line):
             continue
         # Widen context window to ±4 lines for positive alternative search
-        context = "\n".join(lines[max(0, index - 4):index + 5])
+        context = "\n".join(_without_trigger_exclusions(candidate) for candidate in lines[max(0, index - 4):index + 5])
         if not POSITIVE_ALTERNATIVE.search(context):
             findings.append(Finding("4.3", "WARN", f"line {index + 1}: negative-only instruction does not say what to do instead"))
     return findings
@@ -223,6 +237,8 @@ def run_tier4_checks(body: str, skill_dir: str, skill_name: str | None = None) -
     findings.extend(check_4_5(body))
     findings.extend(check_4_6(body))
     findings.extend(check_4_7(skill_dir))
+    _trigger_metadata, trigger_findings = inspect_trigger_evals(Path(skill_dir))
+    findings.extend(trigger_findings)
     has_scripts = bool(list(entrypoint_scripts(skill_dir)))
     findings.extend(check_4_8(body, has_scripts))
     _, output_findings = inspect_output_evals(Path(skill_dir), skill_name)

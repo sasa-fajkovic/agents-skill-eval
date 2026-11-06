@@ -1,4 +1,4 @@
-# Effectiveness Checks (4.1-4.8, 4.10)
+# Effectiveness checks and optional eval fixtures
 
 Instruction-quality checks use deterministic heuristics with optional contextual review. Fixture checks validate structure only; none measure empirical skill performance.
 
@@ -50,7 +50,11 @@ Instruction-quality checks use deterministic heuristics with optional contextual
 - "Avoid jargon" (what register to use instead?)
 - "Do not modify files outside the project" (which files CAN be modified?)
 
-**Acceptable negative framing** (has a positive counterpart):
+**Acceptable negative framing**:
+- Trigger exclusions such as "Do not use this skill for database imports" define scope and need no positive alternative.
+- Security prohibitions, such as never disclosing credentials, may stand alone.
+
+**Positive counterparts**:
 - "Use 1-2 sentence summaries, not paragraphs" (positive first, negative as contrast)
 - "Write in imperative mood. Do not use passive voice." (positive + negative pair)
 - Anti-pattern lists with a corresponding pattern list
@@ -151,6 +155,11 @@ If < 10 lines:
 ```
 
 **Fix suggestion**: `Expand the skill body with actionable instructions, steps, and examples. A skill should be self-contained enough to guide an agent without requiring external documentation.`
+
+
+## 4.9: optional trigger-query fixtures (WARN)
+
+Validate provided `eval_queries.json`, `train_queries.json`, and `validation_queries.json` in the skill root or `evals/`. Each is a non-empty JSON array of objects with a non-empty `query` string and a JSON boolean `should_trigger`. Additional fields are allowed. Unreadable files, invalid structure, and files above the evaluator's 1 MB limit produce optional evaluator-policy warnings. Absence produces no finding. Counts and structure do not establish realistic labels, precision, recall, or trigger accuracy. See [description optimization](09-description-optimization.md).
 
 ## 4.10: optional output-quality fixture validity
 

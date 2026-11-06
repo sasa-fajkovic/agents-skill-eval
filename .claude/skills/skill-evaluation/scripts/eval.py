@@ -186,7 +186,7 @@ def render_human_output(resolved: Path, findings: list[Finding]) -> None:
     print_separator("DETERMINISTIC EVALUATION")
     print()
 
-    for prefix, title in (("1.", "Tier 1 — Spec & Policy (1.1-1.11)"), ("2.", "Tier 2 — Security (2.1-2.2, 2.4)"), ("3.", "Tier 3 — Token Efficiency (3.1-3.7)"), ("4.", "Tier 4 — Effectiveness (4.1-4.7)")):
+    for prefix, title in (("1.", "Tier 1 — Spec & Policy (1.1-1.11)"), ("2.", "Tier 2 — Security (2.1-2.2, 2.4)"), ("3.", "Tier 3 — Token Efficiency (3.1-3.7)"), ("4.", "Tier 4 — Effectiveness (4.1-4.9)")):
         tier_findings = [finding for finding in findings if finding.check_id.startswith(prefix)]
         print_box_top(title)
         if tier_findings:

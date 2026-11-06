@@ -40,6 +40,8 @@ def read_pdf_file(path: Path, root: Path | None = None) -> str:
 
 
 def collect_supporting_context(skill_path: Path) -> str:
+    from trigger_evals import MAX_QUERY_FILE_BYTES, QUERY_FILENAMES
+
     root = skill_path.parent
     output_inputs = declared_output_inputs(root)
     paths = [path for path in root.rglob("*") if path.is_file() and path != skill_path]
@@ -61,14 +63,14 @@ def collect_supporting_context(skill_path: Path) -> str:
     for path in sorted(paths, key=sort_key):
         suffix = path.suffix.lower()
         relative = path.relative_to(root)
-        trigger_fixture = relative.parent == Path("evals") and relative.name in {
-            "eval_queries.json", "train_queries.json", "validation_queries.json",
-        }
-        if (relative.parts[0] == "evals" and not trigger_fixture) or path.absolute() in output_inputs:
+        trigger_fixture = path.name in QUERY_FILENAMES and path.parent in (root, root / "evals")
+        if not trigger_fixture and (relative.parts[0] == "evals" or path.absolute() in output_inputs):
             continue
         inventory.append(str(relative))
         try:
-            if suffix in ALLOWED_TEXT_EXTENSIONS:
+            if trigger_fixture:
+                content = read_bounded_regular_file(root, path.absolute(), MAX_QUERY_FILE_BYTES).decode("utf-8")
+            elif suffix in ALLOWED_TEXT_EXTENSIONS:
                 content = read_bounded_regular_file(root, path.absolute()).decode("utf-8", errors="replace")
             elif suffix in PDF_EXTENSIONS:
                 content = read_pdf_file(path, root)
@@ -334,7 +336,11 @@ def collect_metadata(skill_path: Path) -> dict:
     fm, _ = parse_frontmatter(skill_text)
     skill_name = fm.get("name") if isinstance(fm, dict) and isinstance(fm.get("name"), str) else None
     output_evals, _ = inspect_output_evals(skill_dir, skill_name)
+    from trigger_evals import inspect_trigger_evals
+
+    trigger_evals, _findings = inspect_trigger_evals(skill_dir)
     return {
+        "trigger_evals": trigger_evals,
         "file_count": len(files),
         "line_count": len(skill_text.splitlines()),
         "has_scripts": any(path.suffix in PREFERRED_SCRIPT_EXTENSIONS or path.suffix in PORTABILITY_SCRIPT_EXTENSIONS for path in files),
