@@ -25,7 +25,13 @@ Browse and download on GitHub:
 
 - [`.claude/skills/skill-evaluation/`](https://github.com/sasa-fajkovic/agents-skill-eval/tree/main/.claude/skills/skill-evaluation)
 
-The same Python evaluator (`scripts/eval.py`) is what the web app bundles and executes in production.
+Install the evaluator's required YAML parser before running it:
+
+```bash
+python3 -m pip install -r .claude/skills/skill-evaluation/requirements.txt
+```
+
+The same Python evaluator (`scripts/eval.py`) is what the web app bundles and executes in production. Frontmatter is parsed with PyYAML's safe loader; YAML scalar types are validated rather than coerced to strings. Quote string fields (including names and descriptions) and metadata values that resemble numbers, dates, or booleans. For example, write `name: "2048"` and `name: "yes"`. A missing required YAML parser exits with code 3 and installation instructions; no skill evaluation is performed.
 
 ## Run with Docker
 
@@ -103,6 +109,16 @@ docker run -p 8080:8080 \
 
 Default behavior is deterministic-only. Uploaded skill content is not sent to third-party AI providers unless optional AI review is enabled.
 
+## Specification and evaluator policy
+
+The evaluator follows the [current Agent Skills specification](https://agentskills.io/specification): names have 1–64 characters with no word-count limit, descriptions have a 1024-character hard cap, and arbitrary string-to-string metadata is valid. Name validation and parent-directory comparison use Unicode NFKC normalization, following the specification's linked skills-ref validator. Names must be lowercase alphanumeric characters or single interior hyphens.
+
+The six documented fields include experimental `allowed-tools`, a space-separated string. A valid string produces no finding; runtime support may vary. Known platform extensions produce portability warnings, while unknown top-level fields produce errors.
+
+The recommendation to keep SKILL.md under 500 lines produces a warning, including for reference skills. Script languages depend on the runtime; preferring `.py` and `.sh` is evaluator policy, and other script extensions produce portability warnings rather than specification errors. The legacy `metadata.unsupported_script_types` output tracks the existing `.js`, `.ts`, `.go`, `.rb`, `.php`, and `.pl` policy set; it does not mean those languages are prohibited by the specification.
+
+Description warnings above 350 characters and for missing trigger phrases are optional evaluator heuristics, not specification limits. Script `--help`, structured output, interactivity, security, MCP namespace, token-efficiency, and effectiveness checks (including the minimum-body-content gate) are project quality policy. Policy errors can still make an evaluation fail; a failed quality evaluation does not necessarily mean invalid Agent Skills format. The specification places no body-format restrictions on SKILL.md.
+
 ## Main Parts
 
 - `frontend/`
@@ -123,7 +139,7 @@ Requirements:
 
 - Go
 - Redis
-- Python 3
+- Python 3 with dependencies from `.claude/skills/skill-evaluation/requirements.txt`
 
 Start locally:
 
@@ -146,9 +162,12 @@ make stop
 
 ## Tests
 
-Run everything:
+Install prerequisites, then run everything:
 
 ```bash
+python3 -m venv /tmp/agents-skill-eval-venv
+source /tmp/agents-skill-eval-venv/bin/activate
+python3 -m pip install -r .claude/skills/skill-evaluation/requirements.txt
 make test
 ```
 
@@ -179,6 +198,6 @@ Key runtime helper:
 
 ## Notes
 
-- The evaluator prefers portable helper scripts in skills: `.sh` and `.py`
+- Evaluator portability policy prefers `.sh` and `.py`; the specification permits runtime-supported languages.
 - Positive MCP usage instructions are treated as deterministic failures in evaluated skills
 - The homepage is focused on running evaluations; supporting product context lives on `/about` and `/faq`

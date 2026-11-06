@@ -1,357 +1,83 @@
-# Spec Checks (1.1-1.11)
+# Specification checks and evaluator policy (1.1–1.11)
 
-Detection methods, fix suggestions, and examples.
+Source: [current Agent Skills specification](https://agentskills.io/specification). Name normalization follows the [linked skills-ref validator](https://github.com/agentskills/agentskills/tree/main/skills-ref).
 
-## 1.1: name format
+## 1.1: name (ERROR)
 
-**Regex**: `^[a-z0-9]+(-[a-z0-9]+)*$`
+The required name is a string of 1–64 characters, with no word-count limit. Following skills-ref, trim surrounding whitespace, normalize the name with Unicode NFKC, require lowercase, and allow only Unicode alphanumeric characters or hyphens. Leading, trailing, and consecutive hyphens are invalid. Compare the normalized name with the NFKC-normalized parent directory name. Synthetic flat-upload directories named `eval-<uuid>` skip only the directory comparison. Quote numeric or boolean-like string fields, such as `name: "2048"` or `name: "yes"`.
 
-**Checks (all ERROR)**:
-1. `name` key exists in frontmatter
-2. Value is a string, 1-50 characters
-3. Value has at most 10 hyphen-separated words
-4. Matches regex (lowercase alphanumeric + hyphens, no leading/trailing/consecutive hyphens)
-5. Value matches parent directory name
-
-**Detection**:
-```
-Parse YAML frontmatter between --- delimiters
-Extract name value
-Apply regex
-Compare to basename of skill directory (dirname of SKILL.md path)
-```
-
-**Examples**:
-```yaml
-# ERROR: missing name
----
-description: Does something
----
-
-# ERROR: uppercase
-name: My-Skill
-
-# ERROR: consecutive hyphens
-name: my--skill
-
-# ERROR: leading hyphen
-name: -my-skill
-
-# ERROR: name doesn't match directory (skill is in skills/helpers/eval/)
-name: skill-eval
-
-# PASS
-name: skill-eval  # in skills/helpers/skill-eval/
-```
-
-**Fix suggestion**: `Set name to "<dirname>" to match the parent directory.`
+Valid examples include `skill-eval`, `café`, and `技能`. Uppercase `My-Skill`, `my--skill`, and `-skill` fail. A decomposed directory spelling of `café` matches its composed name after normalization.
 
 ## 1.2: description
 
-**Checks**:
-1. `description` key exists (ERROR if missing)
-2. Value is non-empty string (ERROR if empty)
-3. Length <= 500 chars (ERROR if over)
-4. Length <= 350 chars (WARN if 351-500 — bloats context on every API call)
-5. Contains "when" context — heuristic: look for trigger phrases like "use when", "use for", "triggered by", "activate when", or a second sentence describing context (WARN if missing)
+The required description must be a non-empty string of at most 1024 characters (ERROR otherwise). It should explain what the skill does and when to use it.
 
-**Detection**:
-```
-Parse frontmatter
-Check presence + type + length
-Scan for trigger phrases (case-insensitive):
-  "use when", "use after", "use before", "use to", "use for",
-  "use if", "use whenever", "trigger", "activate",
-  "invoke when", "run when", "run this when"
-If none found and description is a single clause, WARN
-```
+The evaluator additionally warns above 350 characters and when no recognized trigger phrase such as "Use when" is present. These are optional evaluator heuristics, not format limits or a required literal phrase. Descriptions of 351–1024 characters remain valid under the specification.
 
-**Examples**:
 ```yaml
-# ERROR: missing
----
-name: my-skill
----
-
-# ERROR: over 500 chars
-description: [very long string...]
-
-# WARN: 351-500 chars (context bloat risk)
-description: [long string between 351 and 500 chars...]
-
-# WARN: no "when" context
-description: Creates pull requests from branch context.
-
-# PASS
 description: >
-  Create pull requests from branch context. Use when you need
-  to open a PR or update an existing PR's title and description.
+  Create pull requests from branch context. Use when opening a PR
+  or updating an existing PR's title and description.
 ```
 
-**Fix suggestion**: `Add a "Use when..." clause to help agents know when to activate this skill.`
+## 1.3: documented fields and platform extensions
 
-## 1.3: no non-standard fields
+The specification documents six fields: `name`, `description`, `license`, `compatibility`, `metadata`, and experimental `allowed-tools`.
 
-**Allowlist (5 stable fields)**:
-- `name`
-- `description`
-- `license`
-- `compatibility`
-- `metadata`
+A valid `allowed-tools` string produces no finding. Its experimental status means runtime support may vary, not that the field violates the specification. Known Claude Code extensions (`argument-hint`, `disable-model-invocation`, `user-invocable`, `model`, `effort`, `context`, `agent`, `hooks`, `paths`, `shell`) produce portability WARNs. Other unknown top-level fields produce ERRORs; custom data belongs in `metadata`.
 
-**Checks (all ERROR)**:
-1. Every top-level frontmatter key must be in the allowlist
-2. `allowed-tools` flagged as ERROR with note: "experimental in agentskills.io, not part of stable spec"
-3. Claude Code extensions flagged as ERROR with note: "Claude Code extension, not portable"
-
-**Detection**:
-```
-Parse frontmatter keys
-For each key not in allowlist:
-  If key == "allowed-tools":
-    ERROR: "allowed-tools" is experimental in agentskills.io (not stable spec)
-  Else if key in CLAUDE_CODE_EXTENSIONS:
-    ERROR: "<key>" is a Claude Code extension (not in agentskills.io)
-  Else:
-    ERROR: "<key>" is not a recognized field
-```
-
-Where `CLAUDE_CODE_EXTENSIONS` = {`argument-hint`, `disable-model-invocation`, `user-invocable`, `model`, `effort`, `context`, `agent`, `hooks`, `paths`, `shell`}
-
-**Examples**:
 ```yaml
-# ERROR: model is Claude Code extension
-model: sonnet
-
-# ERROR: allowed-tools is experimental
-allowed-tools: Read Grep
-
-# ERROR: version is not recognized (should be in metadata)
-version: "1.0"
-
-# PASS: custom data in metadata where it belongs
-metadata:
-  version: "1.0"
-  author: team-name
-```
-
-**Fix suggestions**:
-- For `allowed-tools`: `Move tool scoping into the skill body prose. Use compatibility: to note platform requirements.`
-- For Claude Code extensions: `"<key>" is a Claude Code-specific field. Remove from frontmatter. If the behavior is needed, express it in the skill body.`
-- For unknown fields: `"<key>" is not in the agentskills.io spec. Move to metadata: if needed, or remove.`
-
-## 1.4: field type/value validation
-
-**Type rules for the 5 stable fields**:
-| Field | Type | Constraints |
-|-------|------|-------------|
-| `name` | string | See 1.1 |
-| `description` | string | See 1.2 |
-| `license` | string | No constraints beyond being a string |
-| `compatibility` | string | Max 500 chars |
-| `metadata` | mapping | All keys and values must be strings |
-
-**Checks (all ERROR)**:
-1. `license` is a string (not a list, not a mapping)
-2. `compatibility` is a string, <= 500 chars
-3. `metadata` is a YAML mapping with string keys and string values
-4. No field has a null/empty value when present (except metadata which can be empty)
-
-**Detection**:
-```
-For each present field:
-  Check YAML type matches expected type
-  Check constraints (length, format)
-  For metadata: iterate keys and values, verify all are strings
-```
-
-**Examples**:
-```yaml
-# ERROR: metadata value is not string
-metadata:
-  tags: [testing, ci]  # arrays are not string-to-string
-
-# ERROR: compatibility over 500 chars
-compatibility: [501+ character string...]
-
-# ERROR: license is a list
-license:
-  - MIT
-  - Apache-2.0
-
-# PASS
+allowed-tools: Bash(git:*) Bash(jq:*) Read
 metadata:
   author: platform-team
   version: "2.1"
-license: Apache-2.0
-compatibility: Requires git and gh CLI. Designed for Claude Code.
 ```
 
-**Fix suggestion**: Type-specific message, e.g. `metadata values must be strings. Convert tags list to a comma-separated string.`
+## 1.4: optional field types (ERROR)
 
-## 1.5: metadata redundant keys
+| Field | Type | Constraints |
+| --- | --- | --- |
+| `license` | string | License name or bundled-file reference; no minimum length enforced |
+| `compatibility` | string | Non-empty, at most 500 characters |
+| `metadata` | mapping | Arbitrary string keys and string values; empty mapping is valid |
+| `allowed-tools` | string | Space-separated tool identifiers; no minimum length enforced |
 
-**Check (WARN — per key)**:
-For each key in the `metadata` mapping, warn if it duplicates information available in git history.
+PyYAML's safe loader parses YAML rather than approximating it. Folded strings, quoted colons and hashes, and nested string-to-string metadata work. Malformed YAML and non-mapping frontmatter fail. YAML numbers, booleans, dates, sequences, and mappings are not strings: quote metadata versions, dates, and boolean-like values. Unsafe Python object tags are rejected.
 
-**Redundant keys** (always warn): `author`, `maintainer`, `email`, `version`, `semver`, `created`, `updated`, `date`, `last-modified`, `last_modified`, `tags`, `tag`, `category`, `topic`
+Evaluator parser resource policy rejects excessive nesting, recursive merges, and merge expansion above 10,000 inherited mapping entries before construction. Benign YAML merges remain supported. Invalid scalar constructors produce structured errors, and metadata diagnostics report types without expanding alias-backed values.
 
-**Not flagged** (runtime-relevant): `argument-hint`, `min-version`, or any custom key the skill actually reads at runtime.
+## 1.5: metadata (retired, no findings)
 
-**CC extension laundering (1.3 WARN)**: If a key in `metadata` matches a Claude Code extension (`argument-hint`, `disable-model-invocation`, `model`, etc.), emit a 1.3 WARN — placing CC extensions inside `metadata` hides them from the portability check but has no effect on non-CC platforms.
+This check ID is retained without findings. Arbitrary string-to-string metadata is specification-valid, including author, version, tags, and keys named like platform extensions. Metadata names do not create top-level extension behavior.
 
-**Detection**:
-```
-For each key in metadata:
-  If key in REDUNDANT_KEYS → WARN 1.5: duplicates git history
-  If key in CLAUDE_CODE_EXTENSIONS → WARN 1.3: CC extension in metadata
-```
+## 1.6: recommended SKILL.md length (WARN)
 
-**Fix suggestion**: `metadata key "<key>" duplicates git history — remove it; metadata loads on every API call`
+The specification recommends keeping SKILL.md under 500 lines. At 500 or more lines, warn rather than reject the skill. There is no 800-line reference-skill exception. Move detailed material into `references/` and reusable code into `scripts/` when useful.
 
-## 1.6: SKILL.md over 500 lines
+## Script checks are evaluator policy
 
-**Check (ERROR)**:
-1. Total line count of SKILL.md > 500
+The specification allows scripts in languages supported by the runtime. The following checks apply project quality policy informed by agentic script guidance; their severities are not Agent Skills format requirements.
 
-**Detection**: Count newlines in the file.
+### 1.8: entrypoint help (ERROR)
 
-**Fix suggestion**: `SKILL.md is <N> lines (limit: 500). Move reference data to references/, code to scripts/, and trim verbose prose. See 3.1, 3.2, 3.5 for specific opportunities.`
+Entrypoint scripts should expose `--help`. The evaluator searches for help strings, argparse, getopts/getopt, usage functions, and related indicators. Helper modules without entrypoints are excluded. This static heuristic does not execute scripts or prove help works.
 
-## 1.8: scripts must implement --help
+### 1.9: structured output (WARN)
 
-Per [agentskills.io best practices](https://agentskills.io/skill-creation/using-scripts#designing-scripts-for-agentic-use), `--help` output is the primary way an agent learns a script's interface.
+When an entrypoint prints output but lacks JSON/CSV or related format indicators, suggest structured output for composability. This is a heuristic; human-readable output can be intentional.
 
-**Check (ERROR)**:
-1. Every script in `scripts/` must handle `--help`
-2. Help output should include: brief description, available flags, usage examples
+### 1.10: interactive prompts (ERROR)
 
-**Detection**:
-```
-For each script file in scripts/:
-  Search for --help handling patterns:
-    - "--help" or '--help' string literals
-    - argparse / ArgumentParser (Python)
-    - getopts / getopt (bash)
-    - usage() function definition
-    - "Usage:" string
-  If none found → ERROR
-```
+Prompt patterns without nearby non-interactive fallback indicators can block unattended execution. Prefer flags, environment variables, or stdin. Static detection can need contextual review.
 
-**Examples**:
-```bash
-# ERROR: no --help handling
-#!/usr/bin/env bash
-curl -s "https://api.example.com/$1" | jq .
+### 1.11: script portability (WARN)
 
-# PASS: handles --help
-#!/usr/bin/env bash
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  echo "Usage: fetch-data.sh <endpoint>"
-  echo ""
-  echo "Fetches data from the API and outputs JSON."
-  echo ""
-  echo "Options:"
-  echo "  --help  Show this help"
-  exit 0
-fi
-```
+Evaluator policy prefers `.py` and `.sh` when those runtimes are available. Other script extensions receive portability warnings, including JavaScript, TypeScript, Go, Ruby, PHP, Perl, and extensions outside that list. No language is rejected as a specification error. Document required runtimes in `compatibility`.
 
-**Fix suggestion**: `Add --help flag handling that prints: description, available flags, usage examples, and exit codes.`
+Data/config files (`.json`, `.yaml`, `.yml`, `.toml`, `.txt`, `.md`, `.csv`, `.xml`, `.ini`, `.cfg`, `.conf`, `.env`), directories, and extensionless files are skipped by this extension heuristic.
 
-## 1.9: scripts should use structured output
+`metadata.unsupported_script_types` preserves the legacy set `.js`, `.ts`, `.go`, `.rb`, `.php`, `.pl` for downstream compatibility. It is a policy signal, not a specification ban. See [output schema](08-output-schema.md).
 
-Per agentskills.io best practices, prefer JSON/CSV/TSV over free-form text. Structured formats are composable and parseable by both agents and standard tools.
+## Other tiers
 
-**Check (WARN)**:
-1. Script produces output (has print/echo statements)
-2. No evidence of structured format (JSON, CSV patterns)
-
-**Detection**:
-```
-For each script:
-  Check for output statements (print, echo, console.log, printf)
-  Check for structured output indicators:
-    - json.dumps, JSON.stringify, jq, ConvertTo-Json
-    - csv.writer, csv.DictWriter
-    - --format json, --output-format flags
-  If has output but no structured format → WARN
-```
-
-**Fix suggestion**: `Script produces output but no structured format detected. Use JSON for complex data. Separate data (stdout) from diagnostics (stderr).`
-
-## 1.10: scripts must not use interactive prompts
-
-Agents operate in non-interactive shells. Scripts that block on TTY input will hang indefinitely.
-
-**Check (ERROR)**:
-1. Script contains interactive prompt patterns
-
-**Detection**:
-```
-Scan for:
-  - read -p (bash interactive read)
-  - input() (Python)
-  - prompt() (Node.js)
-  - readline (interactive line reading)
-  - inquirer / enquirer (TUI prompt libraries)
-```
-
-**Fix suggestion**: `Interactive prompt detected. Agents cannot respond to prompts. Accept all input via command-line flags, environment variables, or stdin.`
-
-## 1.11: prefer Python and bash scripts
-
-Python and bash are available on virtually all CI runners and macOS/Linux dev machines without additional setup. Other languages (JS/TS, Go, Ruby, PHP, Perl) require runtimes that may not be present.
-
-A recognized runtime that merely reduces portability is a WARN, not an ERROR — the skill still works where that runtime is installed, and the team owns that trade-off. ERROR is reserved for extensions that are not a recognized scripting language at all, where the file is unlikely to be executable as a script anywhere.
-
-**Check (WARN / ERROR)**:
-1. Files in `scripts/` should have a `.py` or `.sh` extension
-2. Data and config files are not scripts and are skipped
-3. Extensionless files are skipped
-
-**Severity**:
-| Extension | Severity |
-| --- | --- |
-| `.py`, `.sh` | PASS |
-| `.js`, `.ts` | WARN — the spec lists JavaScript as common, but Python/bash are preferred |
-| `.go`, `.rb`, `.php`, `.pl` | WARN — requires an additional runtime |
-| anything else with an extension | ERROR — not a recognized scripting language |
-
-Skipped as data/config: `.json`, `.yaml`, `.yml`, `.toml`, `.txt`, `.md`, `.csv`, `.xml`, `.ini`, `.cfg`, `.conf`, `.env`
-
-**Detection**:
-```
-For each file in scripts/:
-  If it is a directory → skip
-  If extension is in the data/config set → skip
-  If extension is empty → skip
-  If extension is .py or .sh → pass
-  If extension is .js or .ts → WARN
-  If extension is in {.go, .rb, .php, .pl} → WARN
-  Otherwise → ERROR
-```
-
-**Examples**:
-```
-# WARN: works, but requires a Node.js runtime
-scripts/fetch-data.js
-scripts/process.ts
-
-# WARN: works, but requires an additional runtime
-scripts/report.go
-
-# ERROR: not a recognized scripting language
-scripts/build.exe
-
-# PASS: no additional runtime needed
-scripts/fetch-data.sh
-scripts/process.py
-
-# SKIPPED: data/config, not a script
-scripts/scoring_config.json
-```
-
-**Fix suggestion**: `Python (.py) and bash (.sh) are preferred because they are available on virtually all systems without additional runtime setup. Rewrite in Python or bash to avoid an additional runtime dependency.`
-
-The discouraged extensions are also surfaced in `metadata.unsupported_script_types` in the output so a pipeline can act on them without parsing findings. See [`08-output-schema.md`](08-output-schema.md).
+Security, MCP namespace policy, token efficiency, and effectiveness checks are evaluator quality policy. The specification imposes no body-format restrictions. In particular, the minimum-body-content gate is a project heuristic, not a specification requirement. Policy errors can fail the evaluator even when the skill's format is valid.

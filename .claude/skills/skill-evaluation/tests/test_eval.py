@@ -7,23 +7,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
-
-
-def _safe_load(text: str):
-    data = {}
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        data[key.strip()] = value.strip().strip('"\'')
-    return data
-
-
-sys.modules.setdefault("yaml", SimpleNamespace(safe_load=_safe_load, YAMLError=Exception))
-
-
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "eval.py"
 if str(MODULE_PATH.parent) not in sys.path:
     sys.path.insert(0, str(MODULE_PATH.parent))
@@ -31,6 +14,103 @@ SPEC = importlib.util.spec_from_file_location("skill_eval", MODULE_PATH)
 skill_eval = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(skill_eval)
+
+
+class FrontmatterIntegrationTests(unittest.TestCase):
+    def run_skill(self, frontmatter: str, *, no_site: bool = False) -> subprocess.CompletedProcess:
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / "demo"
+            skill_dir.mkdir()
+            (skill_dir / "SKILL.md").write_text(
+                f"---\n{frontmatter}\n---\n" + "\n".join(f"Step {i}: inspect input." for i in range(12)) + "\n## Output\nReturn the result.\n",
+                encoding="utf-8",
+            )
+            command = [sys.executable]
+            if no_site:
+                command.append("-S")
+            return subprocess.run(command + [str(MODULE_PATH), str(skill_dir), "--ci"], capture_output=True, text=True, check=False, timeout=5)
+
+    def test_ci_valid_folded_description_and_nested_metadata(self) -> None:
+        result = self.run_skill('name: demo\ndescription: >-\n  Use when parsing YAML:\n  preserve a # character.\nlicense: "MIT: custom # note"\nmetadata:\n  author: example-org\n  version: "1.0"\n  note: "a: b # c"\nallowed-tools: Bash(git:*) Bash(jq:*) Read')
+        self.assertEqual(result.stderr, "")
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["findings"]["error_findings"], [])
+        self.assertFalse(any(f["rule_id"] in ("1.3", "1.4", "1.5") for f in payload["findings"]["warning_findings"]))
+        self.assertNotEqual(result.returncode, 1)
+
+    def test_ci_malformed_and_nonstring_frontmatter_fail(self) -> None:
+        cases = (
+            ("name: [unclosed", "YAML parse error"),
+            ("? [a, b]\n: value", "YAML parse error"),
+            ("- name: demo", "instead of a mapping"),
+            ("name: demo\ndescription: [Use when testing]", "description must be"),
+            ("name: 2048\ndescription: Use when testing.", "quote YAML scalar values"),
+            ("name: yes\ndescription: Use when testing.", "quote YAML scalar values"),
+            ("name: demo\ndescription: Use when testing.\nallowed-tools: [Read]", "allowed-tools must be"),
+            ("name: demo\ndescription: Use when testing.\nmetadata:\n  version: 1.0", "both key and value must be strings"),
+            ("metadata: {date: 2026-13-01}", "invalid scalar value"),
+            ("metadata: {date: !!timestamp nope}", "invalid scalar value"),
+            ("metadata: {value: !!float nope}", "invalid scalar value"),
+            ("metadata: {value: !!int nope}", "invalid scalar value"),
+            ("!!python/object/apply:os.system ['echo unsafe']", "YAML parse error"),
+        )
+        for frontmatter, expected in cases:
+            with self.subTest(frontmatter=frontmatter):
+                result = self.run_skill(frontmatter)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stderr, "")
+                errors = json.loads(result.stdout)["findings"]["error_findings"]
+                self.assertTrue(any(expected in finding["message"] for finding in errors), errors)
+
+    def test_missing_pyyaml_fails_with_install_instruction(self) -> None:
+        result = self.run_skill("name: demo\ndescription: Use when testing.", no_site=True)
+        self.assertEqual(result.returncode, 3)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("Missing required dependency PyYAML", result.stderr)
+        self.assertIn("requirements.txt", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_deeply_nested_yaml_returns_structured_error(self) -> None:
+        result = self.run_skill("name: demo\ndescription: Use when testing.\nmetadata: " + "[" * 600 + "x" + "]" * 600)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        errors = json.loads(result.stdout)["findings"]["error_findings"]
+        self.assertTrue(any("nesting exceeds the parser limit" in finding["message"] for finding in errors))
+
+    def test_yaml_aliases_do_not_expand_in_diagnostics(self) -> None:
+        lines = ["name: demo", "description: Use when testing.", "metadata:", "  a0: &a0 [x]"]
+        for level in range(1, 6):
+            lines.append(f"  a{level}: &a{level} [" + ", ".join([f"*a{level - 1}"] * 10) + "]")
+        result = self.run_skill("\n".join(lines))
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        self.assertLess(len(result.stdout), 10000)
+        errors = json.loads(result.stdout)["findings"]["error_findings"]
+        self.assertEqual(len(errors), 6)
+        self.assertTrue(all(finding["rule_id"] == "1.4" for finding in errors))
+
+    def test_yaml_merge_expansion_is_bounded_before_construction(self) -> None:
+        lines = ["name: demo", "description: Use when testing.", "metadata:", "  a0: &a0 {x: y}"]
+        for level in range(1, 6):
+            lines.append(f"  a{level}: &a{level} {{<<: [" + ", ".join([f"*a{level - 1}"] * 10) + "]}")
+        result = self.run_skill("\n".join(lines))
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        self.assertLess(len(result.stdout), 10000)
+        errors = json.loads(result.stdout)["findings"]["error_findings"]
+        self.assertTrue(any("merge expansion exceeds parser resource limit" in finding["message"] for finding in errors))
+
+    def test_benign_yaml_metadata_merge_remains_valid(self) -> None:
+        result = self.run_skill('name: demo\ndescription: Use when testing.\nmetadata:\n  <<: {author: example-org, version: "1.0"}\n  note: custom')
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(json.loads(result.stdout)["findings"]["error_findings"], [])
+
+    def test_recursive_yaml_merge_returns_structured_error(self) -> None:
+        result = self.run_skill("name: demo\ndescription: Use when testing.\nmetadata: &meta {<<: *meta}")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        errors = json.loads(result.stdout)["findings"]["error_findings"]
+        self.assertTrue(any("recursive YAML merge" in finding["message"] for finding in errors))
 
 
 class EvalMCPTests(unittest.TestCase):

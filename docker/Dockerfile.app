@@ -20,7 +20,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     redis-server \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir anthropic openai PyPDF2 python-docx
+COPY .claude/skills/skill-evaluation/requirements.txt /tmp/skill-evaluation-requirements.txt
+
+RUN pip install --no-cache-dir anthropic openai PyPDF2 python-docx -r /tmp/skill-evaluation-requirements.txt
 
 WORKDIR /app
 COPY --from=backend-build /out/app /app/bin/app

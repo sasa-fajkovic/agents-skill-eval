@@ -18,6 +18,36 @@ class CommonTests(unittest.TestCase):
         self.assertEqual(fm["name"], "demo")
         self.assertEqual(body, "Hello")
 
+    def test_parse_frontmatter_preserves_real_yaml(self) -> None:
+        text = """---
+name: demo
+description: >-
+  Use when parsing quoted values:
+  preserve a # character.
+license: "MIT: custom # note"
+metadata:
+  author: example-org
+  version: "1.0"
+  note: "a: b # c"
+allowed-tools: Bash(git:*) Read
+---
+Body
+"""
+        fm, body = common.parse_frontmatter(text)
+        self.assertEqual(fm["description"], "Use when parsing quoted values: preserve a # character.")
+        self.assertEqual(fm["license"], "MIT: custom # note")
+        self.assertEqual(fm["metadata"], {"author": "example-org", "version": "1.0", "note": "a: b # c"})
+        self.assertEqual(body, "Body")
+
+    def test_parse_frontmatter_rejects_invalid_yaml_and_non_mappings(self) -> None:
+        for content in ("name: [unclosed", "? [a, b]\n: value", "- name: demo", "just a string", "!!python/object/apply:os.system ['echo unsafe']"):
+            with self.subTest(content=content):
+                text = f"---\n{content}\n---\nBody"
+                fm, body = common.parse_frontmatter(text)
+                self.assertIsNone(fm)
+                self.assertEqual(body, "Body")
+                self.assertTrue(common.diagnose_frontmatter_failure(text))
+
 
 if __name__ == "__main__":
     unittest.main()

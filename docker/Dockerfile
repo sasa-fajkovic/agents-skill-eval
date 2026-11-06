@@ -16,7 +16,9 @@ RUN apt-get update && apt-get install -y \
 	&& npm install -g typescript \
 	&& rm -rf /var/lib/apt/lists/* /root/.cache/pip /root/.npm
 
-RUN pip3 install anthropic PyPDF2 python-docx --break-system-packages
+COPY .claude/skills/skill-evaluation/requirements.txt /tmp/skill-evaluation-requirements.txt
+
+RUN pip3 install anthropic PyPDF2 python-docx -r /tmp/skill-evaluation-requirements.txt --break-system-packages
 
 RUN existing_user="$(getent passwd 1000 | cut -d: -f1)" \
 	&& if [ -n "$existing_user" ]; then \

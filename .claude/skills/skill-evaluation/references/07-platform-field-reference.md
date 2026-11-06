@@ -1,66 +1,30 @@
-# Platform Field Reference
+# Platform field reference
 
-Cross-platform compatibility for SKILL.md frontmatter fields.
+Source: [Agent Skills specification](https://agentskills.io/specification#frontmatter).
 
-## agentskills.io stable spec (5 fields)
+## Documented frontmatter
 
-These are the ONLY fields guaranteed to work across all platforms.
+| Field | Required | Type | Constraints |
+| --- | --- | --- | --- |
+| `name` | Yes | string | 1–64 characters; lowercase alphanumeric characters and single interior hyphens; matches parent directory; no word-count limit |
+| `description` | Yes | string | Non-empty, at most 1024 characters |
+| `license` | No | string | License name or bundled-file reference |
+| `compatibility` | No | string | Non-empty, at most 500 characters; environment requirements |
+| `metadata` | No | mapping | Arbitrary string-to-string pairs, including author and version |
+| `allowed-tools` | No | string | Experimental; space-separated pre-approved tool identifiers |
 
-| Field | Required | Type | Constraints | Portable |
-|-------|----------|------|-------------|----------|
-| `name` | Yes | string | 1-50 chars and ≤10 hyphen-separated words, `[a-z0-9-]`, no leading/trailing/consecutive hyphens, must match parent directory | Yes |
-| `description` | Yes | string | 1-500 chars, non-empty (WARN if 351-500 — context bloat) | Yes |
-| `license` | No | string | License name or reference to bundled file | Yes |
-| `compatibility` | No | string | Max 500 chars, environment requirements | Yes |
-| `metadata` | No | mapping | String-to-string key-value pairs | Yes |
+The evaluator follows the specification's linked skills-ref validator for Unicode NFKC name normalization and Unicode alphanumeric validation. It normalizes both the name and parent directory before comparing them.
 
-Source: https://agentskills.io/specification#frontmatter
+`allowed-tools: Bash(git:*) Bash(jq:*) Read` is valid and produces no finding. Runtime support may vary because the field is experimental. This field is part of the documented Agent Skills format, not a Claude-only extension. Lists, mappings, booleans, numbers, and null are type errors for this string field.
 
-## Experimental fields
+## Known platform extensions
 
-| Field | Status | Notes |
-|-------|--------|-------|
-| `allowed-tools` | Experimental | "Support for this field may vary between agent implementations." Not part of stable spec. |
+The evaluator warns on these known top-level Claude Code extensions because their behavior is platform-specific: `argument-hint`, `disable-model-invocation`, `user-invocable`, `model`, `effort`, `context`, `agent`, `hooks`, `paths`, `shell`.
 
-`allowed-tools` is supported by Claude Code but ignored by OpenCode (uses `opencode.json` permissions) and Codex (uses `agents/openai.yaml`). Because it's not stable, we treat it the same as platform-specific extensions: **ERROR** if present.
+Source: [Claude Code skills reference](https://code.claude.com/docs/en/skills#frontmatter-reference). These warnings express evaluator portability policy; runtime behavior depends on the implementation. Unknown top-level fields produce errors. Arbitrary string keys inside `metadata` remain valid and do not activate platform extension behavior.
 
-Source: https://agentskills.io/specification#frontmatter — "Experimental" label
+Use `compatibility` to describe environment and runtime dependencies. The specification permits script languages supported by the environment; `.py`/`.sh` preference and the legacy `unsupported_script_types` output are evaluator policy.
 
-## Claude Code extensions (11 fields)
+## Recommendations and heuristics
 
-These work ONLY in Claude Code. Other platforms silently ignore them.
-
-| Field | Type | Purpose |
-|-------|------|---------|
-| `allowed-tools` | string/list | Pre-approved tools (also experimental in base spec) |
-| `argument-hint` | string | Autocomplete hint |
-| `disable-model-invocation` | boolean | Prevent auto-triggering |
-| `user-invocable` | boolean | Hide from / menu |
-| `model` | string | Model override (sonnet/opus/haiku) |
-| `effort` | string | Effort level (low/medium/high/max) |
-| `context` | string | Execution context (fork) |
-| `agent` | string | Subagent type for fork |
-| `hooks` | mapping | Skill-scoped lifecycle hooks |
-| `paths` | string/list | Auto-activation glob patterns |
-| `shell` | string | Shell override (bash/powershell) |
-
-Source: https://code.claude.com/docs/en/skills#frontmatter-reference
-
-## Other platforms
-
-**OpenCode**: Recognizes only the 5 stable fields. Tool permissions configured in `opencode.json`. Unknown frontmatter fields are ignored.
-Source: https://opencode.ai/docs/skills/
-
-**Codex**: Recognizes `name` and `description` in frontmatter. Agent configuration goes in `agents/openai.yaml`.
-Source: https://developers.openai.com/codex/skills
-
-## Portability rule
-
-A SKILL.md that uses only the 5 stable fields works on Claude Code, OpenCode, and Codex. Every non-standard field added reduces portability with zero warning — platforms silently ignore what they don't recognize, causing the skill to behave differently across environments.
-
-Use `compatibility:` to signal platform-specific requirements:
-```yaml
-compatibility: Designed for Claude Code. Uses gh CLI and git.
-```
-
-Scope tool usage, model preferences, and execution context in the skill body prose — this is the only portable mechanism.
+Under 500 SKILL.md lines is a specification recommendation, producing WARN without a reference-skill exception. Description warnings above 350 characters and for missing trigger phrases are optional evaluator heuristics; the hard description limit is 1024. Script interfaces, output style, interactivity, security, MCP, token efficiency, and effectiveness checks are quality policy rather than format requirements. Valid Agent Skills format does not guarantee a passing quality score.
