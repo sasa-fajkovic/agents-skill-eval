@@ -80,7 +80,8 @@ _TRIGGER_EXCLUSION = re.compile(
 
 def _without_trigger_exclusions(text: str) -> str:
     clauses = re.split(r"[;.!?]\s+|,\s*(?=(?:do not|don't|never|avoid|must not)\b)|\b(?:and|but|or)\s+(?=(?:do not|don't|never|avoid|must not)\b)", text, flags=re.IGNORECASE)
-    return " ".join(clause for clause in clauses if not _TRIGGER_EXCLUSION.search(clause))
+    remaining = [clause for clause in clauses if not _TRIGGER_EXCLUSION.search(clause)]
+    return text if len(remaining) == len(clauses) else ". ".join(remaining)
 
 
 def check_4_3(body: str) -> list[Finding]:

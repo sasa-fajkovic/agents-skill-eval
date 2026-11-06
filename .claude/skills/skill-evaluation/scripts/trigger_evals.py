@@ -30,9 +30,14 @@ def inspect_trigger_evals(skill_dir: Path) -> tuple[dict, list[Finding]]:
     for directory in (skill_dir, skill_dir / "evals"):
         for filename in QUERY_FILENAMES:
             path = directory / filename
-            if not path.exists() and not path.is_symlink():
-                continue
             relative = path.relative_to(skill_dir).as_posix()
+            try:
+                if not path.exists() and not path.is_symlink():
+                    continue
+            except OSError:
+                location = directory.relative_to(skill_dir).as_posix()
+                findings.append(Finding("4.9", "WARN", f"optional evaluator policy: cannot inspect trigger-query fixtures in {location}; fixture presence and trigger accuracy were not measured"))
+                break
             entry = {
                 "path": relative,
                 "valid": False,
@@ -40,7 +45,6 @@ def inspect_trigger_evals(skill_dir: Path) -> tuple[dict, list[Finding]]:
                 "should_trigger_count": 0,
                 "should_not_trigger_count": 0,
             }
-            files.append(entry)
             try:
                 queries = json.loads(read_trigger_fixture(path))
                 if not isinstance(queries, list) or not queries:
@@ -59,8 +63,10 @@ def inspect_trigger_evals(skill_dir: Path) -> tuple[dict, list[Finding]]:
                     raise ValueError(f"invalid entries at positions {shown}; each needs a non-empty query string and boolean should_trigger")
             except (OSError, UnicodeError, ValueError, RecursionError) as exc:
                 detail = str(exc) if isinstance(exc, ValueError) and not isinstance(exc, json.JSONDecodeError) else "unreadable or invalid JSON"
+                files.append(entry)
                 findings.append(Finding("4.9", "WARN", f"optional evaluator policy: {relative}: {detail}; trigger accuracy was not measured"))
                 continue
+            files.append(entry)
             entry.update(
                 valid=True,
                 query_count=len(queries),

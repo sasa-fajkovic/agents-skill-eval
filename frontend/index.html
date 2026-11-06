@@ -2618,8 +2618,8 @@
 
     function renderChecklistTrigger(triggerEvals) {
       const files = Array.isArray(triggerEvals?.files) ? triggerEvals.files : [];
-      if (!files.length) return '<p class="result-meta">Optional trigger-query fixtures: none provided.</p>';
-      return `<ul class="checklist">${files.map(file => `<li><span>${escapeHtml(file.path)}</span><span>${file.valid ? `${escapeHtml(file.query_count)} queries (${escapeHtml(file.should_trigger_count)} positive, ${escapeHtml(file.should_not_trigger_count)} negative)` : 'Invalid fixture'}</span></li>`).join('')}</ul>`;
+      if (!files.length) return '<p class="result-meta">Optional trigger-query fixtures: none discovered.</p>';
+      return `<ul class="checklist">${files.map(file => `<li><span>${escapeHtml(file.path)}</span><span>${file.valid ? `${escapeHtml(file.query_count)} queries (${escapeHtml(file.should_trigger_count)} positive, ${escapeHtml(file.should_not_trigger_count)} negative)` : 'Unreadable or invalid fixture'}</span></li>`).join('')}</ul>`;
     }
 
     function syntaxHighlightJson(value) {

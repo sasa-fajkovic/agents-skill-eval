@@ -162,6 +162,15 @@ class Tier4Tests(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertTrue(tier4.check_4_3(body))
 
+    def test_check_4_3_preserves_sentence_boundaries_without_exclusions(self) -> None:
+        for body in (
+            "Read the config files. Do not modify them.",
+            "Read it. Don't change behavior.",
+            "Review the changes; do not modify them.",
+        ):
+            with self.subTest(body=body):
+                self.assertTrue(tier4.check_4_3(body))
+
     def test_check_4_3_still_flags_operational_negative(self) -> None:
         self.assertTrue(tier4.check_4_3("Never include implementation details."))
 

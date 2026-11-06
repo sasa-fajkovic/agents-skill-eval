@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -104,6 +105,22 @@ class TriggerEvalTests(unittest.TestCase):
         metadata, findings = inspect_trigger_evals(self.root)
         self.assertFalse(metadata["files"][0]["valid"])
         self.assertIn("regular query file", findings[0].message)
+
+    def test_permission_error_during_discovery_warns_without_crashing(self) -> None:
+        inaccessible = self.root / "evals" / "eval_queries.json"
+        original_exists = Path.exists
+
+        def exists(path):
+            if path == inaccessible:
+                raise PermissionError("access denied")
+            return original_exists(path)
+
+        with patch.object(Path, "exists", exists):
+            metadata, findings = inspect_trigger_evals(self.root)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].severity, "WARN")
+        self.assertEqual(metadata["files"], [])
+        self.assertIn("cannot inspect", findings[0].message)
 
     def test_malformed_fixture_reaches_ci_json_as_warning(self) -> None:
         self.fixture([{"query": "request", "should_trigger": "yes"}])
