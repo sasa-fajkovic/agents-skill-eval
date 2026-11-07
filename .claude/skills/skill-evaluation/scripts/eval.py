@@ -121,7 +121,11 @@ def _find_skill_md(root: Path) -> tuple[Path | None, list[Path]]:
     for child in sorted(root.iterdir()):
         if child.is_dir():
             nested = child / "SKILL.md"
-            if nested.exists():
+            try:
+                exists = nested.exists()
+            except PermissionError:
+                continue
+            if exists:
                 candidates.append(nested)
     if not candidates:
         return None, []
@@ -166,7 +170,8 @@ def evaluate(path: str) -> list[Finding]:
     findings.extend(run_tier1_checks(fm, lines, skill_dir))
     findings.extend(run_tier2_checks(body, skill_dir))
     findings.extend(run_tier3_checks(body, skill_dir))
-    findings.extend(run_tier4_checks(body, skill_dir))
+    skill_name = fm.get("name") if isinstance(fm.get("name"), str) else None
+    findings.extend(run_tier4_checks(body, skill_dir, skill_name))
     emit_progress("Collecting supporting context...")
     _ = collect_supporting_context(skill_path)
     return findings
@@ -185,7 +190,7 @@ def render_human_output(resolved: Path, findings: list[Finding]) -> None:
     print_separator("DETERMINISTIC EVALUATION")
     print()
 
-    for prefix, title in (("1.", "Tier 1 — Spec & Policy (1.1-1.11)"), ("2.", "Tier 2 — Security (2.1-2.2, 2.4)"), ("3.", "Tier 3 — Token Efficiency (3.1-3.7)"), ("4.", "Tier 4 — Effectiveness (4.1-4.7)")):
+    for prefix, title in (("1.", "Tier 1 — Spec & Policy (1.1-1.11)"), ("2.", "Tier 2 — Security (2.1-2.2, 2.4)"), ("3.", "Tier 3 — Token Efficiency (3.1-3.7)"), ("4.", "Tier 4 — Effectiveness (4.1-4.10)")):
         tier_findings = [finding for finding in findings if finding.check_id.startswith(prefix)]
         print_box_top(title)
         if tier_findings:
@@ -258,6 +263,10 @@ def main() -> None:
     path = sys.argv[1]
     ci_mode = "--ci" in sys.argv
     resolved = Path(path) / "SKILL.md" if Path(path).is_dir() else Path(path)
+    if Path(path).is_dir():
+        candidate, _ = _find_skill_md(Path(path))
+        if candidate is not None:
+            resolved = candidate
     findings = evaluate(path)
     errors = [finding for finding in findings if finding.severity == "ERROR"]
     warnings = [finding for finding in findings if finding.severity == "WARN"]

@@ -201,6 +201,48 @@ description: Evaluate skills. Use when validating a skill package.
         self.assertIsInstance(payload["findings"]["warning_findings"], list)
         self.assertIsInstance(payload["metadata"]["script_types"], list)
 
+    def test_output_evals_are_optional_static_data_with_private_inputs(self) -> None:
+        skill_dir = self.make_skill_dir("Use when evaluating skills.\n\n## Output\n\nReturn a JSON report.\n")
+        baseline = skill_eval.evaluate(str(skill_dir))
+        baseline_payload = skill_eval.build_json_result(skill_dir / "SKILL.md", baseline)
+        self.assertEqual(baseline_payload["metadata"]["output_evals"], {"measurement": "not_run", "files": []})
+        fixture_dir = skill_dir / "evals/files"
+        fixture_dir.mkdir(parents=True)
+        sentinel = "PRIVATE_OUTPUT_CASE_SENTINEL"
+        (fixture_dir / "input.csv").write_text(sentinel, encoding="utf-8")
+        manifest = {"skill_name": "skill-eval", "evals": [{"id": 1, "prompt": sentinel,
+                    "expected_output": sentinel, "assertions": [sentinel], "files": ["evals/files/input.csv"]}]}
+        manifest_path = skill_dir / "evals/evals.json"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        findings = skill_eval.evaluate(str(skill_dir))
+        payload = skill_eval.build_json_result(skill_dir / "SKILL.md", findings)
+        self.assertEqual([(item.check_id, item.severity) for item in findings],
+                         [(item.check_id, item.severity) for item in baseline])
+        self.assertEqual(payload["overall_score"], baseline_payload["overall_score"])
+        self.assertEqual(payload["metadata"]["output_evals"]["files"], [{"path": "evals/evals.json", "valid": True,
+                         "eval_count": 1, "assertion_count": 1, "input_file_count": 1}])
+        self.assertNotIn(sentinel, json.dumps(payload))
+        manifest["evals"][0]["id"] = True
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        invalid = [item for item in skill_eval.evaluate(str(skill_dir)) if item.check_id == "4.10"]
+        self.assertEqual(len(invalid), 1)
+        self.assertEqual(invalid[0].severity, "WARN")
+        self.assertIn("evaluator policy", invalid[0].reason)
+
+    def test_declaring_script_as_eval_input_preserves_security_checks(self) -> None:
+        skill_dir = self.make_skill_dir("## Output\nReturn a JSON report.\n",
+                                       'if __name__ == "__main__":\n    print("mcp__github_pull_request_read")\n')
+        (skill_dir / "evals").mkdir()
+        (skill_dir / "evals/evals.json").write_text(json.dumps({
+            "skill_name": "skill-eval", "evals": [{"id": 1, "prompt": "Review the input.",
+                "expected_output": "A report.", "files": ["scripts/helper.py"]}],
+        }), encoding="utf-8")
+        findings = skill_eval.evaluate(str(skill_dir))
+        self.assertTrue(any(item.check_id == "3.7" and item.severity == "ERROR" for item in findings))
+        payload = skill_eval.build_json_result(skill_dir / "SKILL.md", findings)
+        self.assertNotIn("mcp__github_pull_request_read", payload["supporting_context"])
+        self.assertTrue(payload["metadata"]["output_evals"]["files"][0]["valid"])
+
     def test_ci_mode_includes_core_evaluation_fields(self) -> None:
         skill_dir = self.make_skill_dir("Use when validating a skill package.")
         completed = subprocess.run(
@@ -679,6 +721,36 @@ class Test31DocumentationExamples(unittest.TestCase):
 class TestMultiSkillRejection(unittest.TestCase):
     """Uploading an entire .claude/skills folder (multiple SKILL.md files)
     should be rejected with a clear error rather than silently evaluating one."""
+
+    def test_ci_wrapper_uses_real_skill_root_for_identity_and_output_evals(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill = root / "wrapped-skill"
+            (skill / "evals/files").mkdir(parents=True)
+            (skill / "SKILL.md").write_text(
+                "---\nname: wrapped-skill\ndescription: Use when checking fixtures.\n---\n\n## Output\nReturn JSON.\n",
+                encoding="utf-8",
+            )
+            (skill / "evals/files/input.csv").write_text("month,revenue\nJanuary,4\n", encoding="utf-8")
+            (skill / "evals/evals.json").write_text(json.dumps({"skill_name": "wrapped-skill", "evals": [
+                {"id": 1, "prompt": "Summarize revenue.", "expected_output": "A summary.", "files": ["evals/files/input.csv"]},
+            ]}), encoding="utf-8")
+            command = [sys.executable, str(MODULE_PATH), str(root), "--ci"]
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertIn(result.returncode, (0, 2), result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["skill_name"], "wrapped-skill")
+            self.assertEqual(payload["metadata"]["file_count"], 3)
+            self.assertEqual(payload["metadata"]["output_evals"]["files"][0], {
+                "path": "evals/evals.json", "valid": True, "eval_count": 1, "assertion_count": 0, "input_file_count": 1,
+            })
+            duplicate = root / "other-skill"
+            duplicate.mkdir()
+            (duplicate / "SKILL.md").write_text("---\nname: other-skill\ndescription: Use when testing.\n---\nBody.", encoding="utf-8")
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            payload = json.loads(result.stdout)
+            self.assertTrue(any("multiple SKILL.md" in item["message"] for item in payload["findings"]["error_findings"]))
 
     def test_rejects_multiple_skill_dirs(self) -> None:
         root = Path(tempfile.mkdtemp())
