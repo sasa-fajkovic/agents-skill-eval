@@ -117,7 +117,23 @@ The six documented fields include experimental `allowed-tools`, a space-separate
 
 The recommendation to keep SKILL.md under 500 lines produces a warning, including for reference skills. Script languages depend on the runtime; preferring `.py` and `.sh` is evaluator policy, and other script extensions produce portability warnings rather than specification errors. The legacy `metadata.unsupported_script_types` output tracks the existing `.js`, `.ts`, `.go`, `.rb`, `.php`, and `.pl` policy set; it does not mean those languages are prohibited by the specification.
 
-Description warnings above 350 characters and for missing trigger phrases are optional evaluator heuristics, not specification limits. Script `--help`, structured output, interactivity, security, MCP namespace, token-efficiency, and effectiveness checks (including the minimum-body-content gate) are project quality policy. Policy errors can still make an evaluation fail; a failed quality evaluation does not necessarily mean invalid Agent Skills format. The specification places no body-format restrictions on SKILL.md.
+Missing recognized activation context is an optional evaluator heuristic, not a required phrase or additional description-length limit. Script `--help`, structured output, interactivity, security, MCP namespace, token-efficiency, and effectiveness checks (including the minimum-body-content gate) are project quality policy. Policy errors can still make an evaluation fail; a failed quality evaluation does not necessarily mean invalid Agent Skills format. The specification places no body-format restrictions on SKILL.md.
+
+## Description triggering
+
+The evaluator follows the [official description optimization guide](https://agentskills.io/skill-creation/optimizing-descriptions): describe user intent and activation contexts, include useful boundaries, and keep descriptions concise within the 1024-character format limit. A particular "Use when" phrase is not required.
+
+Optional `eval_queries.json`, `train_queries.json`, and `validation_queries.json` in the skill root or `evals/` receive structural validation under rule 4.9. Each contains an array of `{"query": "realistic user prompt", "should_trigger": true}` objects. Missing files are unpenalized; malformed supplied files warn. Reports show fixture counts and explicitly mark trigger measurement as not run.
+
+Actual trigger accuracy requires installing the skill in the target client, running varied positive and near-miss negative prompts repeatedly, and observing whether the client loads the skill. Train/validation splits help avoid overfitting. The hosted evaluator does not invoke uploaded skills or calculate empirical trigger rates. See the skill's [description guidance](.claude/skills/skill-evaluation/references/09-description-optimization.md).
+
+## Optional output-quality evals
+
+Optional output-quality test cases follow the [Agent Skills evaluation guide](https://agentskills.io/skill-creation/evaluating-skills). Put declarations in `evals/evals.json` with `skill_name`, an `evals` array of unique integer IDs, prompts, and expected outputs, plus optional local input `files` and `assertions`. The guide-linked skill-creator spelling `expectations` is accepted too. Input paths are relative to the skill root; CSV inputs are supported for folder uploads and GitHub packages. Browser uploads labeled `application/vnd.ms-excel` are accepted only for `.csv` files with verified UTF-8 text bytes; binary Office data and other extensions remain rejected.
+
+Rule `4.10` is advisory evaluator policy for invalid supplied fixtures; missing fixtures and assertions are neutral. `metadata.output_evals` exposes fixed-path validity and counts with `measurement: "not_run"`. The hosted app does not execute uploaded tasks or assertions, grade outputs, compare a baseline, or authenticate uploaded result files. Separate runtime evaluation and human review are described in the [package's output-quality guide](.claude/skills/skill-evaluation/references/10-output-quality-evals.md).
+
+Local fixture policy limits manifests to 1 MiB of strict UTF-8 JSON with nesting depth 64 and inputs to regular files up to 5 MiB each. Paths must stay inside the selected skill root; symlinks at or within that root are rejected. Supporting file and script reads are bounded too; uninspectable potential entrypoints produce rule `1.11` warnings disclosing incomplete analysis. Output-eval content under `evals/` and parseable manifest-declared inputs, including filesystem aliases, are omitted from optional AI context; recognized trigger-query fixtures retain their separate bounded review path unless also declared as output inputs. These limits are distinct from upload transport limits and Agent Skills format requirements.
 
 ## Main Parts
 

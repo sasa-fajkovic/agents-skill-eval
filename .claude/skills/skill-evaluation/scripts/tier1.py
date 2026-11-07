@@ -16,11 +16,10 @@ from common import (
     NON_INTERACTIVE_FALLBACK,
     SPEC_FIELDS,
     STRUCTURED_OUTPUT,
-    WARN_DESC_LEN,
     WHEN_PHRASES,
     INTERACTIVE_PROMPT,
 )
-from extract import entrypoint_scripts, read_text_file
+from extract import entrypoint_scripts, read_text_file, script_analysis_issues, script_inventory
 
 _TEMP_DIR_RE = re.compile(r"^eval-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
@@ -59,10 +58,8 @@ def check_1_2(fm: dict) -> list[Finding]:
         return findings
     if len(desc) > MAX_DESC_LEN:
         findings.append(Finding("1.2", "ERROR", f"description is {len(desc)} chars (max {MAX_DESC_LEN})"))
-    elif len(desc) > WARN_DESC_LEN:
-        findings.append(Finding("1.2", "WARN", f"optional evaluator heuristic: description is {len(desc)} chars; keep under {WARN_DESC_LEN} to avoid context bloat (hard cap {MAX_DESC_LEN})"))
     if not WHEN_PHRASES.search(desc):
-        findings.append(Finding("1.2", "WARN", 'optional evaluator heuristic: description should include a "Use when..." clause'))
+        findings.append(Finding("1.2", "WARN", 'optional evaluator heuristic: no recognized activation context; describe when the skill helps (wording is flexible)'))
     return findings
 
 
@@ -176,17 +173,14 @@ _DATA_EXTENSIONS = {".json", ".yaml", ".yml", ".toml", ".txt", ".md", ".csv", ".
 
 
 def check_1_11(skill_dir: str) -> list[Finding]:
-    findings = []
-    scripts_dir = Path(skill_dir) / "scripts"
-    if scripts_dir.is_dir():
-        for file_path in sorted(scripts_dir.iterdir()):
-            if file_path.is_dir():
-                continue
-            # Skip data/config files — they aren't scripts
-            if file_path.suffix in _DATA_EXTENSIONS:
-                continue
-            if file_path.suffix and file_path.suffix not in PREFERRED_SCRIPT_EXTENSIONS:
-                findings.append(Finding("1.11", "WARN", f"evaluator portability policy: scripts/{file_path.name} uses {file_path.suffix}; prefer Python (.py) or Bash (.sh) when available, or document the required runtime in compatibility. The spec permits runtime-supported languages"))
+    findings = [Finding("1.11", "WARN", f"evaluator read policy: {display} could not be safely inspected; script and security analysis is incomplete (regular files up to 5 MiB, without symlinks, require supported safe file access).")
+                for display in script_analysis_issues(skill_dir)]
+    candidates, _issues = script_inventory(skill_dir)
+    for file_path, display in candidates:
+        if not display.startswith("scripts/") or file_path.suffix in _DATA_EXTENSIONS:
+            continue
+        if file_path.suffix and file_path.suffix not in PREFERRED_SCRIPT_EXTENSIONS:
+            findings.append(Finding("1.11", "WARN", f"evaluator portability policy: {display} uses {file_path.suffix}; prefer Python (.py) or Bash (.sh) when available, or document the required runtime in compatibility. The spec permits runtime-supported languages"))
     return findings
 
 

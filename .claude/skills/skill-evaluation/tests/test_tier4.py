@@ -139,6 +139,41 @@ class Tier4Tests(unittest.TestCase):
         findings = tier4.check_4_3(body)
         self.assertEqual(len([f for f in findings if f.check_id == "4.3"]), 0)
 
+    def test_check_4_3_accepts_trigger_exclusions(self) -> None:
+        for body in (
+            "Never invoke this skill for database imports.",
+            "This skill should not trigger for spreadsheet editing.",
+            "Do not activate the skill for database migrations.",
+            "Avoid using this skill for database imports.",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(tier4.check_4_3(body), [])
+
+    def test_check_4_3_exclusions_do_not_hide_other_negative_clauses(self) -> None:
+        for body in (
+            "Never invoke this skill for imports; never include implementation details.",
+            "Never invoke this skill for imports. Never include implementation details.",
+            "Never invoke this skill without checking logs.",
+            "Never invoke this skill for imports and never edit generated files.",
+            "Never invoke this skill for imports, and never edit generated files.",
+            "Never invoke this skill for imports but never edit generated files.",
+            "Never invoke this skill for imports or never edit generated files.",
+        ):
+            with self.subTest(body=body):
+                self.assertTrue(tier4.check_4_3(body))
+
+    def test_check_4_3_preserves_sentence_boundaries_without_exclusions(self) -> None:
+        for body in (
+            "Read the config files. Do not modify them.",
+            "Read it. Don't change behavior.",
+            "Review the changes; do not modify them.",
+        ):
+            with self.subTest(body=body):
+                self.assertTrue(tier4.check_4_3(body))
+
+    def test_check_4_3_still_flags_operational_negative(self) -> None:
+        self.assertTrue(tier4.check_4_3("Never include implementation details."))
+
     def test_check_4_3_flags_pure_negative(self) -> None:
         body = "Never push to main branch."
         findings = tier4.check_4_3(body)

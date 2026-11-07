@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import sys
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -11,6 +13,8 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import tier1  # noqa: E402
+import extract
+import output_evals
 
 
 class Tier1Tests(unittest.TestCase):
@@ -67,13 +71,6 @@ class Tier1Tests(unittest.TestCase):
 
     # --- 1.2: description length thresholds ---
 
-    def test_check_1_2_warns_between_351_and_500(self) -> None:
-        desc = "Use when " + "x" * 350  # 359 chars
-        fm = {"name": "demo", "description": desc}
-        findings = tier1.check_1_2(fm)
-        warn_findings = [f for f in findings if f.check_id == "1.2" and f.severity == "WARN" and "context bloat" in f.message]
-        self.assertEqual(len(warn_findings), 1)
-
     def test_check_1_2_errors_over_1024(self) -> None:
         desc = "Use when " + "x" * 1016
         fm = {"name": "demo", "description": desc}
@@ -81,7 +78,7 @@ class Tier1Tests(unittest.TestCase):
         err_findings = [f for f in findings if f.check_id == "1.2" and f.severity == "ERROR" and "max 1024" in f.message]
         self.assertEqual(len(err_findings), 1)
 
-    def test_check_1_2_passes_under_350(self) -> None:
+    def test_check_1_2_passes_short_description(self) -> None:
         fm = {"name": "demo", "description": "Use when reviewing skills."}
         findings = tier1.check_1_2(fm)
         length_findings = [f for f in findings if "max 1024" in f.message or "context bloat" in f.message]
@@ -92,7 +89,36 @@ class Tier1Tests(unittest.TestCase):
             with self.subTest(count=count):
                 findings = tier1.check_1_2({"description": "Use when " + "x" * (count - 9)})
                 self.assertFalse(any(f.severity == "ERROR" for f in findings))
-                self.assertTrue(any(f.severity == "WARN" and "optional evaluator heuristic" in f.message for f in findings))
+                self.assertEqual(findings, [])
+
+    def test_check_1_2_accepts_varied_activation_context(self) -> None:
+        for description in (
+            "Use this skill when the user wants a CSV chart.",
+            "Use the skill for charting CSV files.",
+            "When the user needs a chart from tabular data, analyze the file.",
+            "Activate when a tabular data analysis workflow needs custom grouping.",
+            "Analyze tabular data. Activate this skill when the user shares a CSV.",
+            "Invokes when the user needs CSV analysis.",
+            "Triggers for CSV analysis requests.",
+            "Analyze CSVs. Use this when a spreadsheet needs charts.",
+            "Use it when a spreadsheet needs charts.",
+            "Analyze CSVs whenever the user asks for regional totals.",
+            "Analyze CSVs when a user needs a chart.",
+            "Analyze CSVs when users need a chart.",
+            "Triggers on CSV uploads.",
+            "Activate on CSV analysis requests.",
+            "Run when reviewing CSV data.",
+            "Run this when reviewing CSV data.",
+        ):
+            with self.subTest(description=description):
+                self.assertEqual(tier1.check_1_2({"description": description}), [])
+
+    def test_check_1_2_does_not_mistake_trigger_nouns_for_activation(self) -> None:
+        for description in ("Create database triggers from SQL.", "Deactivate inactive users.", "Formats SQL. Runs on Python 3.11 and requires sqlfluff.", "Formats SQL. Runs for each commit."):
+            findings = tier1.check_1_2({"description": description})
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0].severity, "WARN")
+            self.assertIn("heuristic", findings[0].message)
 
     def test_check_1_3_allowed_tools_strings_have_no_finding(self) -> None:
         for value in ("Bash(git:*) Bash(jq:*) Read", ""):
@@ -176,6 +202,88 @@ class Tier1Tests(unittest.TestCase):
 
         findings = tier1.check_1_11(str(skill_dir))
         self.assertEqual(len(findings), 0)
+
+    def test_check_1_11_uninspectable_entrypoint_candidates_warn_without_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            outside = root.parent / (root.name + "-outside.py")
+            outside.write_text("PRIVATE_EXTERNAL_CONTENT", encoding="utf-8")
+            self.addCleanup(outside.unlink)
+            (scripts / "linked.py").symlink_to(outside)
+            with (root / "large.sh").open("wb") as stream:
+                stream.truncate(output_evals.MAX_INPUT_BYTES + 1)
+            with mock.patch.object(output_evals.os, "read", side_effect=AssertionError("unsafe read")):
+                findings = tier1.check_1_11(str(root))
+            self.assertEqual(len(findings), 2)
+            self.assertTrue(all(item.check_id == "1.11" and item.severity == "WARN" for item in findings))
+            self.assertTrue(all("analysis is incomplete" in item.message for item in findings))
+            self.assertNotIn("PRIVATE_EXTERNAL_CONTENT", str(findings))
+
+    def test_check_1_11_regular_scripts_file_is_neutral_and_keeps_root_checks(self) -> None:
+        import tier3
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "scripts").write_text("ordinary package data", encoding="utf-8")
+            (root / "helper.py").write_text('if __name__ == "__main__":\n    print("mcp__github_pull_request_read")\n', encoding="utf-8")
+            self.assertEqual(tier1.check_1_11(str(root)), [])
+            self.assertTrue(tier3.check_3_7("", str(root)))
+
+    def test_check_1_11_symlinked_script_directory_does_not_enumerate_external_names(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "skill"
+            outside = Path(directory) / "outside"
+            root.mkdir()
+            outside.mkdir()
+            (outside / "PRIVATE_EXTERNAL_NAME.py").write_text("PRIVATE_CONTENT", encoding="utf-8")
+            (root / "scripts").symlink_to(outside, target_is_directory=True)
+            original_scandir = os.scandir
+            external_identity = outside.stat()
+
+            def safe_scandir(descriptor):
+                info = os.fstat(descriptor)
+                self.assertNotEqual((info.st_dev, info.st_ino), (external_identity.st_dev, external_identity.st_ino))
+                return original_scandir(descriptor)
+
+            with mock.patch.object(extract.os, "scandir", side_effect=safe_scandir):
+                findings = tier1.check_1_11(str(root))
+                self.assertEqual(extract.entrypoint_scripts(str(root)), [])
+            self.assertEqual(len(findings), 1)
+            self.assertIn("scripts/", findings[0].message)
+            self.assertNotIn("PRIVATE", findings[0].message)
+
+    def test_check_1_11_unavailable_access_warns_and_known_helpers_remain_exempt(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_private.py").symlink_to(root / "missing")
+            with (root / "_large.sh").open("wb") as stream:
+                stream.truncate(output_evals.MAX_INPUT_BYTES + 1)
+            self.assertEqual(tier1.check_1_11(str(root)), [])
+            with mock.patch.dict(output_evals.os.__dict__):
+                del output_evals.os.O_NOFOLLOW
+                findings = tier1.check_1_11(str(root))
+            self.assertEqual(len(findings), 1)
+            self.assertIn("analysis is incomplete", findings[0].message)
+
+    def test_check_1_11_unreadable_script_directory_warns_without_permission_crash(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            scripts.chmod(0)
+            try:
+                try:
+                    list(scripts.iterdir())
+                except PermissionError:
+                    findings = tier1.check_1_11(str(root))
+                    self.assertEqual(len(findings), 1)
+                    self.assertIn("analysis is incomplete", findings[0].message)
+                else:
+                    self.skipTest("filesystem permissions do not restrict this process")
+            finally:
+                scripts.chmod(0o700)
 
     def test_check_1_11_other_language_is_warning_not_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

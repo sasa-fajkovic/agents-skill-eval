@@ -39,6 +39,14 @@
       "mainEntity": [
         {
           "@type": "Question",
+          "name": "Does this measure the quality of a skill's outputs?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The hosted evaluator checks optional evals/evals.json declarations and local input paths. It does not execute uploaded tasks or assertions, compare baseline outputs, or measure output quality. Missing fixtures are neutral; invalid supplied fixtures produce advisory policy warnings. Actual output evaluation needs separate runs, evidence-based grading, timing, and human review. Uploaded result files are supplied data, not authenticated measurements."
+          }
+        },
+        {
+          "@type": "Question",
           "name": "Why agent skills over slash commands?",
           "acceptedAnswer": {
             "@type": "Answer",
@@ -303,6 +311,13 @@
     <section class="faq-grid">
       <article class="faq-card">
         <span class="eyebrow">Question</span>
+        <h3>Does this measure the quality of a skill's outputs?</h3>
+        <p>The hosted evaluator checks optional <code>evals/evals.json</code> declarations and local input paths. It does not execute uploaded tasks or assertions, compare baseline outputs, or measure output quality. Optional AI review assesses the skill's instructions and static summaries.</p>
+        <p>Missing fixtures are neutral. Invalid supplied fixtures produce advisory policy warnings. CSV input files can travel with local or GitHub skill packages. Public metadata contains validity and counts, without test prompts or input contents.</p>
+        <p>Actual evaluation needs separate clean runs with the skill and a baseline, output grading with concrete evidence, actual token and timing data, and human review. Uploaded benchmark or grading files remain supplied data. Follow the <a href="https://agentskills.io/skill-creation/evaluating-skills">Agent Skills output evaluation guide</a>.</p>
+      </article>
+      <article class="faq-card">
+        <span class="eyebrow">Question</span>
         <h3>Why not just score Claude Code slash commands?</h3>
         <ul>
           <li>Commands are imperative one-shot triggers, not portable capability definitions.</li>
@@ -410,6 +425,13 @@
         <li><strong>LLM tier base scores</strong> convert the AI reviewer's qualitative tier label into a numeric score for blending.</li>
         <li><strong>Score caps</strong> override the penalty formula for critical structural issues. Missing frontmatter name (1.1) or description (1.2) caps the score at 75. Redirect/stub skills (4.8) cap the score at 35.</li>
       </ul>
+    </section>
+    <section class="callout">
+      <h2>Does a good score prove that the description triggers correctly?</h2>
+      <p>No. Description advice and trigger-query fixture checks are static. The evaluator does not install or invoke uploaded skills, so it cannot measure activation rates. Optional AI review also provides an assessment, not execution evidence.</p>
+      <p>Provide <code>eval_queries.json</code>, <code>train_queries.json</code>, or <code>validation_queries.json</code> in the skill root or <code>evals/</code> to check their structure. Each contains an array of objects with a non-empty <code>query</code> string and a boolean <code>should_trigger</code>. Missing files are unpenalized. Malformed supplied fixtures produce an optional evaluator-policy warning under rule 4.9.</p>
+      <p>For empirical testing, install the skill in your target client and observe whether it loads for realistic positives and nearby requests it should exclude. Repeat runs, keep validation prompts held out, and check fresh prompts after revising. A useful negative trigger boundary is valid guidance. The description format limit is 1024 characters; a literal “Use when” clause is optional.</p>
+      <p><a href="https://agentskills.io/skill-creation/optimizing-descriptions" target="_blank" rel="noreferrer">Official description optimization guide</a></p>
     </section>
   </main>
   <footer class="site-footer">
