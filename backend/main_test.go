@@ -1477,6 +1477,25 @@ func TestShouldEmitSentryTestEvent(t *testing.T) {
 	}
 }
 
+func TestRoutesRejectOversizeUpload(t *testing.T) {
+	t.Setenv("DISABLE_ABUSE_PROTECTION", "false")
+	t.Setenv("TMPDIR", t.TempDir())
+	rdb := redis.NewClient(&redis.Options{Addr: miniredis.RunT(t).Addr()})
+	defer rdb.Close()
+	body := "--test\r\nContent-Disposition: form-data; name=\"files\"; filename=\"SKILL.md\"\r\nContent-Type: text/plain\r\n\r\n" + strings.Repeat("a", 6<<20) + "\r\n--test--\r\n"
+	req := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader(body))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=test")
+	req.RemoteAddr = "198.51.100.52:1234"
+	rr := httptest.NewRecorder()
+	(&application{rdb: rdb, cfg: testConfig()}).routes().ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if got, err := rdb.LLen(context.Background(), queueKey).Result(); err != nil || got != 0 {
+		t.Errorf("expected empty queue, got %d jobs: %v", got, err)
+	}
+}
+
 func TestHandleUploadRejectsOversizePayload(t *testing.T) {
 	body := bytes.Repeat([]byte("a"), maxUploadSize+1)
 	req := httptest.NewRequest(http.MethodPost, "/upload", bytes.NewReader(body))
