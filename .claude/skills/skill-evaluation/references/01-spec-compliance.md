@@ -12,7 +12,7 @@ Valid examples include `skill-eval`, `café`, and `技能`. Uppercase `My-Skill`
 
 The required description must be a non-empty string of at most 1024 characters (ERROR otherwise). It should explain what the skill does and when to use it.
 
-The evaluator additionally warns above 350 characters and when no recognized trigger phrase such as "Use when" is present. These are optional evaluator heuristics, not format limits or a required literal phrase. Descriptions of 351–1024 characters remain valid under the specification.
+The evaluator optionally warns when no recognized activation context is present. Phrasing is flexible: "Use this skill when", "Use for", and "When the user" are examples, not required syntax. This heuristic can miss valid wording; review intent before changing text. There is no extra length penalty below the 1024-character format limit. See [description optimization](09-description-optimization.md) for scope, boundaries, and empirical trigger testing.
 
 ```yaml
 description: >
@@ -70,11 +70,13 @@ When an entrypoint prints output but lacks JSON/CSV or related format indicators
 
 Prompt patterns without nearby non-interactive fallback indicators can block unattended execution. Prefer flags, environment variables, or stdin. Static detection can need contextual review.
 
-### 1.11: script portability (WARN)
+### 1.11: script portability and readability (WARN)
 
 Evaluator policy prefers `.py` and `.sh` when those runtimes are available. Other script extensions receive portability warnings, including JavaScript, TypeScript, Go, Ruby, PHP, Perl, and extensions outside that list. No language is rejected as a specification error. Document required runtimes in `compatibility`.
 
 Data/config files (`.json`, `.yaml`, `.yml`, `.toml`, `.txt`, `.md`, `.csv`, `.xml`, `.ini`, `.cfg`, `.conf`, `.env`), directories, and extensionless files are skipped by this extension heuristic.
+
+Potential `.py`/`.sh` entrypoints that cannot be inspected under the regular-file, 5 MiB, no-symlink read policy receive an incomplete-analysis warning. Inaccessible or symlinked script directories also warn without enumerating external contents. Known library/test filenames are exempt from entrypoint readability warnings. These warnings disclose incomplete script and security analysis, not invalid skill format; no scripts are executed.
 
 `metadata.unsupported_script_types` preserves the legacy set `.js`, `.ts`, `.go`, `.rb`, `.php`, `.pl` for downstream compatibility. It is a policy signal, not a specification ban. See [output schema](08-output-schema.md).
 

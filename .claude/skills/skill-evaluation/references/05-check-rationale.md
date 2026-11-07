@@ -9,8 +9,9 @@ Why every check exists — the real-world failure mode it prevents.
 **Why**: The current specification and linked skills-ref validator define discoverable skill identifiers. Matching normalized names avoids mismatches caused by equivalent Unicode spellings.
 
 ### 1.2 — description
-**What**: Required non-empty string, at most 1024 characters (ERROR). Optional evaluator heuristics warn above 350 characters and for missing recognized trigger phrases.
-**Why**: Descriptions help agents select skills. The optimization warnings are project heuristics, not additional specification limits or required literal wording.
+**What**: Required non-empty string, at most 1024 characters. Missing recognized activation context is an optional heuristic, with flexible wording and no additional length threshold.
+**Why**: Descriptions help agents choose capabilities. Useful scope and boundaries matter more than matching a phrase. Static text checks cannot prove correct activation.
+**Value**: Format errors stay distinct from optional advice; [empirical trigger tests](09-description-optimization.md) measure actual client behavior.
 
 ### 1.3 — documented fields and extensions
 **What**: Accept all six documented fields, including experimental `allowed-tools`. Known platform extensions WARN; unknown top-level fields ERROR.
@@ -40,8 +41,8 @@ Why every check exists — the real-world failure mode it prevents.
 **What**: ERROR for prompt patterns without nearby fallback indicators.
 **Why**: Unattended execution can hang on interactive input. This is execution quality policy, not an Agent Skills format requirement.
 
-### 1.11 — runtime portability (evaluator policy)
-**What**: Prefer `.py` and `.sh`; WARN on other script extensions, with no language ERROR.
+### 1.11 — runtime portability and readability (evaluator policy)
+**What**: Prefer `.py` and `.sh`; WARN on other script extensions or incomplete script/security analysis when potential entrypoints cannot be safely read, with no format ERROR.
 **Why**: Runtime availability depends on the environment. The specification permits supported languages. Document dependencies in compatibility rather than classifying a language as invalid. The legacy `unsupported_script_types` field preserves its existing runtime set for consumers.
 
 ## Tier 2: Security (evaluator policy)
@@ -139,3 +140,8 @@ Why every check exists — the real-world failure mode it prevents.
 **What**: Skill body has fewer than 10 non-blank lines and no bundled scripts. Redirect/pointer skills that just say "read docs elsewhere" get an ERROR.
 **Why**: A skill with 4-5 lines of body text cannot meaningfully guide an agent. Redirect skills are particularly egregious — they provide zero actionable instructions and just point to external docs that the agent may not be able to access. Skills should be self-contained with enough context for the agent to act autonomously.
 **Value**: Skills contain enough substance to actually guide agent behavior. Stubs and redirects are surfaced instead of silently scoring high.
+
+### 4.9 — optional trigger-query fixtures
+**What**: Warn for malformed provided trigger-query fixtures; absence is unpenalized.
+**Why**: A client-run test needs readable prompts and boolean expected labels. Static validation cannot determine whether labels are correct or skills actually activate.
+**Value**: Authors can prepare tests while keeping fixture readiness separate from empirical trigger evidence.

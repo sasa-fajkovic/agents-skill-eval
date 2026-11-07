@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import re
+import os
+import stat
+from io import BytesIO
 from pathlib import Path
 
 from common import (
@@ -13,14 +16,22 @@ from common import (
     PDF_EXTENSIONS,
     PdfReader,
     parse_frontmatter,
-    read_text_file,
+    read_text_file as read_primary_text_file,
 )
+from output_evals import _directory, declared_output_inputs, fixture_directory_identity, fixture_file_identity, inspect_output_evals, read_bounded_regular_file, validate_fixture_path
 
 
-def read_pdf_file(path: Path) -> str:
+def read_text_file(path: Path) -> str:
+    try:
+        return read_bounded_regular_file(path.parent, path.absolute()).decode("utf-8", errors="replace")
+    except ValueError as exc:
+        raise OSError("supporting file omitted by evaluator read policy") from exc
+
+
+def read_pdf_file(path: Path, root: Path | None = None) -> str:
     if PdfReader is None:
         return ""
-    reader = PdfReader(str(path))
+    reader = PdfReader(BytesIO(read_bounded_regular_file(root or path.parent, path.absolute())))
     pages = []
     for page in reader.pages:
         try:
@@ -31,7 +42,22 @@ def read_pdf_file(path: Path) -> str:
 
 
 def collect_supporting_context(skill_path: Path) -> str:
+    from trigger_evals import MAX_QUERY_FILE_BYTES, QUERY_FILENAMES
+
     root = skill_path.parent
+    output_inputs, output_identities = declared_output_inputs(root)
+    try:
+        evals_identity = fixture_directory_identity(root, "evals")
+    except (OSError, ValueError, UnicodeError, NotImplementedError):
+        evals_identity = None
+    directory_identities = {}
+    query_paths = {f"{prefix}{name}" for prefix in ("", "evals/") for name in QUERY_FILENAMES}
+    query_identities = set()
+    for relative in query_paths:
+        try:
+            query_identities.add(fixture_file_identity(root, relative))
+        except (OSError, ValueError, UnicodeError, NotImplementedError):
+            pass
     paths = [path for path in root.rglob("*") if path.is_file() and path != skill_path]
     inventory = []
     parts = []
@@ -51,15 +77,42 @@ def collect_supporting_context(skill_path: Path) -> str:
     for path in sorted(paths, key=sort_key):
         suffix = path.suffix.lower()
         relative = path.relative_to(root)
-        inventory.append(str(relative))
-        if suffix in ALLOWED_TEXT_EXTENSIONS:
-            content = read_text_file(path)
-        elif suffix in PDF_EXTENSIONS:
-            content = read_pdf_file(path)
-        elif suffix in IMAGE_EXTENSIONS:
-            content = "[image file omitted from text analysis]"
-        else:
+        if path.absolute() in output_inputs:
             continue
+        identity = None
+        if output_identities or query_identities:
+            try:
+                identity = fixture_file_identity(root, relative.as_posix())
+            except (OSError, ValueError, UnicodeError, NotImplementedError):
+                pass
+        if identity in output_identities:
+            continue
+        trigger_fixture = relative.as_posix() in query_paths or identity in query_identities
+        first = relative.parts[0]
+        if evals_identity is not None and len(relative.parts) > 1 and first not in directory_identities:
+            try:
+                directory_identities[first] = fixture_directory_identity(root, first)
+            except (OSError, ValueError, UnicodeError, NotImplementedError):
+                directory_identities[first] = None
+        if not trigger_fixture and (first == "evals" or (
+            evals_identity is not None and directory_identities.get(first) == evals_identity
+        )):
+            continue
+        inventory.append(str(relative))
+        try:
+            if trigger_fixture:
+                content = read_bounded_regular_file(root, path.absolute(), MAX_QUERY_FILE_BYTES).decode("utf-8")
+            elif suffix in ALLOWED_TEXT_EXTENSIONS:
+                content = read_bounded_regular_file(root, path.absolute()).decode("utf-8", errors="replace")
+            elif suffix in PDF_EXTENSIONS:
+                content = read_pdf_file(path, root)
+            elif suffix in IMAGE_EXTENSIONS:
+                validate_fixture_path(root, relative.as_posix())
+                content = "[image file omitted from text analysis]"
+            else:
+                continue
+        except (OSError, ValueError, UnicodeError):
+            content = "[Supporting file content omitted by evaluator read policy]"
 
         stripped = content.strip()
         if not stripped:
@@ -254,18 +307,63 @@ def body_paragraphs(body: str) -> list[tuple[int, str]]:
     return paragraphs
 
 
-def scripts_under(skill_dir: str) -> list[tuple[Path, str]]:
+def script_inventory(skill_dir: str) -> tuple[list[tuple[Path, str]], list[str]]:
     root = Path(skill_dir)
     results = []
-    for file_path in sorted(root.iterdir()):
-        if file_path.is_file() and file_path.suffix in PREFERRED_SCRIPT_EXTENSIONS:
-            results.append((file_path, file_path.name))
-    scripts_dir = root / "scripts"
-    if scripts_dir.is_dir():
-        for file_path in sorted(scripts_dir.iterdir()):
-            if file_path.is_file() and file_path.suffix in PREFERRED_SCRIPT_EXTENSIONS:
-                results.append((file_path, f"scripts/{file_path.name}"))
+    issues = []
+    try:
+        with _directory(root) as descriptor:
+            with os.scandir(descriptor) as entries:
+                names = sorted(entry.name for entry in entries)
+            for name in names:
+                path = root / name
+                if path.suffix in PREFERRED_SCRIPT_EXTENSIONS:
+                    if not stat.S_ISDIR(os.stat(name, dir_fd=descriptor, follow_symlinks=False).st_mode):
+                        results.append((path, name))
+            try:
+                info = os.stat("scripts", dir_fd=descriptor, follow_symlinks=False)
+                if stat.S_ISREG(info.st_mode):
+                    return results, issues
+                if not stat.S_ISDIR(info.st_mode):
+                    raise ValueError("script directory cannot be inspected safely")
+                with _directory(root, ("scripts",)) as scripts_descriptor:
+                    with os.scandir(scripts_descriptor) as entries:
+                        for entry in sorted(entries, key=lambda item: item.name):
+                            if not entry.is_dir(follow_symlinks=False):
+                                results.append((root / "scripts" / entry.name, f"scripts/{entry.name}"))
+            except FileNotFoundError:
+                pass
+            except (OSError, ValueError, UnicodeError, NotImplementedError):
+                issues.append("scripts/")
+    except (OSError, ValueError, UnicodeError, NotImplementedError):
+        issues.append("skill root")
+    return results, issues
+
+
+def scripts_under(skill_dir: str) -> list[tuple[Path, str]]:
+    results = []
+    candidates, _issues = script_inventory(skill_dir)
+    for file_path, display in candidates:
+        if file_path.suffix not in PREFERRED_SCRIPT_EXTENSIONS:
+            continue
+        try:
+            validate_fixture_path(Path(skill_dir), display)
+        except ValueError:
+            continue
+        results.append((file_path, display))
     return results
+
+
+def script_analysis_issues(skill_dir: str) -> list[str]:
+    candidates, issues = script_inventory(skill_dir)
+    for file_path, display in candidates:
+        if file_path.suffix not in PREFERRED_SCRIPT_EXTENSIONS or _is_library_or_test_file(file_path):
+            continue
+        try:
+            read_bounded_regular_file(Path(skill_dir), file_path.absolute())
+        except (OSError, ValueError, UnicodeError, NotImplementedError):
+            issues.append(display)
+    return issues
 
 
 _TEST_FILE_RE = re.compile(r"^(test_|_).*|.*_test\.(py|sh)$|.*\.bats$", re.IGNORECASE)
@@ -303,12 +401,21 @@ def collect_metadata(skill_path: Path) -> dict:
     files = [path for path in skill_dir.rglob("*") if path.is_file()]
     script_types = sorted({path.suffix for path in files if path.suffix in PREFERRED_SCRIPT_EXTENSIONS})
     unsupported_script_types = sorted({path.suffix for path in files if path.suffix in PORTABILITY_SCRIPT_EXTENSIONS})
+    skill_text = read_primary_text_file(skill_path) if skill_path.exists() else ""
+    fm, _ = parse_frontmatter(skill_text)
+    skill_name = fm.get("name") if isinstance(fm, dict) and isinstance(fm.get("name"), str) else None
+    output_evals, _ = inspect_output_evals(skill_dir, skill_name)
+    from trigger_evals import inspect_trigger_evals
+
+    trigger_evals, _findings = inspect_trigger_evals(skill_dir)
     return {
+        "trigger_evals": trigger_evals,
         "file_count": len(files),
-        "line_count": len(read_text_file(skill_path).splitlines()) if skill_path.exists() else 0,
+        "line_count": len(skill_text.splitlines()),
         "has_scripts": any(path.suffix in PREFERRED_SCRIPT_EXTENSIONS or path.suffix in PORTABILITY_SCRIPT_EXTENSIONS for path in files),
         "script_types": script_types,
         "unsupported_script_types": unsupported_script_types,
+        "output_evals": output_evals,
     }
 
 
