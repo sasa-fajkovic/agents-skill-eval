@@ -710,6 +710,7 @@ func (app *application) uploadAbuseProtection(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 		if abuseProtectionDisabled() {
 			next.ServeHTTP(w, r)
 			return
